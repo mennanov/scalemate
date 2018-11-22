@@ -1,0 +1,5 @@
+bazel-*
+.ijwb/
+.idea/
+.DS_Store
+\.hg

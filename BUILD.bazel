@@ -1,0 +1,29 @@
+load("@bazel_gazelle//:def.bzl", "gazelle")
+load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
+
+# gazelle:prefix github.com/mennanov/scalemate
+gazelle(name = "gazelle")
+
+filegroup(
+    name = "go_srcs",
+    srcs = [
+        "//accounts:go_srcs",
+        "//client:go_srcs",
+        "//scheduler:go_srcs",
+        "//shared:go_srcs",
+    ],
+)
+
+go_revive_test(
+    name = "go_lint",
+    # Go source files to be linted.
+    srcs = [":go_srcs"],
+    # Revive .toml config.
+    config = "revive.toml",  # it can also be a regular Bazel label.
+    formatter = "stylish",
+    # The paths have to be relative to the workspace root.
+    paths = ["accounts/..."],
+    # Set debug=True if you need to see the details of the execution of
+    # this rule. Default: False.
+    debug = True,
+)

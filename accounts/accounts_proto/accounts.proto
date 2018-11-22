@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package accounts.accounts_proto;
+option go_package = "github.com/mennanov/scalemate/accounts/accounts_proto";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+import "shared/proto/validator.proto";
+
+service Accounts {
+    // Create create a new User account (DB record). Can be used by admins only.
+    rpc Create (CreateUserRequest) returns (User) {
+    }
+    // Get retrieves User account details. Can only be used by admins and the User in subject itself.
+    rpc Get (UserLookupRequest) returns (User) {
+    }
+    // Update updates the User account details. Can only be used by admins and the User in subject itself.
+    rpc Update (UpdateUserRequest) returns (User) {
+    }
+    // List lists Users accounts.
+    rpc List (ListUsersRequest) returns (ListUsersResponse) {
+    }
+    // Delete marks the User account as deleted.
+    rpc Delete (UserLookupRequest) returns (google.protobuf.Empty) {
+    }
+    // Register registers a new User account. This method should be used to create a new User account.
+    rpc Register (RegisterRequest) returns (google.protobuf.Empty) {
+    }
+    // ChangePassword changes the User's password. Authentication is required.
+    rpc ChangePassword (ChangePasswordRequest) returns (google.protobuf.Empty) {
+    }
+    // PasswordAuth authenticates a User (client) with username and password.
+    rpc PasswordAuth (PasswordAuthRequest) returns (AuthTokens) {
+    }
+    // PasswordNodeAuth is similar to PasswordAuth, but should be used to authenticate a Node. It returns tokens that
+    // contain information about the Node (Node name) so that they can be used to perform actions on behalf of the Node.
+    rpc PasswordNodeAuth (PasswordNodeAuthRequest) returns (AuthTokens) {
+    }
+    // TokenAuth should be used to obtain fresh AuthTokens using an existing valid JWT refresh token.
+    rpc TokenAuth (TokenAuthRequest) returns (AuthTokens) {
+    }
+}
+
+message User {
+    uint64 id = 1;
+    // username is unique
+    string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    // email is unique
+    string email = 3 [(shared.proto.validator.field) = {regex: "^((.+@.+)|)$", length_lt: 101}];
+    enum Role {
+        UNKNOWN = 0;
+        USER = 1;
+        SERVICE = 2;
+        ADMIN = 3;
+    }
+    Role role = 4;
+    bool banned = 5;
+    // Datetime fields are ignored in CRUD operations requests.
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp updated_at = 7;
+    google.protobuf.Timestamp password_changed_at = 8;
+}
+
+// Node message represents a Node entity that is partially replicated from Scheduler service to keep Accounts service
+// hermetic.
+message Node {
+    uint64 id = 1;
+    string username = 2;
+    string name = 3;
+    string cpu_model = 4;
+    string memory_model = 5;
+    string gpu_model = 6;
+    string disk_model = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreateUserRequest {
+    User user = 1;
+    string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+}
+
+message UserLookupRequest {
+    // Performs a lookup by any of the given fields.
+    uint32 id = 1;
+    string username = 2;
+    string email = 3;
+}
+
+message UpdateUserRequest {
+    UserLookupRequest lookup = 1;
+    // User payload data.
+    User user = 2;
+    // Only the fields mentioned in the update_mask will be updated. Empty FieldMask is not allowed.
+    google.protobuf.FieldMask update_mask = 3;
+}
+
+message ChangePasswordRequest {
+    // Username must match the username in JWT for this request.
+    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
+    string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+}
+
+message ListUsersRequest {
+    repeated User.Role role = 1;
+    enum Ordering {
+        CREATED_AT_DESC = 0;
+        CREATED_AT_ASC = 1;
+        UPDATED_AT_DESC = 2;
+        UPDATED_AT_ASC = 3;
+        USERNAME_ASC = 4;
+        USERNAME_DESC = 5;
+        EMAIL_ASC = 6;
+        EMAIL_DESC = 7;
+    }
+    // CREATED_AT_DESC is used by default.
+    repeated Ordering ordering = 3;
+    oneof banned {
+        bool active_only = 5;
+        bool banned_only = 6;
+    }
+    // Limit of 50 is used by default.
+    uint32 limit = 7 [(shared.proto.validator.field) = {int_lt: 1000}];
+    uint32 offset = 8;
+}
+
+message ListUsersResponse {
+    repeated User user = 1;
+    // Total count of users that match the corresponding ListUsersRequest without limit or offset applied.
+    uint32 total_count = 2;
+}
+
+message RegisterRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
+    string email = 2 [(shared.proto.validator.field) = {regex: "^.+@.+$", length_lt: 101}];
+    string password = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+}
+
+message PasswordAuthRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
+    string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+}
+
+message PasswordNodeAuthRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
+    string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+    string node_name = 3 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    string cpu_model = 4 [(shared.proto.validator.field) = {msg_exists: true}];
+    string gpu_model = 5;
+    string memory_model = 6 [(shared.proto.validator.field) = {msg_exists: true}];
+    string disk_model = 7 [(shared.proto.validator.field) = {msg_exists: true}];
+}
+
+message TokenAuthRequest {
+    string refresh_token = 2 [(shared.proto.validator.field) = {msg_exists: true}];
+}
+
+message AuthTokens {
+    string access_token = 1 [(shared.proto.validator.field) = {msg_exists: true}];
+    string refresh_token = 2 [(shared.proto.validator.field) = {msg_exists: true}];
+}

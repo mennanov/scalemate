@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package shared.events.events_proto;
+option go_package = "github.com/mennanov/scalemate/shared/events/events_proto";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+import "accounts/accounts_proto/accounts.proto";
+import "scheduler/scheduler_proto/scheduler.proto";
+
+enum Service {
+    UNKNOWN = 0;
+    ACCOUNTS = 1;
+    SCHEDULER = 2;
+}
+
+message Event {
+    enum Type {
+        UNKNOWN = 0;
+        CREATED = 1;
+        UPDATED = 2;
+        DELETED = 3;
+    }
+    // Even type.
+    Type type = 1;
+    // Service that initiated this event.
+    Service service = 2;
+
+    // Message that represents this event. This message can be filled in only partially according to the
+    // `payload_mask` field below as, e.g. it does not make sense to store the entire message for UPDATED Events, but
+    // only the fields that were actually updated.
+    oneof payload {
+        accounts.accounts_proto.User accounts_user = 3;
+        accounts.accounts_proto.Node accounts_node = 11;
+        scheduler.scheduler_proto.Job scheduler_job = 4;
+        scheduler.scheduler_proto.Node scheduler_node = 5;
+        scheduler.scheduler_proto.Task scheduler_task = 6;
+    }
+    // FieldMask for the payload above.
+    google.protobuf.FieldMask payload_mask = 7;
+    // Time when this Event was initiated (created).
+    google.protobuf.Timestamp created_at = 10;
+}

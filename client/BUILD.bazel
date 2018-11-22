@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/mennanov/scalemate/client",
+    visibility = ["//visibility:private"],
+    deps = ["//client/cmd:go_default_library"],
+)
+
+go_binary(
+    name = "client",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "go_srcs",
+    srcs = [
+        "//client/accounts:go_srcs",
+        "//client/auth:go_srcs",
+        "//client/cmd:go_srcs",
+    ] + glob(["*.go"]),
+    visibility = ["//visibility:public"],
+)

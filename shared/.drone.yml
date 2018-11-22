@@ -1,0 +1,43 @@
+workspace:
+  base: /go/src/github.com/mennanov/
+  path: scalemate-shared
+
+pipeline:
+
+  setup-build:
+    image: docker
+    commands:
+      - docker build -t scalemate-shared:test -f Dockerfile-test .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  setup-go-deps:
+    image: scalemate-shared:test
+    commands:
+      - dep ensure
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  go-lint:
+    group: checks
+    image: scalemate-shared:test
+    environment:
+      - CGO_ENABLED=0
+    commands:
+      - make lint
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  test:
+    group: checks
+    image: scalemate-shared:test
+    environment:
+      - AMQP_ADDR=amqp://guest:guest@amqp:5672/
+    commands:
+      - make test
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+services:
+  amqp:
+    image: rabbitmq:3

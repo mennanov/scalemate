@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/mennanov/scalemate/scheduler",
+    visibility = ["//visibility:public"],
+    deps = ["//scheduler/cmd:go_default_library"],
+)
+
+filegroup(
+    name = "go_srcs",
+    srcs = [
+        "//scheduler/bitarray:go_srcs",
+        "//scheduler/cmd:go_srcs",
+        "//scheduler/migrations:go_srcs",
+        "//scheduler/models:go_srcs",
+        "//scheduler/server:go_srcs",
+    ] + glob(["*.go"]),
+    visibility = ["//visibility:public"],
+)

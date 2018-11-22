@@ -1,0 +1,21 @@
+# This Dockerfile is used to build an image to run tests in drone.io
+# The image is tagged as "scalemate-client:test".
+# To build a binary (within a docker image) see ./Dockerfile instead.
+FROM golang:alpine AS build-env
+
+RUN apk update && apk upgrade && \
+    apk add --no-cache bash git openssh make
+
+RUN go get -u github.com/golang/dep/cmd/dep
+RUN go get -u gopkg.in/alecthomas/gometalinter.v2 && gometalinter.v2 --install
+
+# Set up SSH keys for accessing github private repositories (github.com/mennanov/scalemate-shared).
+ARG ID_RSA
+ARG ID_RSA_PUB
+
+RUN mkdir -p /root/.ssh && chmod 0700 /root/.ssh
+RUN printf "%b" "${ID_RSA}" > /root/.ssh/id_rsa
+RUN chmod 600 /root/.ssh/id_rsa
+RUN printf "%b" "${ID_RSA_PUB}" > /root/.ssh/id_rsa.pub
+RUN eval "$(ssh-agent)" && ssh-add /root/.ssh/id_rsa
+RUN ssh-keyscan -t rsa github.com >> /root/.ssh/known_hosts

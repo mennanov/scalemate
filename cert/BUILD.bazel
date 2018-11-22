@@ -1,0 +1,8 @@
+filegroup(
+    name = "cert",
+    srcs = [
+        "cert.pem",
+        "key.pem",
+    ],
+    visibility = ["//visibility:public"],
+)

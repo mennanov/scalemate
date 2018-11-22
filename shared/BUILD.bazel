@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/mennanov/scalemate/shared",
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "go_srcs",
+    srcs = [
+        "//shared/auth:go_srcs",
+        "//shared/events:go_srcs",
+        "//shared/middleware:go_srcs",
+        "//shared/utils:go_srcs",
+    ] + glob(["*.go"]),
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,45 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
+load("@bazel_gomock//:gomock.bzl", "gomock")
+
+proto_library(
+    name = "scheduler_proto_proto",
+    srcs = ["scheduler.proto"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//shared/proto:validator_proto",
+        "@com_google_protobuf//:empty_proto",
+        "@com_google_protobuf//:timestamp_proto",
+    ],
+)
+
+go_proto_library(
+    name = "scheduler_go_proto",
+    compilers = [
+        "@io_bazel_rules_go//proto:go_grpc",
+        "@io_bazel_rules_go//proto:go_proto_validate",
+    ],
+    importpath = "github.com/mennanov/scalemate/scheduler/scheduler_proto",
+    proto = ":scheduler_proto_proto",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//shared/proto:go_default_library",
+        "@com_github_mwitkow_go_proto_validators//:go_default_library",  # keep
+    ],
+)
+
+# gazelle:exclude scheduler_mock_test.go
+gomock(
+    name = "scheduler_proto_mock",
+    out = "scheduler_mock_test.go",
+    interfaces = ["SchedulerClient"],
+    library = ":scheduler_go_proto",
+    package = "scheduler",
+)
+
+go_library(
+    name = "go_default_library",
+    embed = [":scheduler_go_proto"],
+    importpath = "github.com/mennanov/scalemate/scheduler/scheduler_proto",
+    visibility = ["//visibility:public"],
+)

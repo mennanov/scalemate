@@ -1,0 +1,25 @@
+# SHARED ENV VARIABLES
+build --test_env=SHARED_AMQP_ADDR=amqp://guest:guest@localhost:15672/ --test_timeout=10
+
+# ACCOUNTS SERVICE ENV VARIABLES
+build --test_env=ACCOUNTS_DB_HOST=localhost
+build --test_env=ACCOUNTS_DB_PORT=25432
+build --test_env=ACCOUNTS_DB_USER=postgres
+build --test_env=ACCOUNTS_DB_NAME=postgres
+build --test_env=ACCOUNTS_DB_PASSWORD=postgres
+build --test_env=ACCOUNTS_BCRYPT_COST=4
+build --test_env=ACCOUNTS_ACCESS_TOKEN_TTL=10m
+build --test_env=ACCOUNTS_REFRESH_TOKEN_TTL=168h
+build --test_env=ACCOUNTS_JWT_SECRET_KEY=A11YourBaseAreBel0ngToUs
+build --test_env=ACCOUNTS_TLS_CERT_FILE=__main__/cert/cert.pem
+build --test_env=ACCOUNTS_TLS_KEY_FILE=__main__/cert/key.pem
+
+# SCHEDULER SERVICE ENV VARIABLES
+build --test_env=SCHEDULER_DB_HOST=localhost
+build --test_env=SCHEDULER_DB_PORT=35432
+build --test_env=SCHEDULER_DB_USER=postgres
+build --test_env=SCHEDULER_DB_NAME=postgres
+build --test_env=SCHEDULER_DB_PASSWORD=postgres
+build --test_env=SCHEDULER_JWT_SECRET_KEY=A11YourBaseAreBel0ngToUs
+build --test_env=SCHEDULER_TLS_CERT_FILE=__main__/cert/cert.pem
+build --test_env=SCHEDULER_TLS_KEY_FILE=__main__/cert/key.pem

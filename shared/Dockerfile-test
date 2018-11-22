@@ -1,0 +1,10 @@
+# This Dockerfile is used to build an image to run tests in drone.io
+# The image is tagged as "scalemate-client:test".
+# To build a binary (within a docker image) see ./Dockerfile instead.
+FROM golang:alpine AS build-env
+
+RUN apk update && apk upgrade && \
+    apk add --no-cache bash git openssh make
+
+RUN go get -u github.com/golang/dep/cmd/dep
+RUN go get -u gopkg.in/alecthomas/gometalinter.v2 && gometalinter.v2 --install

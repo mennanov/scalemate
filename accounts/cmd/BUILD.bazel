@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+filegroup(
+    name = "go_srcs",
+    srcs = glob(["*.go"]),
+    visibility = ["//accounts:__subpackages__"],
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "migrate.go",
+        "rollback.go",
+        "root.go",
+        "up.go",
+    ],
+    importpath = "github.com/mennanov/scalemate/accounts/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//accounts/migrations:go_default_library",
+        "//accounts/server:go_default_library",
+        "//shared/utils:go_default_library",
+        "@com_github_spf13_cobra//:go_default_library",
+    ],
+)

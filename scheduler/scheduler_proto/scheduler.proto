@@ -1,0 +1,358 @@
+syntax = "proto3";
+
+package scheduler.scheduler_proto;
+option go_package = "github.com/mennanov/scalemate/scheduler/scheduler_proto";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+import "shared/proto/validator.proto";
+
+service Scheduler {
+    // RunJob creates a Job and schedules it immediately. This
+    rpc RunJob (Job) returns (Task) {
+    }
+    // GetJob gets a User owned Job.
+    rpc GetJob (GetJobRequest) returns (Job) {
+    }
+    // ListJobs lists User owned Jobs.
+    rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {
+    }
+    // GetTask gets a User owned Task.
+    rpc GetTask (GetTaskRequest) returns (Task) {
+    }
+    // ListTasks lists User owned Tasks.
+    rpc ListTasks (ListTasksRequest) returns (ListTasksResponse) {
+    }
+    // ListCpuModels lists aggregated CPU models for the currently online Nodes.
+    rpc ListCpuModels (ListCpuModelsRequest) returns (ListCpuModelsResponse) {
+    }
+    // ListGpuModels lists aggregated GPU models for the currently online Nodes.
+    rpc ListGpuModels (ListGpuModelsRequest) returns (ListGpuModelsResponse) {
+    }
+    // ListDiskModels lists aggregated Disk models for the currently online Nodes.
+    rpc ListDiskModels (ListDiskModelsRequest) returns (ListDiskModelsResponse) {
+    }
+    // ListMemoryModels lists aggregated Memory models for the currently online Nodes.
+    rpc ListMemoryModels (google.protobuf.Empty) returns (ListMemoryModelsResponse) {
+    }
+    // ReceiveTasks should be used by Nodes to receive Tasks to run. A Node is considered online as long as this request
+    // is running, otherwise it is treated as offline.
+    rpc ReceiveTasks (google.protobuf.Empty) returns (stream Task) {
+    }
+}
+
+enum CPUClass {
+    CPU_CLASS_UNKNOWN = 0;
+    CPU_CLASS_ENTRY = 10;
+    CPU_CLASS_INTERMEDIATE = 20;
+    CPU_CLASS_ADVANCED = 30;
+    CPU_CLASS_PRO = 40;
+}
+
+enum GPUClass {
+    GPU_CLASS_UNKNOWN = 0;
+    GPU_CLASS_ENTRY = 10;
+    GPU_CLASS_INTERMEDIATE = 20;
+    GPU_CLASS_ADVANCED = 30;
+    GPU_CLASS_PRO = 40;
+}
+
+enum DiskClass {
+    DISK_CLASS_UNKNOWN = 0;
+    DISK_CLASS_HDD = 10;
+    DISK_CLASS_SSD = 20;
+}
+
+// Job represents a request to be run as a container on Scalemate premises.
+// This is created by `scalemate run image:tag [OPTIONS]`.
+message Job {
+    uint64 id = 1;
+    string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+
+    enum Status {
+        STATUS_UNKNOWN = 0;
+        STATUS_PENDING = 1;
+        STATUS_SCHEDULED = 2;
+        STATUS_FINISHED = 3;
+        STATUS_CANCELLED = 4;
+    }
+    Status status = 14;
+
+    // Docker image name, e.g. "postgres:latest".
+    string docker_image = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1
+                            }];
+
+    // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
+    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gt: 0}];
+    CPUClass cpu_class = 5;
+
+    // Docker run Memory limit in Megabytes.
+    uint32 memory_limit = 6 [(shared.proto.validator.field) = {int_gt: 31}];
+
+    // The number of GPU devices to be used. Limiting the number of cores in a single device is not supported.
+    uint32 gpu_limit = 7 [(shared.proto.validator.field) = {msg_exists: true}];
+    GPUClass gpu_class = 8;
+
+    // Disk limit in Megabytes. This includes the image size, writable container layer and volumes.
+    uint32 disk_limit = 9 [(shared.proto.validator.field) = {int_gt: 31}];
+    DiskClass disk_class = 10;
+
+    message RunConfig {
+        repeated int32 ports = 1; // Exposed ports.
+        map<string, string> volumes = 2; // Docker volumes.
+    }
+    RunConfig run_config = 11;
+
+    google.protobuf.Timestamp created_at = 12;
+    google.protobuf.Timestamp updated_at = 13;
+
+    enum RestartPolicy {
+        RESTART_POLICY_UNKNOWN = 0;
+        RESTART_POLICY_NO = 1;
+        RESTART_POLICY_ON_FAILURE = 2;
+        RESTART_POLICY_UNLESS_STOPPED = 3;
+        RESTART_POLICY_RESCHEDULE_ON_FAILURE = 4;
+        RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE = 5;
+    }
+
+    RestartPolicy restart_policy = 15;
+
+    // Scheduling constraint labels. Multiple labels with the same prefix are "OR"ed.
+    // Only the full string match is currently supported.
+    repeated string cpu_labels = 16;
+    repeated string gpu_labels = 17;
+    repeated string disk_labels = 18;
+    repeated string memory_labels = 19;
+    repeated string username_labels = 20;
+    repeated string name_labels = 21;
+    repeated string other_labels = 22;
+}
+
+// Node represents a physical machine (computer) that is used to run Tasks.
+message Node {
+    uint64 id = 1;
+    string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    string name = 24 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+
+    enum Status {
+        STATUS_UNKNOWN = 0;
+        STATUS_ONLINE = 1;
+        STATUS_OFFLINE = 2;
+    }
+    Status status = 3;
+
+    // The number of CPUs the node has.
+    uint32 cpu_capacity = 4 [(shared.proto.validator.field) = {int_gt: 0}];
+    // The number of CPUs available for scheduling.
+    float cpu_available = 5 [(shared.proto.validator.field) = {float_gte: 0}];
+    CPUClass cpu_class = 6 [(shared.proto.validator.field) = {msg_exists: true}];
+    // The lowest requested Task's CPUClass that can be scheduled on that Node.
+    CPUClass cpu_class_min = 7 [(shared.proto.validator.field) = {msg_exists: true}];
+    string cpu_model = 20 [(shared.proto.validator.field) = {msg_exists: true}];
+
+    // Node's RAM capacity in Megabytes available for Tasks scheduling.
+    uint32 memory_capacity = 8 [(shared.proto.validator.field) = {int_gt: 0}];
+    // Node's RAM in Megabytes available for scheduling.
+    uint32 memory_available = 9 [(shared.proto.validator.field) = {int_gt: 0}];
+    string memory_model = 25 [(shared.proto.validator.field) = {msg_exists: true}];
+
+    // The number of GPU devices the node has.
+    uint32 gpu_capacity = 10;
+    // The number of GPU devices available for scheduling.
+    uint32 gpu_available = 11;
+    GPUClass gpu_class = 12 [(shared.proto.validator.field) = {msg_exists: true}];
+    // The lowest requested Task's GPUClass that can be scheduled on that Node.
+    GPUClass gpu_class_min = 13 [(shared.proto.validator.field) = {msg_exists: true}];
+    string gpu_model = 26 [(shared.proto.validator.field) = {msg_exists: true}];
+
+    // Node's disk capacity in Megabytes available for Tasks scheduling.
+    uint32 disk_capacity = 14;
+    // Node's disk in Megabytes available for Tasks scheduling.
+    uint32 disk_available = 15;
+    DiskClass disk_class = 16 [(shared.proto.validator.field) = {msg_exists: true}];
+    // The lowest requested Task's DiskClass that can be scheduled on that Node.
+    DiskClass disk_class_min = 17 [(shared.proto.validator.field) = {msg_exists: true}];
+    string disk_model = 27 [(shared.proto.validator.field) = {msg_exists: true}];
+
+    // User defined labels.
+    repeated string labels = 29;
+
+    // Number of all finished Tasks that this Node has run.
+    uint64 tasks_finished = 30;
+    // Number of Tasks that failed on this Node when the Node was at fault. Used to calculate reliability score.
+    uint64 tasks_failed = 31;
+
+    // The most recent connection time.
+    google.protobuf.Timestamp connected_at = 18;
+    // The most recent disconnect time.
+    google.protobuf.Timestamp disconnected_at = 19;
+    // The most recent time a Task was scheduled on this Node.
+    google.protobuf.Timestamp scheduled_at = 21;
+
+    // Time this Node was initially registered.
+    google.protobuf.Timestamp created_at = 22;
+    google.protobuf.Timestamp updated_at = 23;
+}
+
+// Task represents a scheduled (running) Job on a Node.
+message Task {
+    uint64 id = 1;
+    uint64 job_id = 2;
+    uint64 node_id = 3;
+
+    enum Status {
+        STATUS_UNKNOWN = 0;
+        // Task is assigned to a Node to run. All newly created Tasks normally have this status.
+        STATUS_SCHEDULED = 1;
+        // Downloading a Docker image and user context, running container, uploading context.
+        STATUS_RUNNING = 2;
+        // Container finished execution regardless of the result (container exit code: failure or success).
+        STATUS_FINISHED = 3;
+        // Any non-node related failure: image not found, resources exhausted, container failed, etc.
+        STATUS_FAILED = 4;
+        // Task failed because the Node failed: connection failed, power outage, etc.
+        STATUS_NODE_FAILED = 5;
+        // User cancelled the task at any point: before or after scheduling or during execution.
+        STATUS_CANCELLED = 6;
+    }
+    Status status = 4;
+
+    google.protobuf.Timestamp created_at = 5;
+    google.protobuf.Timestamp updated_at = 6;
+
+    // The time when the container started to run.
+    google.protobuf.Timestamp started_at = 7;
+
+    // The time when the container finished to run (for any reason).
+    google.protobuf.Timestamp finished_at = 8;
+
+    // Container exit code.
+    int32 exit_code = 9;
+    // Container exit message.
+    string exit_message = 10;
+}
+
+message GetJobRequest {
+    uint64 job_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+}
+
+message ListJobsRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})$"}];
+    repeated Job.Status status = 2;
+
+    enum Ordering {
+        CREATED_AT_DESC = 0;
+        CREATED_AT_ASC = 1;
+        UPDATED_AT_DESC = 2;
+        UPDATED_AT_ASC = 3;
+    }
+    // CREATED_AT_DESC is used by default.
+    Ordering ordering = 3;
+
+    // Limit of 50 is used by default.
+    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 1000}];
+    uint32 offset = 5;
+}
+
+message ListJobsResponse {
+    repeated Job jobs = 1;
+    // Total count of Jobs that match the corresponding ListJobsRequest without limit or offset applied.
+    uint32 total_count = 2;
+}
+
+message GetTaskRequest {
+    uint64 task_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+}
+
+message ListTasksRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})$"}];
+    repeated uint64 job_id = 2;
+    repeated Task.Status status = 3;
+
+    enum Ordering {
+        CREATED_AT_DESC = 0;
+        CREATED_AT_ASC = 1;
+        UPDATED_AT_DESC = 2;
+        UPDATED_AT_ASC = 3;
+    }
+    // CREATED_AT_DESC is used by default.
+    Ordering ordering = 4;
+
+    // Limit of 50 is used by default.
+    uint32 limit = 5 [(shared.proto.validator.field) = {int_lt: 1000}];
+    uint32 offset = 6;
+}
+
+message ListTasksResponse {
+    repeated Task tasks = 1;
+    // Total count of Jobs that match the corresponding ListTasksRequest without limit or offset applied.
+    uint32 total_count = 2;
+}
+
+message ListCpuModelsRequest {
+    CPUClass cpu_class = 1;
+}
+
+message ListCpuModelsResponse {
+    message CpuModel {
+        string cpu_model = 1;
+        CPUClass cpu_class = 2;
+        // Total amount of all CPUs of that model.
+        uint32 cpu_capacity = 3;
+        // Total currently available CPUs of that model.
+        float cpu_available = 4;
+        // Total number of unique Nodes with that CPU model.
+        uint32 nodes_count = 5;
+    }
+    repeated CpuModel cpu_models = 1;
+}
+
+message ListGpuModelsRequest {
+    GPUClass gpu_class = 1;
+}
+
+message ListGpuModelsResponse {
+    message GpuModel {
+        string gpu_model = 1;
+        GPUClass gpu_class = 2;
+        // Total amount of all GPUs of that model.
+        uint32 gpu_capacity = 3;
+        // Total currently available GPUs of that model.
+        uint32 gpu_available = 4;
+        // Total number of unique Nodes with that GPU model.
+        uint32 nodes_count = 5;
+    }
+    repeated GpuModel gpu_models = 1;
+}
+
+message ListDiskModelsRequest {
+    DiskClass disk_class = 1;
+}
+
+message ListDiskModelsResponse {
+    message DiskModel {
+        string Disk_model = 1;
+        DiskClass disk_class = 2;
+        // Total amount of storage of that disk model in Megabytes.
+        uint32 disk_capacity = 3;
+        // Total currently available storage of that disk model in Megabytes.
+        uint32 disk_available = 4;
+        // Total number of unique Nodes with that disk model.
+        uint32 nodes_count = 5;
+    }
+    repeated DiskModel disk_models = 1;
+}
+
+message ListMemoryModelsResponse {
+    message MemoryModel {
+        string memory_model = 1;
+        // Total amount of memory of that model in Megabytes.
+        uint32 memory_capacity = 2;
+        // Total currently available memory of that model in Megabytes.
+        uint32 memory_available = 3;
+        // Total number of unique Nodes with that memory model.
+        uint32 nodes_count = 4;
+    }
+    repeated MemoryModel memory_models = 1;
+}
