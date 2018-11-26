@@ -113,12 +113,12 @@ func (s *ServerTestSuite) TestRunJob_Cancelled() {
 		accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
 
 	go func() {
-		// Give the service some time to handle the request and then cancel it.
-		time.Sleep(time.Millisecond * 100)
+		// Wait until the Job is created for this request.
+		s.NoError(utils.ExpectMessages(messages, time.Millisecond*500, "scheduler.job.created"))
+		// Cancel the ongoing RPC.
 		cancel()
 		// Wait till the cancelled context is handled on the service side.
-		s.NoError(utils.ExpectMessages(messages, time.Millisecond*50,
-			"scheduler.job.created", "scheduler.job.updated.status"))
+		s.NoError(utils.ExpectMessages(messages, time.Millisecond*500, "scheduler.job.updated.status"))
 		// Check that the Job is saved to DB, but no Task is created because the Job could not be scheduled immediately
 		// and was cancelled later.
 		jobFromDB := &models.Job{}

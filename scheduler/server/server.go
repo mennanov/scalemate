@@ -6,11 +6,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/shared/utils"
 	"google.golang.org/grpc/codes"
@@ -129,7 +129,7 @@ func NewSchedulerServerFromEnv(conf AppEnvConf) (*SchedulerServer, error) {
 	// This channel is only used to declare the exchange.
 	defer utils.Close(channel)
 
-	if err := utils.AMQPExchangeDeclare(channel, utils.SchedulerAMQPExchangeName); err != nil {
+	if err := utils.AMQPExchangeDeclareScheduler(channel); err != nil {
 		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
 	}
 

@@ -143,7 +143,12 @@ func NewAccountServerFromEnv(conf AppEnvConf) (*AccountsServer, error) {
 	// This channel is only used to declare the exchange.
 	defer utils.Close(channel)
 
-	if err := utils.AMQPExchangeDeclare(channel, utils.AccountsAMQPExchangeName); err != nil {
+	if err := utils.AMQPExchangeDeclareAccounts(channel); err != nil {
+		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
+	}
+
+	// Accounts service listens to some events from Scheduler service.
+	if err := utils.AMQPExchangeDeclareScheduler(channel); err != nil {
 		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
 	}
 

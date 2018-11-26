@@ -1,0 +1,27 @@
+workspace:
+  base: /go/src/github.com/mennanov/
+  path: scalemate
+
+pipeline:
+
+  test:
+    image: l.gcr.io/google/bazel:latest
+    commands:
+      - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test //...:all --test_output=errors
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/bazel-drone-output:/tmp/bazel-drone-output
+
+services:
+  shared-amqp:
+    image: rabbitmq:3
+
+  scheduler-db:
+    image: postgres:11
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  accounts-db:
+    image: postgres:11
+    tmpfs:
+      - /var/lib/postgresql/data
