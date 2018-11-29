@@ -8,23 +8,24 @@ import (
 	"syscall"
 	"time"
 
-	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
+	"github.com/grpc-ecosystem/go-grpc-middleware"
+	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	// required by gorm
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/middleware"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
+
+	"github.com/mennanov/scalemate/shared/middleware"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // LoggedErrorCodes are the error codes for the errors that will be logged with the "Error" level with a full stack

@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
+
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
-	"github.com/pkg/errors"
 )
 
 // Create creates a new user. Can be executed by admins only.

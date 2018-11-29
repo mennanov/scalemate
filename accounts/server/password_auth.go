@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/accounts/models"
 )
 
 // PasswordAuth authenticates a user by a username and a password.

@@ -2,20 +2,22 @@ package accounts_test
 
 import (
 	"context"
-	jwt "github.com/dgrijalva/jwt-go"
+	"testing"
+	"time"
+
+	"github.com/dgrijalva/jwt-go"
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/mennanov/scalemate/client/auth"
-	shared_auth "github.com/mennanov/scalemate/shared/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"testing"
-	"time"
+
+	"github.com/mennanov/scalemate/client/accounts"
+	"github.com/mennanov/scalemate/client/auth"
+	shared_auth "github.com/mennanov/scalemate/shared/auth"
 )
 
 func TestLoginController(t *testing.T) {

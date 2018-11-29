@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
+
+	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 const (

@@ -3,8 +3,9 @@ package server
 import (
 	"context"
 
-	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/pkg/errors"
+
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 // AuthFuncOverride implements an authentication and (partially) authorization for gRPC methods in Scheduler Service.

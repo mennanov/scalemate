@@ -4,8 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )

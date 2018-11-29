@@ -6,14 +6,15 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/jinzhu/gorm"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 var (

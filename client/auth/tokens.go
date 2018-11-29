@@ -1,12 +1,13 @@
 package auth
 
 import (
-	"github.com/gogo/protobuf/proto"
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"path"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/sirupsen/logrus"
 )
 
 // SaveTokens saves AuthTokens to a temporary file.

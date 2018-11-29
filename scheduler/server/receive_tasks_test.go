@@ -9,11 +9,12 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"google.golang.org/grpc"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/utils"
-	"google.golang.org/grpc"
 )
 
 func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {

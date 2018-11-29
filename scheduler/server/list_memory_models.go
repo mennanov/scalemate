@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 

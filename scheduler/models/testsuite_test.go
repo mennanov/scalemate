@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/stretchr/testify/suite"
+	"gopkg.in/khaiql/dbcleaner.v2"
+	"gopkg.in/khaiql/dbcleaner.v2/engine"
+
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/stretchr/testify/suite"
-	dbcleaner "gopkg.in/khaiql/dbcleaner.v2"
-	"gopkg.in/khaiql/dbcleaner.v2/engine"
 )
 
 var cleaner = dbcleaner.New()

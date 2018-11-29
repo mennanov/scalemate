@@ -5,9 +5,10 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
+
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestDelete() {

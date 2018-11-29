@@ -12,17 +12,19 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
-	"github.com/mennanov/scalemate/shared/utils"
 	"google.golang.org/grpc/codes"
+
+	"github.com/mennanov/scalemate/shared/utils"
 
 	// required by gorm
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/middleware"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
+
+	"github.com/mennanov/scalemate/shared/middleware"
 )
 
 // LoggedErrorCodes are the error codes for the errors that will be logged with the "Error" level with a full stack

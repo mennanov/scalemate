@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"google.golang.org/grpc/codes"
+
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestChangePassword() {

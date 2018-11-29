@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // Close is a wrapper around io.Closer that logs the error returned by the io.Closer.
@@ -26,7 +27,6 @@ func Close(c io.Closer) {
 		logrus.Errorf("%+v", errors.Wrap(err, "failed to Close a resource"))
 	}
 }
-
 
 // DBEnvConf maps DB connection settings to environment variable names.
 type DBEnvConf struct {

@@ -5,9 +5,10 @@ import (
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 // AuthFuncOverride implements an authentication and (partially) authorization for gRPC methods in Accounts Service.

@@ -5,14 +5,15 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // ChangePassword changes a password for the currently authenticated user.

@@ -3,8 +3,8 @@ package auth
 import (
 	"context"
 
-	jwt "github.com/dgrijalva/jwt-go"
-	grpc_auth "github.com/grpc-ecosystem/go-grpc-middleware/auth"
+	"github.com/dgrijalva/jwt-go"
+	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

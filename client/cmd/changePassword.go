@@ -16,10 +16,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/spf13/cobra"
-	"os"
 )
 
 var (

@@ -5,11 +5,12 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
+
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func TestRoutingKeyFromEvent(t *testing.T) {

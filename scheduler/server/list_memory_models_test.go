@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	fieldmask_utils "github.com/mennanov/fieldmask-utils"
-	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 )
 
 func (s *ServerTestSuite) TestListMemoryModels() {

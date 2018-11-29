@@ -5,10 +5,11 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
+
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
-	"github.com/pkg/errors"
 )
 
 // Register registers a new user with a "USER" role.

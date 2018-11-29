@@ -4,12 +4,13 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 // ListJobs lists Jobs owned by the User.

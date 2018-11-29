@@ -3,15 +3,16 @@ package server
 import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s SchedulerServer) ReceiveTasks(_ *empty.Empty, stream scheduler_proto.Scheduler_ReceiveTasksServer) error {

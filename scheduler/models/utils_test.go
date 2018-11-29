@@ -3,8 +3,9 @@ package models_test
 import (
 	"testing"
 
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 )
 
 func TestEnum_String(t *testing.T) {

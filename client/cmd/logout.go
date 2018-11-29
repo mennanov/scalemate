@@ -15,9 +15,11 @@
 package cmd
 
 import (
-	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/spf13/cobra"
 	"os"
+
+	"github.com/spf13/cobra"
+
+	"github.com/mennanov/scalemate/client/accounts"
 )
 
 // logoutCmd represents the logout command

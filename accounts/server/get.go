@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/pkg/errors"
+
+	"github.com/mennanov/scalemate/accounts/models"
 )
 
 // Get gets details for the requested user.

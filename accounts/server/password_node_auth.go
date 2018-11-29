@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/accounts/models"
 )
 
 // PasswordNodeAuth authenticates a Node by a username, password, Node name and hardware specs.

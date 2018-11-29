@@ -10,22 +10,23 @@ import (
 	"testing"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/stretchr/testify/suite"
-	dbcleaner "gopkg.in/khaiql/dbcleaner.v2"
+	"gopkg.in/khaiql/dbcleaner.v2"
 
 	"google.golang.org/grpc"
 
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/mennanov/scalemate/shared/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
+
+	"github.com/mennanov/scalemate/scheduler/migrations"
+	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 var verbose bool

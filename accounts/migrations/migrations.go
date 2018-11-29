@@ -3,6 +3,7 @@ package migrations
 import (
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/gormigrate"
+
 	"github.com/mennanov/scalemate/accounts/models"
 )
 

@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/auth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 // TokenAuth performs authentication by a JWT refresh token.

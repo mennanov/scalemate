@@ -3,9 +3,10 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mennanov/scalemate/accounts/migrations"
 	"github.com/mennanov/scalemate/shared/utils"
-	"github.com/spf13/cobra"
 )
 
 // rollbackCmd represents the rollback command

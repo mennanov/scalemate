@@ -3,10 +3,11 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/server"
 	"github.com/mennanov/scalemate/shared/utils"
-	"github.com/spf13/cobra"
 )
 
 // migrateCmd represents the migrate command

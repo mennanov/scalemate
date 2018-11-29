@@ -4,16 +4,17 @@ import (
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/jinzhu/gorm"
-	fieldmask_utils "github.com/mennanov/fieldmask-utils"
+	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Node defines a Node model in DB.

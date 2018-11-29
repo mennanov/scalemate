@@ -16,8 +16,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/mennanov/scalemate/client/cmd"
 	"os"
+
+	"github.com/mennanov/scalemate/client/cmd"
 )
 
 func main() {

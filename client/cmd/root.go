@@ -17,14 +17,15 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"syscall"
 
-	"github.com/mennanov/scalemate/client/accounts"
 	"github.com/mitchellh/go-homedir"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh/terminal"
-	"syscall"
+
+	"github.com/mennanov/scalemate/client/accounts"
 )
 
 var (

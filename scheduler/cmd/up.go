@@ -3,9 +3,10 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/mennanov/scalemate/scheduler/server"
 	"github.com/mennanov/scalemate/shared/utils"
-	"github.com/spf13/cobra"
 )
 
 var grpcAddr string

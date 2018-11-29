@@ -6,13 +6,14 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
+
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // AMQPEnvConf maps to the name of the env variable with the AMQP address to connect to.

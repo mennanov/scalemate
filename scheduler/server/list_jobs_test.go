@@ -7,11 +7,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/auth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 func (s *ServerTestSuite) TestListJobs() {

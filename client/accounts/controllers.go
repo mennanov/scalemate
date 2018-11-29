@@ -2,11 +2,13 @@ package accounts
 
 import (
 	"context"
+
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/client/auth"
-	shared_auth "github.com/mennanov/scalemate/shared/auth"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+
+	"github.com/mennanov/scalemate/client/auth"
+	shared_auth "github.com/mennanov/scalemate/shared/auth"
 )
 
 var (

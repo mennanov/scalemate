@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/dgrijalva/jwt-go"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 func createToken(ttl time.Duration, tokenType string) string {

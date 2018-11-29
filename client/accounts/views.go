@@ -2,9 +2,10 @@ package accounts
 
 import (
 	"fmt"
+	"io"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"io"
 )
 
 // ErrMsgFmt returns an error string for the given gRPC status.

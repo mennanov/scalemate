@@ -6,7 +6,7 @@ import (
 	"net"
 	"time"
 
-	grpc_logrus "github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"

@@ -16,15 +16,16 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/accounts/server"
-	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
-	dbcleaner "gopkg.in/khaiql/dbcleaner.v2"
+	"gopkg.in/khaiql/dbcleaner.v2"
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
+
+	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/accounts/server"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 var verbose bool

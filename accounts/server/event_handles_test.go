@@ -3,10 +3,11 @@ package server_test
 import (
 	"time"
 
-	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
+
+	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 

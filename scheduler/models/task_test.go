@@ -5,10 +5,11 @@ import (
 
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	fieldmask_utils "github.com/mennanov/fieldmask-utils"
-	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"google.golang.org/genproto/protobuf/field_mask"
+
+	"github.com/mennanov/scalemate/scheduler/models"
 )
 
 func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {

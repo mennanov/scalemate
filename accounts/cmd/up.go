@@ -3,8 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/mennanov/scalemate/accounts/server"
 	"github.com/spf13/cobra"
+
+	"github.com/mennanov/scalemate/accounts/server"
 )
 
 var grpcAddr string
