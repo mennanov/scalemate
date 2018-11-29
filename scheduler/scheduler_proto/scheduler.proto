@@ -71,17 +71,22 @@ message Job {
     string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
 
     enum Status {
+        // Default status value. Normally no Jobs should have this status.
         STATUS_UNKNOWN = 0;
+        // When a new Job is created it has the status PENDING. Which means it is waiting to be scheduled.
         STATUS_PENDING = 1;
+        // The Job is scheduled (assigned) to a Node. After that the more granular info about the status should be
+        // retrieved from a corresponding Task.
         STATUS_SCHEDULED = 2;
+        // The Job has finished and does not need to be rescheduled.
         STATUS_FINISHED = 3;
+        // The Job was manually cancelled by a user.
         STATUS_CANCELLED = 4;
     }
     Status status = 14;
 
     // Docker image name, e.g. "postgres:latest".
-    string docker_image = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1
-                            }];
+    string docker_image = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
 
     // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
     float cpu_limit = 4 [(shared.proto.validator.field) = {float_gt: 0}];
@@ -127,6 +132,10 @@ message Job {
     repeated string username_labels = 20;
     repeated string name_labels = 21;
     repeated string other_labels = 22;
+
+    // Indicates that the Job is a daemon. If so, then a Node to which a corresponding Task was scheduled will not wait
+    // for an established p2p connection with client and will run a container immediately.
+    bool is_daemon = 23;
 }
 
 // Node represents a physical machine (computer) that is used to run Tasks.
@@ -203,18 +212,14 @@ message Task {
 
     enum Status {
         STATUS_UNKNOWN = 0;
-        // Task is assigned to a Node to run. All newly created Tasks normally have this status.
-        STATUS_SCHEDULED = 1;
         // Downloading a Docker image and user context, running container, uploading context.
-        STATUS_RUNNING = 2;
+        STATUS_RUNNING = 1;
         // Container finished execution regardless of the result (container exit code: failure or success).
-        STATUS_FINISHED = 3;
+        STATUS_FINISHED = 2;
         // Any non-node related failure: image not found, resources exhausted, container failed, etc.
-        STATUS_FAILED = 4;
+        STATUS_FAILED = 3;
         // Task failed because the Node failed: connection failed, power outage, etc.
-        STATUS_NODE_FAILED = 5;
-        // User cancelled the task at any point: before or after scheduling or during execution.
-        STATUS_CANCELLED = 6;
+        STATUS_NODE_FAILED = 4;
     }
     Status status = 4;
 

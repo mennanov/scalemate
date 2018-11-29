@@ -27,6 +27,7 @@ func Close(c io.Closer) {
 	}
 }
 
+
 // DBEnvConf maps DB connection settings to environment variable names.
 type DBEnvConf struct {
 	Host     string

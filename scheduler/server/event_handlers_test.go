@@ -170,7 +170,7 @@ func (s *ServerTestSuite) TestHandleTaskStatusUpdatedEvents() {
 		s.Require().NoError(err)
 		s.Equal(jobPending.ID, taskProto.JobId)
 		s.Equal(node.ID, taskProto.NodeId)
-		s.Equal(scheduler_proto.Task_STATUS_SCHEDULED, taskProto.Status)
+		s.Equal(scheduler_proto.Task_STATUS_UNKNOWN, taskProto.Status)
 		w.Done()
 	}(sg)
 
@@ -269,7 +269,7 @@ func (s *ServerTestSuite) TestHandleTaskCreatedEvents() {
 		s.Require().NoError(err)
 		s.Equal(job.ID, taskProto.JobId)
 		s.Equal(node.ID, taskProto.NodeId)
-		s.Equal(scheduler_proto.Task_STATUS_SCHEDULED, taskProto.Status)
+		s.Equal(scheduler_proto.Task_STATUS_UNKNOWN, taskProto.Status)
 		w.Done()
 	}(sg)
 

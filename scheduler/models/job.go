@@ -399,7 +399,7 @@ func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) (*Task, []*events_proto.E
 	task := &Task{
 		NodeID: node.ID,
 		JobID:  j.ID,
-		Status: Enum(scheduler_proto.Task_STATUS_SCHEDULED),
+		Status: Enum(scheduler_proto.Task_STATUS_UNKNOWN),
 	}
 	event, err := task.Create(db)
 	if err != nil {

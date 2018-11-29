@@ -242,8 +242,6 @@ func (s *SchedulerServer) HandleTaskStatusUpdatedEvents() error {
 			if taskProto.Status != scheduler_proto.Task_STATUS_FINISHED &&
 				taskProto.Status != scheduler_proto.Task_STATUS_FAILED &&
 				taskProto.Status != scheduler_proto.Task_STATUS_NODE_FAILED {
-				// Acknowledge the message and terminate.
-				msg.Ack(false)
 				return
 			}
 			task := &models.Task{}

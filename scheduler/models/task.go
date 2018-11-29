@@ -166,23 +166,16 @@ func (t *Task) LoadJobFromDB(db *gorm.DB, fields ...string) error {
 // TaskStatusTransitions defines possible Task status transitions.
 var TaskStatusTransitions = map[scheduler_proto.Task_Status][]scheduler_proto.Task_Status{
 	scheduler_proto.Task_STATUS_UNKNOWN: {
-		scheduler_proto.Task_STATUS_SCHEDULED,
-		scheduler_proto.Task_STATUS_CANCELLED,
-	},
-	scheduler_proto.Task_STATUS_SCHEDULED: {
 		scheduler_proto.Task_STATUS_RUNNING,
-		scheduler_proto.Task_STATUS_CANCELLED,
 	},
 	scheduler_proto.Task_STATUS_RUNNING: {
 		scheduler_proto.Task_STATUS_FAILED,
 		scheduler_proto.Task_STATUS_FINISHED,
 		scheduler_proto.Task_STATUS_NODE_FAILED,
-		scheduler_proto.Task_STATUS_CANCELLED,
 	},
 	scheduler_proto.Task_STATUS_FINISHED:    {},
 	scheduler_proto.Task_STATUS_FAILED:      {},
 	scheduler_proto.Task_STATUS_NODE_FAILED: {},
-	scheduler_proto.Task_STATUS_CANCELLED:   {},
 }
 
 // Updates performs an UPDATE SQL query for the Task fields given in the `updates` argument and returns a corresponding
@@ -216,7 +209,6 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 				"status":     Enum(newStatus),
 				"updated_at": time.Now(),
 			})
-			break
 		}
 	}
 	return nil, status.Errorf(codes.FailedPrecondition, "task with status %s can't be updated to %s",

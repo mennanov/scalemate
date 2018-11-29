@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // RunJob creates a new Job. It also initiates immediate scheduling of this Job.

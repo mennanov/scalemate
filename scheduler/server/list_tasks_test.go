@@ -45,7 +45,7 @@ func (s *ServerTestSuite) TestListTasks() {
 
 	tasks := []*models.Task{
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_SCHEDULED),
+			Status: models.Enum(scheduler_proto.Task_STATUS_UNKNOWN),
 			NodeID: node.ID,
 			JobID:  jobs[0].ID,
 		},
@@ -55,7 +55,7 @@ func (s *ServerTestSuite) TestListTasks() {
 			JobID:  jobs[1].ID,
 		},
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_SCHEDULED),
+			Status: models.Enum(scheduler_proto.Task_STATUS_UNKNOWN),
 			NodeID: node.ID,
 			JobID:  jobs[2].ID,
 		},
@@ -116,7 +116,7 @@ func (s *ServerTestSuite) TestListTasks() {
 		accessToken := s.createToken(jobs[0].Username, "", accounts_proto.User_USER, "access", time.Minute)
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
-			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_SCHEDULED},
+			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_UNKNOWN},
 		}
 		jwtCredentials := auth.NewJWTCredentials(
 			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
@@ -132,7 +132,7 @@ func (s *ServerTestSuite) TestListTasks() {
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status: []scheduler_proto.Task_Status{
-				scheduler_proto.Task_STATUS_SCHEDULED,
+				scheduler_proto.Task_STATUS_UNKNOWN,
 				scheduler_proto.Task_STATUS_FINISHED,
 			},
 			JobId:    []uint64{jobs[0].ID},

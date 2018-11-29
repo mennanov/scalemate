@@ -6,12 +6,13 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 var nodeOnline = &models.Node{
