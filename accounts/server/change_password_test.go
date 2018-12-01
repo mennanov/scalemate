@@ -31,7 +31,7 @@ func (s *ServerTestSuite) TestChangePassword() {
 	err = user.LookUp(s.service.DB, &accounts_proto.UserLookupRequest{Id: uint32(user.ID)})
 	s.Require().NoError(err)
 	s.NotEqual(user.PasswordHash, originalPasswordHash)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.updated.*?password_changed_at.*?"))
+	utils.WaitForMessages(messages, "accounts.user.updated.*?password_changed_at.*?")
 }
 
 func (s *ServerTestSuite) TestChangePasswordLookupFails() {

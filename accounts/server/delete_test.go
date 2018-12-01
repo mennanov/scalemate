@@ -27,7 +27,7 @@ func (s *ServerTestSuite) TestDelete() {
 	// Verify that the user is deleted.
 	err = user.LookUp(s.service.DB, &accounts_proto.UserLookupRequest{Id: uint32(user.ID)})
 	s.assertGRPCError(errors.Cause(err), codes.NotFound)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.deleted"))
+	utils.WaitForMessages(messages, "accounts.user.deleted")
 }
 
 func (s *ServerTestSuite) TestDeleteLookupFails() {

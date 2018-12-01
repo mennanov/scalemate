@@ -54,7 +54,7 @@ go_test(
         "change_password_test.go",
         "create_test.go",
         "delete_test.go",
-        "event_handles_test.go",
+        "event_handlers_test.go",
         "get_test.go",
         "list_test.go",
         "password_auth_test.go",

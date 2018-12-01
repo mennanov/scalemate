@@ -2,7 +2,6 @@ package server_test
 
 import (
 	"context"
-	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"google.golang.org/grpc/codes"
@@ -30,7 +29,7 @@ func (s *ServerTestSuite) TestRegister() {
 	err = s.service.DB.Where("username = ?", req.Username).First(user).Error
 	s.Require().NoError(err)
 	s.NotEqual("", user.PasswordHash)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.created"))
+	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
 func (s *ServerTestSuite) TestRegisterDuplicates() {

@@ -46,8 +46,8 @@ func (s SchedulerServer) RunJob(ctx context.Context, r *scheduler_proto.Job) (*s
 	tx2 := s.DB.Begin()
 	node, err := job.FindSuitableNode(tx2)
 	if err != nil {
-		if err := utils.HandleDBError(tx2.Rollback()); err != nil {
-			return nil, errors.Wrap(err, "failed to rollback a transaction for scheduling")
+		if txErr := utils.HandleDBError(tx2.Rollback()); txErr != nil {
+			return nil, errors.Wrap(txErr, "failed to rollback a transaction for scheduling")
 		}
 		return s.WaitUntilJobIsScheduled(ctx, job, publisher)
 	}

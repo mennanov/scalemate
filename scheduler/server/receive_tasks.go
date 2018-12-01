@@ -58,7 +58,11 @@ func (s SchedulerServer) ReceiveTasks(_ *empty.Empty, stream scheduler_proto.Sch
 		return errors.Wrap(err, "failed to ConnectNode")
 	}
 	// Set the Node's status as offline when this RPC exits.
-	defer s.DisconnectNode(ctx, node, publisher)
+	defer func() {
+		if err := s.DisconnectNode(ctx, node, publisher); err != nil {
+			logger.WithError(err).Error("failed to DisconnectNode")
+		}
+	}()
 
 	for {
 		select {

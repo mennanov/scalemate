@@ -61,20 +61,51 @@ func (s *SchedulerServer) ConnectNode(ctx context.Context, node *models.Node, pu
 }
 
 // DisconnectNode removes the Node ID from the map of connected Nodes and updates the Node's status in DB.
+// It also updates the status of all the running Jobs and corresponding Tasks to NODE_FAILED.
 // This method should be called when the Node disconnects.
 func (s *SchedulerServer) DisconnectNode(ctx context.Context, node *models.Node, publisher events.Publisher) error {
 	if _, ok := s.ConnectedNodes[node.ID]; !ok {
 		return ErrNodeIsNotConnected
 	}
 	tx := s.DB.Begin()
-	event, err := node.Updates(tx, map[string]interface{}{
+	var disconnectedNodeEvents []*events_proto.Event
+	nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
 		"disconnected_at": time.Now(),
 		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
 	if err != nil {
-		return err
+		wrappedErr := errors.Wrap(err, "node.Updates failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
 	}
-	if err := utils.SendAndCommit(ctx, tx, publisher, event); err != nil {
+	var tasks models.Tasks
+	tasksEvents, err := tasks.UpdateStatusForDisconnectedNode(tx, node.ID)
+	if err != nil {
+		wrappedErr := errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
+	}
+	jobIDs := make([]uint64, len(tasks))
+	for i, task := range tasks {
+		jobIDs[i] = task.JobID
+	}
+	var jobs models.Jobs
+	jobsEvents, err := jobs.UpdateStatusForNodeFailedTasks(tx, jobIDs)
+	if err != nil {
+		wrappedErr := errors.Wrap(err, "jobs.UpdateStatusForNodeFailedTasks failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
+	}
+	disconnectedNodeEvents = append(disconnectedNodeEvents, nodeUpdatedEvent)
+	disconnectedNodeEvents = append(disconnectedNodeEvents, tasksEvents...)
+	disconnectedNodeEvents = append(disconnectedNodeEvents, jobsEvents...)
+	if err := utils.SendAndCommit(ctx, tx, publisher, disconnectedNodeEvents...); err != nil {
 		return err
 	}
 
@@ -135,7 +166,7 @@ func (s *SchedulerServer) HandleNodeConnectedEvents() error {
 	for msg := range messages {
 		// Process the message in a non-blocking way.
 		go func(msg amqp.Delivery) {
-			defer msg.Ack(false)
+			defer msgAck(&msg)
 			eventProto := &events_proto.Event{}
 			if err := proto.Unmarshal(msg.Body, eventProto); err != nil {
 				logrus.Error("failed to unmarshal events_proto.Event")
@@ -222,7 +253,7 @@ func (s *SchedulerServer) HandleTaskStatusUpdatedEvents() error {
 	for msg := range messages {
 		// Process the message in a non-blocking way.
 		go func(msg amqp.Delivery) {
-			defer msg.Ack(false)
+			defer msgAck(&msg)
 			eventProto := &events_proto.Event{}
 			if err := proto.Unmarshal(msg.Body, eventProto); err != nil {
 				logrus.Error("failed to unmarshal events_proto.Event")
@@ -239,16 +270,15 @@ func (s *SchedulerServer) HandleTaskStatusUpdatedEvents() error {
 					Error("failed to convert message event proto to *scheduler_proto.Task")
 				return
 			}
-			// Verify that the Task has terminated.
-			if taskProto.Status != scheduler_proto.Task_STATUS_FINISHED &&
-				taskProto.Status != scheduler_proto.Task_STATUS_FAILED &&
-				taskProto.Status != scheduler_proto.Task_STATUS_NODE_FAILED {
-				return
-			}
 			task := &models.Task{}
 			if err := task.FromProto(taskProto); err != nil {
 				logrus.WithField("taskProto", taskProto.String()).WithError(err).
 					Error("task.FromProto failed")
+				return
+			}
+			// Verify that the Task has terminated.
+			if !task.HasTerminated() {
+				// Disregard the Task if it is still running or about to run (not terminated).
 				return
 			}
 			// Populate the task struct fields from DB.
@@ -256,12 +286,16 @@ func (s *SchedulerServer) HandleTaskStatusUpdatedEvents() error {
 				logrus.WithError(err).Error("failed to get a Task by ID")
 				return
 			}
-			node := &models.Node{
-				Model: models.Model{ID: task.NodeID},
-			}
+			node := &models.Node{}
+			node.ID = task.NodeID
 			// Populate the node struct fields from DB.
 			if err := node.LoadFromDB(s.DB); err != nil {
 				logrus.WithError(err).Error("failed to get a Node by ID")
+				return
+			}
+			// Check that the Node is ONLINE.
+			if node.Status != models.Enum(scheduler_proto.Node_STATUS_ONLINE) {
+				logrus.WithField("node", node).Debug("not scheduling Jobs for an offline Node")
 				return
 			}
 			publisher, err := events.NewAMQPPublisher(s.AMQPConnection, utils.SchedulerAMQPExchangeName)
@@ -330,7 +364,7 @@ func (s *SchedulerServer) HandleTaskCreatedEvents() error {
 		// Process the message in a non-blocking way.
 		go func(msg amqp.Delivery) {
 			// Always acknowledge the message because it can only fail in a non-retriable way.
-			defer msg.Ack(false)
+			defer msgAck(&msg)
 			eventProto := &events_proto.Event{}
 			if err := proto.Unmarshal(msg.Body, eventProto); err != nil {
 				logrus.WithError(err).Error("failed to unmarshal events_proto.Event")
@@ -360,6 +394,13 @@ func (s *SchedulerServer) HandleTaskCreatedEvents() error {
 	return nil
 }
 
+// msgAck is intended to be used in deferred statements to handle the error.
+func msgAck(msg *amqp.Delivery) {
+	if err := msg.Ack(false); err != nil {
+		logrus.WithError(err).Error("msg.Ack failed")
+	}
+}
+
 // scheduleJobsForNode finds suitable Jobs that can be scheduled on the given Node and selects the best combination of
 // these Jobs so that they all fit into the Node.
 func scheduleJobsForNode(node *models.Node, db *gorm.DB, publisher events.Publisher) error {
@@ -387,9 +428,11 @@ func scheduleJobsForNode(node *models.Node, db *gorm.DB, publisher events.Publis
 		if err != nil {
 			logrus.WithField("job", job).WithField("node", node).
 				Infof("unable to schedule Job for Node: %s", err.Error())
-			if err := utils.HandleDBError(tx.Rollback()); err != nil {
-				return errors.Wrap(err, "failed to rollback transaction")
+			wrappedError := errors.Wrap(err, "job.ScheduleForNode failed")
+			if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+				return errors.Wrap(wrappedError, errors.Wrap(txErr, "failed to rollback transaction").Error())
 			}
+			return wrappedError
 		}
 		allEvents = append(allEvents, schedulerEvents...)
 	}

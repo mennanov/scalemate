@@ -145,9 +145,14 @@ message Node {
     string name = 24 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
 
     enum Status {
+        // Default status value. Normally no Nodes should have this status.
         STATUS_UNKNOWN = 0;
+        // Indicates that the Node is online and ready to run Jobs.
         STATUS_ONLINE = 1;
-        STATUS_OFFLINE = 2;
+        // Node is gracefully shutting down: it's waiting for all the Tasks to complete and is not accepting new Tasks.
+        STATUS_SHUTTING_DOWN = 2;
+        // Node is offline and is not able to run Jobs.
+        STATUS_OFFLINE = 3;
     }
     Status status = 3;
 
@@ -231,11 +236,6 @@ message Task {
 
     // The time when the container finished to run (for any reason).
     google.protobuf.Timestamp finished_at = 8;
-
-    // Container exit code.
-    int32 exit_code = 9;
-    // Container exit message.
-    string exit_message = 10;
 }
 
 message GetJobRequest {

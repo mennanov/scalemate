@@ -51,7 +51,7 @@ func (s *ServerTestSuite) TestCreate() {
 	err = s.service.DB.First(user, res.GetId()).Error
 	s.Require().NoError(err)
 	s.NotEqual("", user.PasswordHash)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.created"))
+	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
 func (s *ServerTestSuite) TestCreateDuplicates() {
@@ -84,7 +84,7 @@ func (s *ServerTestSuite) TestCreateDuplicates() {
 
 	s.service.DB.Find(&users).Count(&count)
 	s.Equal(1, count)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.created"))
+	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
 func (s *ServerTestSuite) TestCreateValidationFails() {

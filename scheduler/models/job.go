@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
@@ -16,6 +17,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -261,6 +263,7 @@ func (j *Job) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Job, er
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
+		// Always include Job ID regardless of the mask.
 		pFiltered := &scheduler_proto.Job{Id: j.ID}
 		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
@@ -299,7 +302,7 @@ func (j *Job) LoadFromDB(db *gorm.DB, fields ...string) error {
 	return utils.HandleDBError(query.First(j, j.ID))
 }
 
-// UpdateStatus updates the status field of the Job and returns the corresponding event.
+// MarkJobsAsNodeFailed updates the status field of the Job and returns the corresponding event.
 func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*events_proto.Event, error) {
 	j.Status = Enum(status)
 	if err := utils.HandleDBError(db.Model(j).Update("status", Enum(status))); err != nil {
@@ -424,6 +427,21 @@ func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) (*Task, []*events_proto.E
 	return task, schedulingEvents, nil
 }
 
+// LoadTasksFromDB loads the corresponding Job from DB to the Task's Job field.
+func (j *Job) LoadTasksFromDB(db *gorm.DB, fields ...string) error {
+	if j.ID == 0 {
+		return errors.WithStack(status.Error(codes.FailedPrecondition, "not saved Job can not have Tasks"))
+	}
+	var tasks Tasks
+	if err := utils.HandleDBError(db.Model(&Task{}).Where("job_id = ?", j.ID).Find(&tasks)); err != nil {
+		return errors.Wrap(err, "failed to select related Tasks for Job")
+	}
+	for _, task := range tasks {
+		j.Tasks = append(j.Tasks, &task)
+	}
+	return nil
+}
+
 // mapKeys returns a slice of map string keys.
 func mapKeys(m map[string]interface{}) []string {
 	keys := make([]string, len(m))
@@ -438,9 +456,11 @@ func mapKeys(m map[string]interface{}) []string {
 
 type Jobs []Job
 
-func (jobs *Jobs) List(db *gorm.DB, r *scheduler_proto.ListJobsRequest) (uint32, error) {
+// List selects Jobs from DB by the given filtering request and populates the receiver.
+// Returns the total number of Jobs that satisfy the criteria and an error.
+func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (uint32, error) {
 	query := db.Model(&Job{})
-	ordering := r.GetOrdering()
+	ordering := request.GetOrdering()
 
 	var orderBySQL string
 	switch ordering {
@@ -456,12 +476,12 @@ func (jobs *Jobs) List(db *gorm.DB, r *scheduler_proto.ListJobsRequest) (uint32,
 	query = query.Order(orderBySQL)
 
 	// Filter by username.
-	query = query.Where("username = ?", r.Username)
+	query = query.Where("username = ?", request.Username)
 
 	// Filter by status.
-	if len(r.Status) != 0 {
-		enumStatus := make([]Enum, len(r.Status))
-		for i, s := range r.Status {
+	if len(request.Status) != 0 {
+		enumStatus := make([]Enum, len(request.Status))
+		for i, s := range request.Status {
 			enumStatus[i] = Enum(s)
 		}
 		query = query.Where("status IN (?)", enumStatus)
@@ -474,12 +494,12 @@ func (jobs *Jobs) List(db *gorm.DB, r *scheduler_proto.ListJobsRequest) (uint32,
 	}
 
 	// Apply offset.
-	query = query.Offset(r.GetOffset())
+	query = query.Offset(request.GetOffset())
 
 	// Apply limit.
 	var limit uint32
-	if r.GetLimit() != 0 {
-		limit = r.GetLimit()
+	if request.GetLimit() != 0 {
+		limit = request.GetLimit()
 	} else {
 		limit = 50
 	}
@@ -490,5 +510,54 @@ func (jobs *Jobs) List(db *gorm.DB, r *scheduler_proto.ListJobsRequest) (uint32,
 		return 0, err
 	}
 	return count, nil
+}
 
+// UpdateStatusForNodeFailedTasks performs a bulk update on Jobs status field for the given Job IDs whose corresponding
+// Tasks have failed due to a Node failure (abrupt disconnect).
+// The status is set to PENDING if the Job needs rescheduling on a Node failure or to FINISHED otherwise.
+// Jobs receiver is populated with the updated Jobs.
+func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) ([]*events_proto.Event, error) {
+	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
+
+	// Set status to PENDING for Jobs that require rescheduling, set status to FINISHED for those that don't.
+	rows, err := db.Raw(
+		`UPDATE jobs SET status = (CASE WHEN restart_policy = ? THEN ?::int ELSE ?::int END), updated_at = ? 
+		WHERE id IN(?) RETURNING jobs.*`,
+		// Set clause.
+		Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE), Enum(scheduler_proto.Job_STATUS_PENDING),
+		Enum(scheduler_proto.Job_STATUS_FINISHED), time.Now(),
+		// Where clause.
+		jobIDs).Rows()
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to update Jobs status to PENDING")
+	}
+
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.WithError(err).Error("rows.Close failed in jobs.UpdateStatusForNodeFailedTasks")
+		}
+	}()
+
+	var updateEvents []*events_proto.Event
+	for rows.Next() {
+		var job Job
+		if err := db.ScanRows(rows, &job); err != nil {
+			return nil, errors.Wrap(err, "db.ScanRows failed")
+		}
+		jobProto, err := job.ToProto(fieldMask)
+		if err != nil {
+			return nil, errors.Wrap(err, "job.ToProto failed")
+		}
+		event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+			fieldMask)
+		if err != nil {
+			return nil, errors.Wrap(err, "NewEventFromPayload failed")
+		}
+		updateEvents = append(updateEvents, event)
+
+		*jobs = append(*jobs, job)
+	}
+
+	return updateEvents, nil
 }

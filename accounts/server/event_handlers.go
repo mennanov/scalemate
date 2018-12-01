@@ -76,7 +76,11 @@ func (s *AccountsServer) HandleNodeCreatedEvents() error {
 	for msg := range messages {
 		go func(msg amqp.Delivery) {
 			// Always acknowledge the message because it can only fail in a non-retriable way.
-			defer msg.Ack(false)
+			defer func() {
+				if err := msg.Ack(false); err != nil {
+					logrus.WithError(err).Error("msg.Ack failed")
+				}
+			}()
 
 			eventProto := &events_proto.Event{}
 			if err := proto.Unmarshal(msg.Body, eventProto); err != nil {

@@ -290,3 +290,40 @@ func (s *ServerTestSuite) TestHandleTaskCreatedEvents() {
 	s.Require().NoError(job.LoadFromDB(s.service.DB))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
 }
+
+func (s *ServerTestSuite) TestDisconnectNode_UpdatesNodeJobTaskStatuses() {
+	node := &models.Node{
+		Username: "username",
+		Name:     "node_name",
+	}
+	_, err := node.Create(s.service.DB)
+	s.Require().NoError(err)
+	fakePublisher := events.NewFakePublisher()
+
+	s.Require().NoError(s.service.ConnectNode(context.Background(), node, fakePublisher))
+
+	job := &models.Job{
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
+	}
+	_, err = job.Create(s.service.DB)
+	s.Require().NoError(err)
+
+	task := &models.Task{
+		NodeID: node.ID,
+		JobID:  job.ID,
+		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+	}
+	_, err = task.Create(s.service.DB)
+	s.Require().NoError(err)
+
+	consumer, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
+	s.Require().NoError(err)
+
+	publisher, err := events.NewAMQPPublisher(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
+	s.Require().NoError(err)
+	// Disconnect the node.
+	s.Require().NoError(s.service.DisconnectNode(context.Background(), node, publisher))
+	// Wait for all the messages to be received.
+	utils.WaitForMessages(consumer, "scheduler.node.updated.disconnected_at")
+}

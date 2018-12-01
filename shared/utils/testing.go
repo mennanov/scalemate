@@ -2,10 +2,8 @@ package utils
 
 import (
 	"regexp"
-	"sync"
-	"time"
 
-	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 )
 
@@ -31,40 +29,23 @@ func SetUpAMQPTestConsumer(conn *amqp.Connection, exchangeName string) (<-chan a
 	return messages, nil
 }
 
-// ExpectMessages asserts that all the received messages have the corresponding routing keys.
-func ExpectMessages(messages <-chan amqp.Delivery, timeout time.Duration, keys ...string) error {
-	if len(keys) == 0 {
-		return errors.New("no keys provided")
-	}
-	sg := sync.WaitGroup{}
-	sg.Add(len(keys))
-
-	var keysReceived []string
+// WaitForMessages waits for the messages and matches their routing keys with the given keys.
+// The function returns once all the provided keys have matched.
+func WaitForMessages(messages <-chan amqp.Delivery, keys ...string) {
 	go func() {
 		for msg := range messages {
-			keysReceived = append(keysReceived, msg.RoutingKey)
+			logrus.Debugf("received AMQP message %s", msg.RoutingKey)
 			for i := range keys {
 				re := regexp.MustCompile(keys[i])
 				if re.MatchString(msg.RoutingKey) {
-					sg.Done()
 					// Remove the key that matched from the keys.
 					keys = append(keys[:i], keys[i+1:]...)
+					if len(keys) == 0 {
+						return
+					}
 					break
 				}
 			}
 		}
 	}()
-
-	sgDone := make(chan struct{})
-	go func() {
-		defer close(sgDone)
-		sg.Wait()
-	}()
-
-	select {
-	case <-sgDone:
-		return nil
-	case <-time.After(timeout):
-		return errors.Errorf("unmatched keys within the timeout: %v, received messages: %v", keys, keysReceived)
-	}
 }

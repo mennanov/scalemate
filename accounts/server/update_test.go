@@ -41,7 +41,7 @@ func (s *ServerTestSuite) TestUpdate() {
 	s.Equal(res.Role, req.User.Role)
 	s.Equal(res.Banned, req.User.Banned)
 	// Check messages.
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, "accounts.user.updated"))
+	utils.WaitForMessages(messages, "accounts.user.updated")
 }
 
 func (s *ServerTestSuite) TestUpdateByFieldMaskOnly() {
@@ -71,7 +71,7 @@ func (s *ServerTestSuite) TestUpdateByFieldMaskOnly() {
 	s.Equal(user.Username, res.Username)
 	s.Equal(req.User.Role, res.Role)
 	s.Equal(user.Banned, res.Banned)
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50, `accounts.user.updated\..*?role.*?`))
+	utils.WaitForMessages(messages, `accounts.user.updated\..*?role.*?`)
 }
 
 func (s *ServerTestSuite) TestUpdateByEmptyFieldMask() {

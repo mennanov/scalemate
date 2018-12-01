@@ -36,7 +36,9 @@ func (s *ServerTestSuite) TestHandleNodeCreatedEvents() {
 	consumer, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.AccountsAMQPExchangeName)
 	s.Require().NoError(err)
 	// Wait for the message be processed.
-	s.NoError(utils.ExpectMessages(consumer, time.Millisecond*300, "accounts.node.created"))
+	utils.WaitForMessages(consumer, "accounts.node.created")
+	// Give the service some time to commit the current transaction.
+	time.Sleep(time.Millisecond*100)
 	// By that time a Node is expected to be created in DB.
 	node := &models.Node{}
 	s.Require().NoError(node.Get(s.service.DB, nodeProto.Username, nodeProto.Name))

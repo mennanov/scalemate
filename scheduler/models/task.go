@@ -10,6 +10,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -21,15 +22,13 @@ import (
 // Task represents a running Job on a Node (Docker container).
 type Task struct {
 	Model
-	Job         *Job
-	JobID       uint64 `gorm:"not null;index" sql:"type:integer REFERENCES jobs(id)"`
-	Node        *Node
-	NodeID      uint64 `gorm:"not null;index" sql:"type:integer REFERENCES nodes(id)"`
-	Status      Enum   `gorm:"type:smallint"`
-	StartedAt   time.Time
-	FinishedAt  time.Time
-	ExitCode    int32
-	ExitMessage string
+	Job        *Job
+	JobID      uint64 `gorm:"not null;index" sql:"type:integer REFERENCES jobs(id)"`
+	Node       *Node
+	NodeID     uint64 `gorm:"not null;index" sql:"type:integer REFERENCES nodes(id)"`
+	Status     Enum   `gorm:"type:smallint"`
+	StartedAt  time.Time
+	FinishedAt time.Time
 }
 
 // Create inserts a new Task in DB and returns a corresponding event.
@@ -79,9 +78,6 @@ func (t *Task) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Task, 
 		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 	}
 	p.FinishedAt = finishedAt
-
-	p.ExitCode = t.ExitCode
-	p.ExitMessage = t.ExitMessage
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
 		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
@@ -137,8 +133,6 @@ func (t *Task) FromProto(p *scheduler_proto.Task) error {
 		t.FinishedAt = finishedAt
 	}
 
-	t.ExitCode = p.ExitCode
-	t.ExitMessage = p.ExitMessage
 	return nil
 }
 
@@ -201,7 +195,7 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	return event, nil
 }
 
-// UpdateStatus checks if the requested status change is allowed and performs an UPDATE query if so.
+// MarkJobsAsNodeFailed checks if the requested status change is allowed and performs an UPDATE query if so.
 func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) (*events_proto.Event, error) {
 	taskStatusProto := scheduler_proto.Task_Status(t.Status)
 	for _, s := range TaskStatusTransitions[taskStatusProto] {
@@ -216,11 +210,20 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 		taskStatusProto.String(), newStatus.String())
 }
 
+// HasTerminated returns true if the Task has terminated (not running regardless the reason).
+func (t *Task) HasTerminated() bool {
+	return t.Status != Enum(scheduler_proto.Task_STATUS_UNKNOWN) &&
+		t.Status != Enum(scheduler_proto.Task_STATUS_RUNNING)
+}
+
+// Tasks represent a collection of Tasks with methods working with a collection of Tasks rather than just 1 instance.
 type Tasks []Task
 
-func (tasks *Tasks) List(db *gorm.DB, r *scheduler_proto.ListTasksRequest) (uint32, error) {
+// List gets Tasks from DB filtering by the provided request.
+// Returns the total number of Tasks that satisfy the criteria and an error.
+func (tasks *Tasks) List(db *gorm.DB, request *scheduler_proto.ListTasksRequest) (uint32, error) {
 	query := db.Model(&Task{})
-	ordering := r.GetOrdering()
+	ordering := request.GetOrdering()
 
 	var orderBySQL string
 	switch ordering {
@@ -236,17 +239,17 @@ func (tasks *Tasks) List(db *gorm.DB, r *scheduler_proto.ListTasksRequest) (uint
 	query = query.Order(orderBySQL)
 
 	// Filter by username.
-	query = query.Joins("INNER JOIN jobs ON (tasks.job_id = jobs.id)").Where("jobs.username = ?", r.Username)
+	query = query.Joins("INNER JOIN jobs ON (tasks.job_id = jobs.id)").Where("jobs.username = ?", request.Username)
 
 	// Filter by Job IDs.
-	if len(r.JobId) != 0 {
-		query = query.Where("tasks.job_id IN (?)", r.JobId)
+	if len(request.JobId) != 0 {
+		query = query.Where("tasks.job_id IN (?)", request.JobId)
 	}
 
 	// Filter by status.
-	if len(r.Status) != 0 {
-		enumStatus := make([]Enum, len(r.Status))
-		for i, s := range r.Status {
+	if len(request.Status) != 0 {
+		enumStatus := make([]Enum, len(request.Status))
+		for i, s := range request.Status {
 			enumStatus[i] = Enum(s)
 		}
 		query = query.Where("tasks.status IN (?)", enumStatus)
@@ -259,12 +262,12 @@ func (tasks *Tasks) List(db *gorm.DB, r *scheduler_proto.ListTasksRequest) (uint
 	}
 
 	// Apply offset.
-	query = query.Offset(r.GetOffset())
+	query = query.Offset(request.GetOffset())
 
 	// Apply limit.
 	var limit uint32
-	if r.GetLimit() != 0 {
-		limit = r.GetLimit()
+	if request.GetLimit() != 0 {
+		limit = request.GetLimit()
 	} else {
 		limit = 50
 	}
@@ -275,5 +278,49 @@ func (tasks *Tasks) List(db *gorm.DB, r *scheduler_proto.ListTasksRequest) (uint
 		return 0, err
 	}
 	return count, nil
+}
 
+// UpdateStatusForDisconnectedNode bulk updates Tasks that are affected by the disconnected Node.
+// It updates the status of the Tasks to NODE_FAILED for the currently running Tasks.
+// Populates the receiver with updated Tasks.
+func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) ([]*events_proto.Event, error) {
+	var updateEvents []*events_proto.Event
+	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
+
+	rows, err := db.Raw("UPDATE tasks SET status = ?, updated_at = ? WHERE node_id = ? AND status = ? RETURNING tasks.*",
+		// Set clause.
+		Enum(scheduler_proto.Task_STATUS_NODE_FAILED), time.Now(),
+		// Where clause.
+		nodeID, Enum(scheduler_proto.Task_STATUS_RUNNING)).Rows()
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to update Tasks status to NODE_FAILED")
+	}
+
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logrus.WithError(err).Error("rows.Close failed in tasks.UpdateStatusForDisconnectedNode")
+		}
+	}()
+
+	for rows.Next() {
+		var task Task
+		if err := db.ScanRows(rows, &task); err != nil {
+			return nil, errors.Wrap(err, "db.ScanRows failed")
+		}
+		taskProto, err := task.ToProto(fieldMask)
+		if err != nil {
+			return nil, errors.Wrap(err, "task.ToProto failed")
+		}
+		event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+			fieldMask)
+		if err != nil {
+			return nil, errors.Wrap(err, "NewEventFromPayload failed")
+		}
+		updateEvents = append(updateEvents, event)
+
+		*tasks = append(*tasks, task)
+	}
+
+	return updateEvents, nil
 }

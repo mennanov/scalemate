@@ -488,11 +488,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 }
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
-	s.db = s.db.LogMode(true)
-	defer func() {
-		s.db = s.db.LogMode(false)
-	}()
-
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -566,11 +561,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 }
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
-	s.db = s.db.LogMode(true)
-	defer func() {
-		s.db = s.db.LogMode(false)
-	}()
-
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -644,11 +634,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 }
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
-	s.db = s.db.LogMode(true)
-	defer func() {
-		s.db = s.db.LogMode(false)
-	}()
-
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -722,11 +707,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 }
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
-	s.db = s.db.LogMode(true)
-	defer func() {
-		s.db = s.db.LogMode(false)
-	}()
-
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -800,11 +780,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 }
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
-	s.db = s.db.LogMode(true)
-	defer func() {
-		s.db = s.db.LogMode(false)
-	}()
-
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -877,6 +852,41 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 	node, err := job.FindSuitableNode(s.db)
 	s.Require().NoError(err)
 	s.Equal("node2", node.Name)
+}
+
+func (s *ModelsTestSuite) TestJob_UpdateStatusForNodeFailedTasks() {
+	jobRescheduleOnNodeFailure := &models.Job{
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+	}
+	_, err := jobRescheduleOnNodeFailure.Create(s.db)
+	s.Require().NoError(err)
+
+	jobRestartOnFailure := &models.Job{
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_ON_FAILURE),
+	}
+	_, err = jobRestartOnFailure.Create(s.db)
+	s.Require().NoError(err)
+
+	jobNotListed := &models.Job{
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+	}
+	_, err = jobNotListed.Create(s.db)
+	s.Require().NoError(err)
+
+	var jobs models.Jobs
+	jobsEvents, err := jobs.UpdateStatusForNodeFailedTasks(
+		s.db, []uint64{jobRescheduleOnNodeFailure.ID, jobRestartOnFailure.ID})
+	s.Require().NoError(err)
+	s.Len(jobsEvents, 2)
+	s.Require().NoError(jobRescheduleOnNodeFailure.LoadFromDB(s.db))
+	s.Equal(models.Enum(scheduler_proto.Job_STATUS_PENDING), jobRescheduleOnNodeFailure.Status)
+	s.Require().NoError(jobRestartOnFailure.LoadFromDB(s.db))
+	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), jobRestartOnFailure.Status)
+	s.Require().NoError(jobNotListed.LoadFromDB(s.db))
+	s.Equal(models.Enum(scheduler_proto.Job_STATUS_SCHEDULED), jobNotListed.Status)
 }
 
 func stringEye(s string) string {

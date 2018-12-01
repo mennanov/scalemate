@@ -78,11 +78,7 @@ func (s *ServerTestSuite) TestRunJob() {
 	s.Equal(req.DockerImage, jobFromDB.DockerImage)
 	s.Equal(req.CpuLimit, jobFromDB.CpuLimit)
 	// Check that all messages have been sent.
-	s.NoError(utils.ExpectMessages(messages, time.Millisecond*50,
-		"scheduler.job.created",
-		"scheduler.task.created",
-		"scheduler.node.updated",
-		"scheduler.job.updated"))
+	utils.WaitForMessages(messages, "scheduler.job.created")
 }
 
 func (s *ServerTestSuite) TestRunJob_Cancelled() {
@@ -115,21 +111,25 @@ func (s *ServerTestSuite) TestRunJob_Cancelled() {
 
 	go func() {
 		// Wait until the Job is created for this request.
-		s.NoError(utils.ExpectMessages(messages, time.Millisecond*500, "scheduler.job.created"))
+		utils.WaitForMessages(messages, "scheduler.job.created")
+		// Wait for the server to commit a transaction.
+		time.Sleep(time.Millisecond * 100)
 		// Cancel the ongoing RPC.
 		cancel()
 		// Wait till the cancelled context is handled on the service side.
-		s.NoError(utils.ExpectMessages(messages, time.Millisecond*500, "scheduler.job.updated.status"))
-		// Check that the Job is saved to DB, but no Task is created because the Job could not be scheduled immediately
-		// and was cancelled later.
+		utils.WaitForMessages(messages, "scheduler.job.updated.status")
+		// Wait for the server to commit a transaction.
+		time.Sleep(time.Millisecond * 100)
 		jobFromDB := &models.Job{}
 		s.service.DB.Where("username = ?", req.Username).First(jobFromDB)
-		// Verify Job.
+		// Verify Job is created and has a status CANCELLED.
 		s.Equal(req.Username, jobFromDB.Username)
 		s.Equal(req.DockerImage, jobFromDB.DockerImage)
-		s.Equal(scheduler_proto.Job_STATUS_CANCELLED, scheduler_proto.Job_Status(jobFromDB.Status))
+		s.Equal(models.Enum(scheduler_proto.Job_STATUS_CANCELLED), jobFromDB.Status)
+		s.Error(jobFromDB.LoadTasksFromDB(s.service.DB))
 	}()
 	res, err := s.client.RunJob(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
 	s.assertGRPCError(err, codes.Canceled)
+
 	s.Nil(res)
 }
