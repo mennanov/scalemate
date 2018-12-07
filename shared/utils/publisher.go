@@ -1,27 +1,26 @@
-package events
+package utils
 
 import (
-	"context"
-
 	"github.com/gogo/protobuf/proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
 	"github.com/streadway/amqp"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+
+	"github.com/mennanov/scalemate/shared/events_proto"
 )
 
 var (
-	// ErrNoEvents is returned by Publisher.Send and Pubisher.SendWithConfirmation when events slice is empty.
+	// ErrNoEvents is returned by Publisher.SendAsync and Pubisher.Send when events slice is empty.
 	ErrNoEvents = errors.New("no events")
 )
 
 // Publisher represents an event publisher interface.
 type Publisher interface {
-	// Send is used to publish multiple events asynchronously.
+	// SendAsync is used to publish multiple events asynchronously.
+	SendAsync(events ...*events_proto.Event) error
+	// Send similar to SendAsync, but blocks until all the messages are confirmed.
 	Send(events ...*events_proto.Event) error
-	// SendWithConfirmation similar to Send, but blocks until all the messages are confirmed.
-	SendWithConfirmation(ctx context.Context, events ...*events_proto.Event) error
+	// Close is used to free up the publisher resources.
+	Close() error
 }
 
 // FakePublisher is a publisher that is meant to be used in tests.
@@ -32,15 +31,19 @@ type FakePublisher struct {
 // Compile time interface check.
 var _ Publisher = &FakePublisher{}
 
-// Send fakes sending events and logs them instead.
-func (f *FakePublisher) Send(events ...*events_proto.Event) error {
+// SendAsync fakes sending events and logs them instead.
+func (f *FakePublisher) SendAsync(events ...*events_proto.Event) error {
 	f.SentEvents = append(f.SentEvents, events...)
 	return nil
 }
 
-// SendWithConfirmation fakes sending events with confirmation and logs them instead.
-func (f *FakePublisher) SendWithConfirmation(ctx context.Context, events ...*events_proto.Event) error {
-	f.SentEvents = append(f.SentEvents, events...)
+// Send fakes sending events with confirmation and logs them instead.
+func (f *FakePublisher) Send(events ...*events_proto.Event) error {
+	return f.SendAsync(events...)
+}
+
+// Close imitates closing the publisher.
+func (f *FakePublisher) Close() error {
 	return nil
 }
 
@@ -56,7 +59,7 @@ type AMQPPublisher struct {
 	amqpConnection *amqp.Connection
 	// This channel is used for non-confirmation sends only.
 	amqpChannel *amqp.Channel
-	// AMQP exchange name to send all the messages to.
+	// AMQP exchange name to sendAsync all the messages to.
 	exchangeName string
 }
 
@@ -69,11 +72,16 @@ func NewAMQPPublisher(amqpConnection *amqp.Connection, exchangeName string) (*AM
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new AMQP channel")
 	}
+
+	if err := AMQPExchangeDeclare(amqpChannel, exchangeName); err != nil {
+		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
+	}
+
 	return &AMQPPublisher{amqpConnection: amqpConnection, amqpChannel: amqpChannel, exchangeName: exchangeName}, nil
 }
 
-// send sends the actual events over the given AMQP channel.
-func (p *AMQPPublisher) send(amqpChannel *amqp.Channel, events ...*events_proto.Event) error {
+// sendAsync sends the actual events over the given AMQP channel.
+func (p *AMQPPublisher) sendAsync(amqpChannel *amqp.Channel, events ...*events_proto.Event) error {
 	n := len(events)
 	if n == 0 {
 		return ErrNoEvents
@@ -114,21 +122,21 @@ func (p *AMQPPublisher) send(amqpChannel *amqp.Channel, events ...*events_proto.
 	return nil
 }
 
-// Send sends AMQP messages with the given events asynchronously.
-func (p *AMQPPublisher) Send(events ...*events_proto.Event) error {
-	return p.send(p.amqpChannel, events...)
+// SendAsync sends AMQP messages with the given events asynchronously.
+func (p *AMQPPublisher) SendAsync(events ...*events_proto.Event) error {
+	return p.sendAsync(p.amqpChannel, events...)
 }
 
-// SendWithConfirmation sends AMQP messages with the given events with AMQP confirmations.
+// Send sends AMQP messages with the given events with AMQP confirmations.
 // This method should only be used when there is at least one consumer that is capable of consuming these messages,
-// otherwise this method will block until the context.Done().
+// otherwise this method will block indefinitely.
 // See https://www.rabbitmq.com/confirms.html for details.
 // TODO: check if this is actually the case: will it block if there is no consumers?
-func (p *AMQPPublisher) SendWithConfirmation(ctx context.Context, events ...*events_proto.Event) error {
+func (p *AMQPPublisher) Send(events ...*events_proto.Event) error {
 	if len(events) == 0 {
 		return ErrNoEvents
 	}
-	// To send with confirmations a separate channel is needed, since one channel can't be in a dual mode thus
+	// To sendAsync with confirmations a separate channel is needed, since one channel can't be in a dual mode thus
 	// p.amqpChannel can't be used as it is not in the confirmation mode.
 	amqpChannel, err := p.amqpConnection.Channel()
 	if err != nil {
@@ -142,25 +150,24 @@ func (p *AMQPPublisher) SendWithConfirmation(ctx context.Context, events ...*eve
 	confirmations := make(chan amqp.Confirmation, len(events))
 	amqpChannel.NotifyPublish(confirmations)
 
-	if err := p.send(amqpChannel, events...); err != nil {
+	if err := p.sendAsync(amqpChannel, events...); err != nil {
 		return err
 	}
 
 	// Wait till all the messages are confirmed to be delivered.
 	for {
-		select {
-		case c, closed := <-confirmations:
-			if !c.Ack {
-				return errors.Errorf("AMQP message with delivery tag '%d' could not be confirmed", c.DeliveryTag)
-			}
-			if closed {
-				// If the channel is closed all the confirmations are assumed to be received.
-				return nil
-			}
-
-		case <-ctx.Done():
-			return errors.WithStack(status.Error(codes.DeadlineExceeded,
-				"deadline exceeded while waiting for AMQP messages confirmations"))
+		c, closed := <-confirmations
+		if !c.Ack {
+			return errors.Errorf("AMQP message with delivery tag '%d' could not be confirmed", c.DeliveryTag)
+		}
+		if closed {
+			// If the channel is closed all the confirmations are assumed to be received.
+			return nil
 		}
 	}
+}
+
+// Close closes the AMQP channel that is used for async sending.
+func (p *AMQPPublisher) Close() error {
+	return p.amqpConnection.Close()
 }

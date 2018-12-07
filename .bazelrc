@@ -1,5 +1,5 @@
 # SHARED ENV VARIABLES
-build --test_env=SHARED_AMQP_ADDR=amqp://guest:guest@localhost:15672/ --test_timeout=10
+build --test_env=SHARED_AMQP_ADDR=amqp://guest:guest@localhost:15672/ --test_env=LOG_LEVEL=DEBUG --test_timeout=10
 
 # ACCOUNTS SERVICE ENV VARIABLES
 build --test_env=ACCOUNTS_DB_HOST=localhost

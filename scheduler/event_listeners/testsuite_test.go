@@ -1,13 +1,14 @@
-package models_test
+package event_listeners_test
 
 import (
 	"fmt"
 	"os"
 	"testing"
 
-	"github.com/jinzhu/gorm"
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/khaiql/dbcleaner.v2"
+
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
 
 	"github.com/mennanov/scalemate/scheduler/migrations"
@@ -18,18 +19,25 @@ import (
 
 var cleaner = dbcleaner.New()
 
-type ModelsTestSuite struct {
+// EventListenersTestSuite is a test suite for event listeners.
+type EventListenersTestSuite struct {
 	suite.Suite
-	db *gorm.DB
+	service *server.SchedulerServer
 }
 
-func (s *ModelsTestSuite) SetupSuite() {
+func (s *EventListenersTestSuite) SetupSuite() {
+	var err error
 	db, err := utils.ConnectDBFromEnv(server.DBEnvConf)
 	s.Require().NoError(err)
-	s.db = db
+
+	s.service = &server.SchedulerServer{
+		DB:               db,
+		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
+		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
+	}
 
 	// Prepare database.
-	s.Require().NoError(migrations.RunMigrations(s.db.LogMode(true)))
+	s.Require().NoError(migrations.RunMigrations(s.service.DB.LogMode(true)))
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable",
 		os.Getenv(server.DBEnvConf.Host), os.Getenv(server.DBEnvConf.Port), os.Getenv(server.DBEnvConf.User),
@@ -38,13 +46,15 @@ func (s *ModelsTestSuite) SetupSuite() {
 	cleaner.SetEngine(pg)
 }
 
-func (s *ModelsTestSuite) SetupTest() {
+func (s *EventListenersTestSuite) SetupTest() {
+	s.service.Publisher = utils.NewFakePublisher()
+
 	for _, tableName := range models.TableNames {
 		cleaner.Acquire(tableName)
 	}
 }
 
-func (s *ModelsTestSuite) TearDownTest() {
+func (s *EventListenersTestSuite) TearDownTest() {
 	for _, tableName := range models.TableNames {
 		cleaner.Clean(tableName)
 	}
@@ -55,6 +65,6 @@ func (s *ModelsTestSuite) TearDownTest() {
 //	migrations.RollbackAllMigrations(s.db)
 //}
 
-func TestRunModelsSuite(t *testing.T) {
-	suite.Run(t, new(ModelsTestSuite))
+func TestRunEventListenersSuite(t *testing.T) {
+	suite.Run(t, new(EventListenersTestSuite))
 }

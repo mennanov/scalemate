@@ -1,16 +1,17 @@
-package events_test
+package utils_test
 
 import (
 	"testing"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
 
-	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/events_proto"
+
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func TestRoutingKeyFromEvent(t *testing.T) {
@@ -46,7 +47,7 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
-		key, err := events.RoutingKeyFromEvent(testCase.event)
+		key, err := utils.RoutingKeyFromEvent(testCase.event)
 		require.NoError(t, err)
 		assert.Equal(t, testCase.expectedKey, key)
 	}
@@ -54,7 +55,7 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 
 func TestNewEvent(t *testing.T) {
 	userProto := &accounts_proto.User{Id: 42}
-	event, err := events.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := utils.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	require.NoError(t, err)
 	payload, ok := event.Payload.(*events_proto.Event_AccountsUser)
 	require.True(t, ok)
@@ -69,7 +70,7 @@ func TestNewModelProtoFromEvent(t *testing.T) {
 			},
 		},
 	}
-	m, err := events.NewModelProtoFromEvent(event)
+	m, err := utils.NewModelProtoFromEvent(event)
 	require.NoError(t, err)
 	userMsg, ok := m.(*accounts_proto.User)
 	require.True(t, ok)

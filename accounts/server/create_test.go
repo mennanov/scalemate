@@ -42,6 +42,7 @@ func (s *ServerTestSuite) TestCreate() {
 	s.Require().NoError(err)
 	s.Equal(expected, actual)
 
+	// FIXME: it can never be nil.
 	s.NotNil(res.GetId())
 	s.NotNil(res.GetCreatedAt())
 	s.NotNil(res.GetUpdatedAt())

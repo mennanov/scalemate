@@ -31,28 +31,12 @@ func AMQPExchangeDeclare(ch *amqp.Channel, exchangeName string) error {
 
 // AMQPExchangeDeclareAccounts declares an AMQP exchange for the Accounts service.
 func AMQPExchangeDeclareAccounts(ch *amqp.Channel) error {
-	return ch.ExchangeDeclare(
-		AccountsAMQPExchangeName,
-		"topic",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
+	return AMQPExchangeDeclare(ch, AccountsAMQPExchangeName)
 }
 
 // AMQPExchangeDeclareAccounts declares an AMQP exchange for the Accounts service.
 func AMQPExchangeDeclareScheduler(ch *amqp.Channel) error {
-	return ch.ExchangeDeclare(
-		SchedulerAMQPExchangeName,
-		"topic",
-		true,
-		false,
-		false,
-		false,
-		nil,
-	)
+	return AMQPExchangeDeclare(ch, SchedulerAMQPExchangeName)
 }
 
 // ConnectAMQPFromEnv creates a connection to the AMQP service (RabbitMQ).
@@ -79,4 +63,51 @@ func ConnectAMQPFromEnv(conf AMQPEnvConf) (*amqp.Connection, error) {
 	}
 
 	return nil, errors.New("Could not connect to AMQP")
+}
+
+// NewAMQPConsumer declares an AMQP queue, binds a consumer to it and returns a channel to receive messages.
+func NewAMQPConsumer(conn *amqp.Connection, exchangeName, queueName, routingKey string) (<-chan amqp.Delivery, error) {
+	amqpChannel, err := conn.Channel()
+	defer func() {
+		if err := amqpChannel.Close(); err != nil {
+			logrus.WithError(err).Error("failed to close AMQP channel")
+		}
+	}()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create AMQP channel")
+	}
+
+	queue, err := amqpChannel.QueueDeclare(
+		queueName,
+		true, // FIXME: figure out if it should be false for temp queues.
+		false,
+		false,
+		false,
+		nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to declare AMQP queue %s", queueName)
+	}
+
+	if err = amqpChannel.QueueBind(
+		queue.Name,
+		routingKey,
+		exchangeName,
+		false,
+		nil); err != nil {
+		return nil, errors.Wrapf(err, "failed to bind AMQP Queue for key '%s'", routingKey)
+	}
+
+	messages, err := amqpChannel.Consume(
+		queue.Name,
+		"",
+		false,
+		false,
+		false,
+		false,
+		nil)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to register AMQP Consumer")
+	}
+	return messages, nil
 }

@@ -3,12 +3,9 @@ package server_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -16,9 +13,6 @@ import (
 )
 
 func (s *ServerTestSuite) TestGetJob() {
-	ctrl := gomock.NewController(s.T())
-	defer ctrl.Finish()
-
 	job := &models.Job{
 		Username: "username",
 	}
@@ -30,34 +24,26 @@ func (s *ServerTestSuite) TestGetJob() {
 	req := &scheduler_proto.GetJobRequest{
 		JobId: job.ID,
 	}
-	accountsClient := NewMockAccountsClient(ctrl)
 
 	s.T().Run("successful for Job owner", func(t *testing.T) {
-		accessToken := s.createToken("username", "", accounts_proto.User_USER, "access", time.Minute)
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.GetJob(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job.Username})
+		res, err := s.client.GetJob(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(job.ID, res.Id)
 	})
 
 	s.T().Run("successful for admin", func(t *testing.T) {
-		accessToken := s.createToken("username2", "", accounts_proto.User_ADMIN, "access", time.Minute)
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.GetJob(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(
+			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
+		res, err := s.client.GetJob(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(job.ID, res.Id)
 	})
 
 	s.T().Run("fails for other non-admin", func(t *testing.T) {
-		accessToken := s.createToken("username3", "", accounts_proto.User_USER, "access", time.Minute)
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: "unknown"})
 
-		res, err := s.client.GetJob(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.GetJob(ctx, req)
 		s.assertGRPCError(err, codes.PermissionDenied)
 		s.Nil(res)
 	})

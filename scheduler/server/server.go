@@ -1,10 +1,10 @@
 package server
 
 import (
+	"context"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
+	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -12,16 +12,19 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
+	"github.com/streadway/amqp"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events_proto"
 
+	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 	// required by gorm
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
 
 	"github.com/mennanov/scalemate/shared/middleware"
@@ -44,18 +47,17 @@ var LoggedErrorCodes = []codes.Code{
 }
 
 // SchedulerServer is a wrapper for `scheduler_proto.SchedulerServer` that holds the application specific settings
-// and also implements some methods.
+// and also implements some additional methods.
 type SchedulerServer struct {
-	DB             *gorm.DB
-	JWTSecretKey   []byte
-	AMQPConnection *amqp.Connection
-	// Nodes that are currently connected to this service instance. By sending a Task message to this channel the Task
-	// will be started on the Node with Node.ID as the map key.
-	ConnectedNodes map[uint64]chan *scheduler_proto.Task
-	// Jobs that are not scheduled yet and are awaiting to be scheduled. By sending a Task message to this channel the
-	// client (which has created a corresponding Job with Job.ID as the map key) will be notified that the Task is
-	// running on some Node.
-	AwaitingJobs map[uint64]chan *scheduler_proto.Task
+	DB *gorm.DB
+	// Authentication claims context injector.
+	ClaimsInjector auth.ClaimsInjector
+	// utils.Publisher.
+	Publisher utils.Publisher
+	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
+	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
+	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
+	NewTasksByJobID map[uint64]chan *scheduler_proto.Task
 	// gracefulStop channel is used to notify about the gRPC server GracefulStop() in progress. When the server is about
 	// to stop this channel is closed, this will unblock all the receivers of this channel and they will receive a zero
 	// value (empty struct) which should be discarded and take an appropriate action to gracefully finish long-running
@@ -97,7 +99,7 @@ type AppEnvConf struct {
 	TLSKey          string
 }
 
-// SchedulerEnvConf maps env variables for the Accounts service.
+// SchedulerEnvConf maps env variables for the Scheduler service.
 var SchedulerEnvConf = AppEnvConf{
 	BCryptCost:      "SCHEDULER_BCRYPT_COST",
 	AccessTokenTTL:  "SCHEDULER_ACCESS_TOKEN_TTL",
@@ -105,43 +107,43 @@ var SchedulerEnvConf = AppEnvConf{
 	JWTSecretKey:    "SCHEDULER_JWT_SECRET_KEY",
 }
 
+// Connections represents third party services connections.
+type Connections struct {
+	DB   *gorm.DB
+	AMQP *amqp.Connection
+}
+
 // NewSchedulerServerFromEnv creates a new SchedulerServer from environment variables.
 // It also connects to the database and AMQP.
-func NewSchedulerServerFromEnv(conf AppEnvConf) (*SchedulerServer, error) {
+func NewSchedulerServerFromEnv(conf AppEnvConf) (*SchedulerServer, *Connections, error) {
 	jwtSecretKey := os.Getenv(conf.JWTSecretKey)
 
 	if jwtSecretKey == "" {
-		return nil, errors.Errorf("%s env variable is empty", conf.JWTSecretKey)
+		return nil, nil, errors.Errorf("%s env variable is empty", conf.JWTSecretKey)
 	}
 
 	db, err := utils.ConnectDBFromEnv(DBEnvConf)
 	if err != nil {
-		return nil, errors.Wrap(err, "ConnectDBFromEnv failed")
+		return nil, nil, errors.Wrap(err, "ConnectDBFromEnv failed")
 	}
 
 	amqpConnection, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
 	if err != nil {
-		return nil, errors.Wrap(err, "ConnectAMQPFromEnv failed")
+		return nil, nil, errors.Wrap(err, "ConnectAMQPFromEnv failed")
 	}
 
-	channel, err := amqpConnection.Channel()
+	publisher, err := utils.NewAMQPPublisher(amqpConnection, utils.SchedulerAMQPExchangeName)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create AMQP channel")
-	}
-	// This channel is only used to declare the exchange.
-	defer utils.Close(channel)
-
-	if err := utils.AMQPExchangeDeclareScheduler(channel); err != nil {
-		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
+		return nil, nil, errors.Wrap(err, "utils.NewAMQPPublisher failed")
 	}
 
 	return &SchedulerServer{
-		JWTSecretKey:   []byte(jwtSecretKey),
-		DB:             db,
-		AMQPConnection: amqpConnection,
-		ConnectedNodes: make(map[uint64]chan *scheduler_proto.Task),
-		AwaitingJobs:   make(map[uint64]chan *scheduler_proto.Task),
-	}, nil
+		DB:               db,
+		ClaimsInjector:   auth.NewJWTClaimsInjector([]byte(jwtSecretKey)),
+		Publisher:        publisher,
+		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
+		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
+	}, &Connections{DB: db, AMQP: amqpConnection}, nil
 }
 
 // Close closes the server resources.
@@ -149,12 +151,95 @@ func (s *SchedulerServer) Close() error {
 	if err := s.DB.Close(); err != nil {
 		return err
 	}
-	return s.AMQPConnection.Close()
+	return s.Publisher.Close()
+}
+
+var (
+	// ErrNodeAlreadyConnected is used when the Node can't be "connected" because it is already connected.
+	ErrNodeAlreadyConnected = errors.New("Node is already connected")
+	// ErrNodeIsNotConnected is used when the Node can't be disconnected because it's already disconnected.
+	ErrNodeIsNotConnected = errors.New("Node is not connected")
+)
+
+// ConnectNode adds the Node ID to the map of connected Nodes and updates the Node's status in DB.
+// This method should be called when the Node connects to receive Tasks.
+// FIXME: this method should be private.
+func (s *SchedulerServer) ConnectNode(node *models.Node) error {
+	if _, ok := s.NewTasksByNodeID[node.ID]; ok {
+		return ErrNodeAlreadyConnected
+	}
+	tx := s.DB.Begin()
+	event, err := node.Updates(tx, map[string]interface{}{
+		"connected_at": time.Now(),
+		"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+	})
+	if err != nil {
+		return err
+	}
+	if err := utils.SendAndCommit(tx, s.Publisher, event); err != nil {
+		return err
+	}
+	s.NewTasksByNodeID[node.ID] = make(chan *scheduler_proto.Task)
+	return nil
+}
+
+// DisconnectNode removes the Node ID from the map of connected Nodes and updates the Node's status in DB.
+// It also updates the status of all the running Jobs and corresponding Tasks to NODE_FAILED.
+// This method should be called when the Node disconnects.
+// FIXME: this method should be private.
+func (s *SchedulerServer) DisconnectNode(node *models.Node) error {
+	if _, ok := s.NewTasksByNodeID[node.ID]; !ok {
+		return ErrNodeIsNotConnected
+	}
+	tx := s.DB.Begin()
+	var disconnectedNodeEvents []*events_proto.Event
+	nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
+		"disconnected_at": time.Now(),
+		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+	})
+	if err != nil {
+		wrappedErr := errors.Wrap(err, "node.Updates failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
+	}
+	var tasks models.Tasks
+	tasksEvents, err := tasks.UpdateStatusForDisconnectedNode(tx, node.ID)
+	if err != nil {
+		wrappedErr := errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
+	}
+	jobIDs := make([]uint64, len(tasks))
+	for i, task := range tasks {
+		jobIDs[i] = task.JobID
+	}
+	var jobs models.Jobs
+	jobsEvents, err := jobs.UpdateStatusForNodeFailedTasks(tx, jobIDs)
+	if err != nil {
+		wrappedErr := errors.Wrap(err, "jobs.UpdateStatusForNodeFailedTasks failed")
+		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
+			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
+		}
+		return wrappedErr
+	}
+	disconnectedNodeEvents = append(disconnectedNodeEvents, nodeUpdatedEvent)
+	disconnectedNodeEvents = append(disconnectedNodeEvents, tasksEvents...)
+	disconnectedNodeEvents = append(disconnectedNodeEvents, jobsEvents...)
+	if err := utils.SendAndCommit(tx, s.Publisher, disconnectedNodeEvents...); err != nil {
+		return err
+	}
+
+	delete(s.NewTasksByNodeID, node.ID)
+	return nil
 }
 
 // Serve creates a gRPC server and starts serving on a given address. This function is blocking and runs upon the server
 // termination.
-func Serve(grpcAddr string, srv *SchedulerServer) {
+func Serve(ctx context.Context, grpcAddr string, srv *SchedulerServer) {
 	utils.SetLogrusLevelFromEnv()
 
 	// TODO: create the logrus entry in some parent scope, not here.
@@ -175,9 +260,6 @@ func Serve(grpcAddr string, srv *SchedulerServer) {
 	)
 	scheduler_proto.RegisterSchedulerServer(grpcServer, srv)
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
 	f := make(chan error, 1)
 
 	go func(f chan error) {
@@ -191,30 +273,13 @@ func Serve(grpcAddr string, srv *SchedulerServer) {
 		}
 	}(f)
 
-	// Handle events.
-	go func(f chan error) {
-		if err := srv.HandleNodeConnectedEvents(); err != nil {
-			f <- err
-		}
-	}(f)
-	go func(f chan error) {
-		if err := srv.HandleTaskStatusUpdatedEvents(); err != nil {
-			f <- err
-		}
-	}(f)
-	go func(f chan error) {
-		if err := srv.HandleTaskCreatedEvents(); err != nil {
-			f <- err
-		}
-	}(f)
-
 	select {
-	case <-c:
+	case <-ctx.Done():
 		logrus.Info("Gracefully stopping gRPC server...")
 		close(srv.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-f:
-		logrus.Fatalf("GRPC server unexpectedly failed: %s", err.Error())
+		logrus.WithError(err).Errorf("GRPC server unexpectedly failed")
 	}
 }

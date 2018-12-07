@@ -1,18 +1,13 @@
 package server
 
 import (
-	"context"
-	"fmt"
-	"time"
-
 	"github.com/gogo/protobuf/proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -22,9 +17,9 @@ const (
 	NodeCreatedEventsQueueName = "accounts_scheduler_node_created"
 )
 
-// HandleNodeCreatedEvents handles events that are emitted by the Scheduler service when a new Node is created.
+// SchedulerNodeCreatedListener handles events that are emitted by the Scheduler service when a new Node is created.
 // This handler populates the local `models.Node` table in DB to make it consistent with the Scheduler service.
-func (s *AccountsServer) HandleNodeCreatedEvents() error {
+func (s *AccountsServer) SchedulerNodeCreatedListener() error {
 	amqpChannel, err := s.AMQPConnection.Channel()
 	defer utils.Close(amqpChannel)
 	if err != nil {
@@ -68,7 +63,7 @@ func (s *AccountsServer) HandleNodeCreatedEvents() error {
 		return errors.Wrap(err, "failed to register AMQP Consumer")
 	}
 
-	publisher, err := events.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
+	publisher, err := utils.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
 	if err != nil {
 		return errors.Wrap(err, "failed to create AMQP publisher instance")
 	}
@@ -97,14 +92,10 @@ func (s *AccountsServer) HandleNodeCreatedEvents() error {
 					logrus.WithError(err).WithField("eventKey", key).Error("failed to create a Node from event")
 					return
 				}
-				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-				defer cancel()
-
-				if err := utils.SendAndCommit(ctx, tx, publisher, event); err != nil {
+				if err := utils.SendAndCommit(tx, publisher, event); err != nil {
 					logrus.WithError(err).WithField("event", event).Error("failed to SendAndCommit event")
 					return
 				}
-				fmt.Println("SENT EVENTS!!!")
 			} else {
 				logrus.Error("failed to cast eventProto.Payload to *events_proto.Event_SchedulerNode")
 				return

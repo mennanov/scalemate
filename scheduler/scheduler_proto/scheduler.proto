@@ -9,8 +9,8 @@ import "google/protobuf/timestamp.proto";
 import "shared/proto/validator.proto";
 
 service Scheduler {
-    // RunJob creates a Job and schedules it immediately. This
-    rpc RunJob (Job) returns (Task) {
+    // CreateJob creates a new Job.
+    rpc CreateJob (Job) returns (Job) {
     }
     // GetJob gets a User owned Job.
     rpc GetJob (GetJobRequest) returns (Job) {
@@ -18,12 +18,22 @@ service Scheduler {
     // ListJobs lists User owned Jobs.
     rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {
     }
+
     // GetTask gets a User owned Task.
     rpc GetTask (GetTaskRequest) returns (Task) {
     }
     // ListTasks lists User owned Tasks.
     rpc ListTasks (ListTasksRequest) returns (ListTasksResponse) {
     }
+    // IterateTasks sends a stream of all the Tasks for the given Job.
+    // A new Task is created when a Job is scheduled on a certain Node.
+    rpc IterateTasks (IterateTasksRequest) returns (stream Task){
+    }
+    // IterateTasksForNode should be used by Nodes to receive Tasks to run. A Node is considered online as long as this
+    // RPC is in progress, otherwise it is considered offline.
+    rpc IterateTasksForNode (google.protobuf.Empty) returns (stream Task) {
+    }
+
     // ListCpuModels lists aggregated CPU models for the currently online Nodes.
     rpc ListCpuModels (ListCpuModelsRequest) returns (ListCpuModelsResponse) {
     }
@@ -35,10 +45,6 @@ service Scheduler {
     }
     // ListMemoryModels lists aggregated Memory models for the currently online Nodes.
     rpc ListMemoryModels (google.protobuf.Empty) returns (ListMemoryModelsResponse) {
-    }
-    // ReceiveTasks should be used by Nodes to receive Tasks to run. A Node is considered online as long as this request
-    // is running, otherwise it is treated as offline.
-    rpc ReceiveTasks (google.protobuf.Empty) returns (stream Task) {
     }
 }
 
@@ -67,7 +73,8 @@ enum DiskClass {
 // Job represents a request to be run as a container on Scalemate premises.
 // This is created by `scalemate run image:tag [OPTIONS]`.
 message Job {
-    uint64 id = 1;
+    // Readonly.
+    uint64 id = 1 [(shared.proto.validator.field) = {int_lt: 1}];
     string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
 
     enum Status {
@@ -83,7 +90,8 @@ message Job {
         // The Job was manually cancelled by a user.
         STATUS_CANCELLED = 4;
     }
-    Status status = 14;
+    // Readonly.
+    Status status = 14 [(shared.proto.validator.field) = {int_lt: 1}];
 
     // Docker image name, e.g. "postgres:latest".
     string docker_image = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
@@ -109,7 +117,9 @@ message Job {
     }
     RunConfig run_config = 11;
 
+    // Readonly.
     google.protobuf.Timestamp created_at = 12;
+    // Readonly.
     google.protobuf.Timestamp updated_at = 13;
 
     enum RestartPolicy {
@@ -287,6 +297,11 @@ message ListTasksRequest {
     // Limit of 50 is used by default.
     uint32 limit = 5 [(shared.proto.validator.field) = {int_lt: 1000}];
     uint32 offset = 6;
+}
+
+message IterateTasksRequest {
+    uint64 job_id = 1;
+    bool include_existing = 2;
 }
 
 message ListTasksResponse {

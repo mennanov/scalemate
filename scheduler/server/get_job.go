@@ -29,7 +29,7 @@ func (s SchedulerServer) GetJob(ctx context.Context, r *scheduler_proto.GetJobRe
 	}
 
 	if job.Username != claims.Username && claims.Role != accounts_proto.User_ADMIN {
-		return nil, status.Error(codes.PermissionDenied, "the Job requested is not owned by you")
+		return nil, status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
 	}
 
 	jobProto, err := job.ToProto(nil)

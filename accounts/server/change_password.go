@@ -12,7 +12,6 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -47,11 +46,11 @@ func (s AccountsServer) ChangePassword(ctx context.Context, r *accounts_proto.Ch
 	if err != nil {
 		return nil, err
 	}
-	publisher, err := events.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
+	publisher, err := utils.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create AMQP publisher instance")
 	}
-	if err := utils.SendAndCommit(ctx, tx, publisher, event); err != nil {
+	if err := utils.SendAndCommit(tx, publisher, event); err != nil {
 		return nil, err
 	}
 

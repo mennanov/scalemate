@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
-
-	"github.com/mennanov/scalemate/shared/auth"
 )
+
+// TODO: create a layer (interface of with the same service method names) for each type of Resource that will handle CRUD operations permissions.
+// Example:
 
 // AuthFuncOverride implements an authentication and (partially) authorization for gRPC methods in Scheduler Service.
 // The context is populated with the claims created from the parsed JWT passed along with the request.
@@ -15,27 +16,18 @@ func (s SchedulerServer) AuthFuncOverride(ctx context.Context, fullMethodName st
 	var err error
 	switch fullMethodName {
 	case "/scheduler.scheduler_proto.Scheduler/RunJob",
+		"/scheduler.scheduler_proto.Scheduler/CreateJob",
 		"/scheduler.scheduler_proto.Scheduler/GetJob",
 		"/scheduler.scheduler_proto.Scheduler/ListJobs",
-		"/scheduler.scheduler_proto.Scheduler/ReceiveTasks",
+		"/scheduler.scheduler_proto.Scheduler/IterateTasks",
+		"/scheduler.scheduler_proto.Scheduler/ReceiveTasksForNode",
 		"/scheduler.scheduler_proto.Scheduler/ListTasks",
 		"/scheduler.scheduler_proto.Scheduler/GetTask":
 
-		ctx, err = auth.ParseJWTFromContext(ctx, s.JWTSecretKey)
+		ctx, err = s.ClaimsInjector.InjectClaims(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to parse JWT")
 		}
-
-		//claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
-		//if !ok {
-		//	return nil, status.Error(codes.Internal, "unknown JWT claims format")
-		//}
-		//
-		//if claims.Role != accounts_proto.User_ADMIN {
-		//	return nil, status.Errorf(
-		//		codes.PermissionDenied, "method '%s' is allowed for admins only", fullMethodName)
-		//}
-
 	}
 
 	return ctx, nil

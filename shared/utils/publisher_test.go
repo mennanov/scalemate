@@ -1,18 +1,14 @@
-package events_test
+package utils_test
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
-	"github.com/streadway/amqp"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -21,7 +17,7 @@ var AMQPEnvConf = utils.AMQPEnvConf{
 	Addr: "SHARED_AMQP_ADDR",
 }
 
-func TestAMQPPublisher_Send(t *testing.T) {
+func TestAMQPPublisher_SendAsync(t *testing.T) {
 	exchangeName := "publisher_send_test"
 	conn, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
 	require.NoError(t, err)
@@ -37,14 +33,7 @@ func TestAMQPPublisher_Send(t *testing.T) {
 	messages, err := utils.SetUpAMQPTestConsumer(conn, exchangeName)
 	require.NoError(t, err)
 
-	receivedMessages := make([]amqp.Delivery, 0)
-	go func() {
-		for msg := range messages {
-			receivedMessages = append(receivedMessages, msg)
-		}
-	}()
-
-	publisher, err := events.NewAMQPPublisher(conn, exchangeName)
+	publisher, err := utils.NewAMQPPublisher(conn, exchangeName)
 	require.NoError(t, err)
 
 	event := &events_proto.Event{
@@ -56,17 +45,14 @@ func TestAMQPPublisher_Send(t *testing.T) {
 		}},
 	}
 
-	err = publisher.Send(event)
+	err = publisher.SendAsync(event)
 	require.NoError(t, err)
-	// Wait till all the messages are received.
-	time.Sleep(time.Millisecond * 200)
-	assert.Equal(t, 1, len(receivedMessages))
-	routingKey, err := events.RoutingKeyFromEvent(event)
+	routingKey, err := utils.RoutingKeyFromEvent(event)
 	require.NoError(t, err)
-	assert.Equal(t, routingKey, receivedMessages[0].RoutingKey)
+	utils.WaitForMessages(messages, routingKey)
 }
 
-func TestAMQPPublisher_SendWithConfirmation(t *testing.T) {
+func TestAMQPPublisher_Send(t *testing.T) {
 	exchangeName := "publisher_send_test_with_confirmation"
 	conn, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
 	require.NoError(t, err)
@@ -82,14 +68,7 @@ func TestAMQPPublisher_SendWithConfirmation(t *testing.T) {
 	messages, err := utils.SetUpAMQPTestConsumer(conn, exchangeName)
 	require.NoError(t, err)
 
-	receivedMessages := make([]amqp.Delivery, 0)
-	go func() {
-		for msg := range messages {
-			receivedMessages = append(receivedMessages, msg)
-		}
-	}()
-
-	publisher, err := events.NewAMQPPublisher(conn, exchangeName)
+	publisher, err := utils.NewAMQPPublisher(conn, exchangeName)
 	require.NoError(t, err)
 
 	eventsToSend := []*events_proto.Event{
@@ -112,23 +91,14 @@ func TestAMQPPublisher_SendWithConfirmation(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
-
-	err = publisher.SendWithConfirmation(ctx, eventsToSend...)
+	err = publisher.Send(eventsToSend...)
 	require.NoError(t, err)
-	// Wait till all the messages are received.
-	time.Sleep(time.Millisecond * 200)
-
-	assert.Equal(t, 2, len(receivedMessages))
 	expectedRoutingKeys := make([]string, 2)
 	for i, event := range eventsToSend {
-		rk, err := events.RoutingKeyFromEvent(event)
+		rk, err := utils.RoutingKeyFromEvent(event)
 		assert.NoError(t, err)
 		expectedRoutingKeys[i] = rk
 	}
-	actualRoutingKeys := make([]string, 2)
-	for i, msg := range receivedMessages {
-		actualRoutingKeys[i] = msg.RoutingKey
-	}
-	assert.Equal(t, expectedRoutingKeys, actualRoutingKeys)
+	// Wait till all the messages are received.
+	utils.WaitForMessages(messages, expectedRoutingKeys...)
 }

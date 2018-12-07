@@ -11,11 +11,9 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s SchedulerServer) ReceiveTasks(_ *empty.Empty, stream scheduler_proto.Scheduler_ReceiveTasksServer) error {
+func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_proto.Scheduler_IterateTasksForNodeServer) error {
 	ctx := stream.Context()
 	logger := ctxlogrus.Extract(ctx)
 
@@ -49,24 +47,23 @@ func (s SchedulerServer) ReceiveTasks(_ *empty.Empty, stream scheduler_proto.Sch
 		return status.Error(codes.FailedPrecondition, "this Node is already receiving Tasks")
 	}
 
-	publisher, err := events.NewAMQPPublisher(s.AMQPConnection, utils.SchedulerAMQPExchangeName)
-	if err != nil {
-		return errors.Wrap(err, "failed to create NewAMQPPublisher")
-	}
-
-	if err := s.ConnectNode(ctx, node, publisher); err != nil {
+	if err := s.ConnectNode(node); err != nil {
 		return errors.Wrap(err, "failed to ConnectNode")
 	}
 	// Set the Node's status as offline when this RPC exits.
 	defer func() {
-		if err := s.DisconnectNode(ctx, node, publisher); err != nil {
+		if err := s.DisconnectNode(node); err != nil {
 			logger.WithError(err).Error("failed to DisconnectNode")
 		}
 	}()
 
 	for {
 		select {
-		case taskProto := <-s.ConnectedNodes[node.ID]:
+		case taskProto, ok := <-s.NewTasksByNodeID[node.ID]:
+			if !ok {
+				// Channel is closed. Node is probably shutting down.
+				return nil
+			}
 			if err := stream.Send(taskProto); err != nil {
 				return errors.Wrap(err, "failed to send a Task to the Tasks stream")
 			}

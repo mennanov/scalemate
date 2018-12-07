@@ -32,20 +32,25 @@ func SetUpAMQPTestConsumer(conn *amqp.Connection, exchangeName string) (<-chan a
 // WaitForMessages waits for the messages and matches their routing keys with the given keys.
 // The function returns once all the provided keys have matched.
 func WaitForMessages(messages <-chan amqp.Delivery, keys ...string) {
-	go func() {
+	allMessagesReceived := make(chan struct{})
+	go func(c chan struct{}) {
 		for msg := range messages {
-			logrus.Debugf("received AMQP message %s", msg.RoutingKey)
+			logrus.Debugf("Received AMQP message %s", msg.RoutingKey)
 			for i := range keys {
 				re := regexp.MustCompile(keys[i])
 				if re.MatchString(msg.RoutingKey) {
 					// Remove the key that matched from the keys.
 					keys = append(keys[:i], keys[i+1:]...)
 					if len(keys) == 0 {
+						c <- struct{}{}
 						return
 					}
 					break
 				}
 			}
 		}
-	}()
+	}(allMessagesReceived)
+
+	// Wait until all messages are received.
+	<-allMessagesReceived
 }

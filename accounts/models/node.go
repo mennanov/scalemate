@@ -7,13 +7,13 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/events_proto"
+
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -96,7 +96,7 @@ func (node *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	return events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	return utils.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 }
 
 // Get gets the Node from DB by a username and a Node name.

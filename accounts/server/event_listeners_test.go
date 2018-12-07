@@ -4,14 +4,13 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s *ServerTestSuite) TestHandleNodeCreatedEvents() {
+func (s *ServerTestSuite) TestSchedulerNodeCreatedListener() {
 	s.service.DB = s.service.DB.LogMode(true)
 
 	// Create a "node.created" event similar to the one that Scheduler service would create.
@@ -24,12 +23,12 @@ func (s *ServerTestSuite) TestHandleNodeCreatedEvents() {
 		GpuModel:    "gpu model",
 		DiskModel:   "disk model",
 	}
-	nodeCreatedEvent, err := events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	nodeCreatedEvent, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	s.Require().NoError(err)
 
-	publisher, err := events.NewAMQPPublisher(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
+	publisher, err := utils.NewAMQPPublisher(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
 	s.Require().NoError(err)
-	// Send the event.
+	// SendAsync the event.
 	s.Require().NoError(publisher.Send(nodeCreatedEvent))
 
 	// Receive Accounts service messages.

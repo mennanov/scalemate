@@ -3,12 +3,9 @@ package server_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -16,9 +13,6 @@ import (
 )
 
 func (s *ServerTestSuite) TestListTasks() {
-	ctrl := gomock.NewController(s.T())
-	defer ctrl.Finish()
-
 	node := &models.Node{
 		Username: "node_username",
 	}
@@ -68,17 +62,14 @@ func (s *ServerTestSuite) TestListTasks() {
 	}
 
 	ctx := context.Background()
-	accountsClient := NewMockAccountsClient(ctrl)
 
 	s.T().Run("returns owned Tasks", func(t *testing.T) {
-		accessToken := s.createToken(jobs[0].Username, "", accounts_proto.User_USER, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
 
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(uint32(2), res.TotalCount)
 		s.Equal(tasks[1].ID, res.Tasks[0].Id)
@@ -86,14 +77,13 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns all Tasks for admin", func(t *testing.T) {
-		accessToken := s.createToken(jobs[2].Username, "", accounts_proto.User_ADMIN, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(
+			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[1].Username,
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
 
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(uint32(2), res.TotalCount)
 		s.Equal(tasks[1].ID, res.Tasks[0].Id)
@@ -101,35 +91,29 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("permission denied for other username", func(t *testing.T) {
-		accessToken := s.createToken(jobs[2].Username, "", accounts_proto.User_USER, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[2].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.assertGRPCError(err, codes.PermissionDenied)
 		s.Nil(res)
 	})
 
 	s.T().Run("returns Tasks for requested status", func(t *testing.T) {
-		accessToken := s.createToken(jobs[0].Username, "", accounts_proto.User_USER, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_UNKNOWN},
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(uint32(1), res.TotalCount)
 		s.Equal(tasks[0].ID, res.Tasks[0].Id)
 	})
 
 	s.T().Run("returns Tasks for requested statuses job_id order", func(t *testing.T) {
-		accessToken := s.createToken(jobs[0].Username, "", accounts_proto.User_USER, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status: []scheduler_proto.Task_Status{
@@ -139,10 +123,7 @@ func (s *ServerTestSuite) TestListTasks() {
 			JobId:    []uint64{jobs[0].ID},
 			Ordering: scheduler_proto.ListTasksRequest_CREATED_AT_ASC,
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(uint32(1), res.TotalCount)
 		s.Equal(tasks[0].ID, res.Tasks[0].Id)
@@ -150,16 +131,13 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns Tasks with limit and offset", func(t *testing.T) {
-		accessToken := s.createToken(jobs[0].Username, "", accounts_proto.User_USER, "access", time.Minute)
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Limit:    1,
 			Offset:   1,
 		}
-		jwtCredentials := auth.NewJWTCredentials(
-			accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-		res, err := s.client.ListTasks(ctx, req, grpc.PerRPCCredentials(jwtCredentials))
+		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(uint32(2), res.TotalCount)
 		s.Equal(1, len(res.Tasks))

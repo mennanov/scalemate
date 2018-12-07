@@ -24,6 +24,7 @@ import (
 	"github.com/streadway/amqp"
 	"google.golang.org/grpc"
 
+	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/middleware"
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -85,8 +86,9 @@ var AccountsEnvConf = AppEnvConf{
 // AccountsServer is a wrapper for `accounts_proto.AccountsServer` that holds the application specific settings
 // and also implements some methods.
 type AccountsServer struct {
-	DB             *gorm.DB
-	AMQPConnection *amqp.Connection
+	DB                    *gorm.DB
+	ClaimsContextInjector auth.ClaimsInjector
+	AMQPConnection        *amqp.Connection
 	// bcrypt cost value used to make password hashes. Should be reasonably high in PROD and low in TEST/DEV.
 	BcryptCost      int
 	AccessTokenTTL  time.Duration
@@ -154,6 +156,7 @@ func NewAccountServerFromEnv(conf AppEnvConf) (*AccountsServer, error) {
 	}
 
 	return &AccountsServer{
+		ClaimsContextInjector: auth.NewJWTClaimsInjector([]byte(jwtSecretKey)),
 		BcryptCost:      bcryptCost,
 		AccessTokenTTL:  accessTokenTTL,
 		RefreshTokenTTL: refreshTokenTTL,
@@ -212,7 +215,7 @@ func Serve(grpcAddr string, srv *AccountsServer) {
 
 	// Handle events.
 	go func(f chan error) {
-		if err := srv.HandleNodeCreatedEvents(); err != nil {
+		if err := srv.SchedulerNodeCreatedListener(); err != nil {
 			f <- err
 		}
 	}(f)

@@ -1,0 +1,35 @@
+package event_listeners
+
+import (
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
+	"github.com/pkg/errors"
+
+	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/shared/utils"
+)
+
+// TaskCreatedAMQPEventListener sends the created Task to the corresponding channels.
+var TaskCreatedAMQPEventListener = &AMQPEventListener{
+	ExchangeName: utils.SchedulerAMQPExchangeName,
+	QueueName:    "",
+	RoutingKey:   "scheduler.task.created",
+	Handler: func(s *server.SchedulerServer, eventProto *events_proto.Event) error {
+		eventPayload, err := utils.NewModelProtoFromEvent(eventProto)
+		if err != nil {
+			return errors.Wrap(err, "utils.NewModelProtoFromEvent failed")
+		}
+		taskProto, ok := eventPayload.(*scheduler_proto.Task)
+		if !ok {
+			return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Task")
+		}
+		if ch, ok := s.NewTasksByNodeID[taskProto.NodeId]; ok {
+			ch <- taskProto
+		}
+		if ch, ok := s.NewTasksByJobID[taskProto.JobId]; ok {
+			ch <- taskProto
+		}
+
+		return nil
+	},
+}

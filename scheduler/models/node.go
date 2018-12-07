@@ -9,13 +9,14 @@ import (
 	"github.com/lib/pq"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/events_proto"
+
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -272,7 +273,7 @@ func (n *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -293,7 +294,7 @@ func (n *Node) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -345,39 +346,37 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 	return n.Updates(db, nodeUpdates)
 }
 
-// FindSuitableJobs finds unscheduled Jobs that can be run on the Node.
-// It finds ALL the Jobs in DB regardless if they can all fit on the Node. `SelectJobs` function should be used to
-// select only those Jobs that fit into the Node's available resources.
-// Selected Job rows are locked FOR UPDATE.
-func (n *Node) FindSuitableJobs(db *gorm.DB) ([]Job, error) {
-	var jobs []Job
-	q := db.Set("gorm:query_option", "FOR UPDATE").
-		Where("status = ?", Enum(scheduler_proto.Job_STATUS_PENDING))
-
-	q = n.whereJobCpuClass(q)
-	q = n.whereJobCpuLimit(q)
-	q = n.whereJobCpuLabels(q)
-
-	q = n.whereJobGpuClass(q)
-	q = n.whereJobGpuLimit(q)
-	q = n.whereJobGpuLabels(q)
-
-	q = n.whereJobDiskClass(q)
-	q = n.whereJobDiskLimit(q)
-	q = n.whereJobDiskLabels(q)
-
-	q = n.whereJobMemoryLimit(q)
-	q = n.whereJobMemoryLabels(q)
-
-	q = n.whereJobUsernameLabels(q)
-	q = n.whereJobNameLabels(q)
-	q = n.whereJobOtherLabels(q)
-
-	q = q.Limit(JobsScheduledForNodeQueryLimit)
-
-	if err := utils.HandleDBError(q.Find(&jobs)); err != nil {
-		return nil, errors.Wrap(err, "failed to FindSuitableJobs for the Node")
+// SchedulePendingJobs finds suitable Jobs that can be scheduled on the given Node and selects the best combination of
+// these Jobs so that they all fit into the Node.
+// Each Job is then scheduled to the receiver Node.
+// Node resources are updated, Tasks are created, Job statuses are updated to SCHEDULED.
+func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
+	var jobs Jobs
+	if err := jobs.FindPendingForNode(db, n); err != nil {
+		return nil, errors.Wrap(err, "no suitable Jobs could be found for the recently connected Node")
 	}
 
-	return jobs, nil
+	res := AvailableResources{
+		CpuAvailable:    n.CpuAvailable,
+		MemoryAvailable: n.MemoryAvailable,
+		GpuAvailable:    n.GpuAvailable,
+		DiskAvailable:   n.DiskAvailable,
+	}
+	// selectedJobs is a bitarray.BitArray of the selected for scheduling Jobs.
+	selectedJobs := SelectJobs(jobs, res)
+	allEvents := make([]*events_proto.Event, 0)
+	for i, job := range jobs {
+		if !selectedJobs.GetBit(uint64(i)) {
+			// This Job has not been selected for scheduling: disregard it.
+			continue
+		}
+		_, schedulerEvents, err := job.ScheduleForNode(db, n)
+		if err != nil {
+			logrus.WithField("job", job).WithField("node", n).
+				Infof("unable to schedule Job for Node: %s", err.Error())
+			return nil, errors.Wrap(err, "job.ScheduleForNode failed")
+		}
+		allEvents = append(allEvents, schedulerEvents...)
+	}
+	return allEvents, nil
 }

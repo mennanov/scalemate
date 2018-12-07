@@ -71,17 +71,54 @@ func (c contextKey) String() string {
 // ContextKeyClaims is a string key to be used to store and retrieve claims from the context.
 var ContextKeyClaims = contextKey("claims")
 
-// ParseJWTFromContext parses the JWT from the context. Returns a new context populated with claims from the JWT.
-func ParseJWTFromContext(ctx context.Context, jwtSecretKey []byte) (context.Context, error) {
+// ClaimsInjector is an interface that is used to inject parsed and verified claims to the context.
+type ClaimsInjector interface {
+	// Inject should extract claims from the context, verify them and return a new context with the verified claims set.
+	InjectClaims(context.Context) (context.Context, error)
+}
+
+// JWTClaimsInjector implements ClaimsInjector interface for JWT.
+type JWTClaimsInjector struct {
+	jwtSecretKey []byte
+}
+
+// NewJWTClaimsInjector creates a new instance of JWTClaimsInjector for the provided secret key.
+func NewJWTClaimsInjector(jwtSecretKey []byte) *JWTClaimsInjector {
+	return &JWTClaimsInjector{jwtSecretKey: jwtSecretKey}
+}
+
+// Inject parses the JWT from the context. Returns a new context populated with the verified claims from the JWT.
+func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
 	token, err := grpc_auth.AuthFromMD(ctx, "bearer")
 	if err != nil {
 		return nil, err
 	}
 
-	claims, err := NewClaimsFromStringVerified(token, jwtSecretKey)
+	claims, err := NewClaimsFromStringVerified(token, i.jwtSecretKey)
 	if err != nil {
 		return nil, status.Errorf(codes.Unauthenticated, "invalid auth token: %v", err)
 	}
 
 	return context.WithValue(ctx, ContextKeyClaims, claims), nil
 }
+
+// Compile time interface check.
+var _ ClaimsInjector = new(JWTClaimsInjector)
+
+// FakeClaimsInjector injects already provided claims.
+type FakeClaimsInjector struct {
+	claims *Claims
+}
+
+// NewFakeClaimsContextInjector creates a new instance of NewFakeClaimsContextInjector.
+func NewFakeClaimsContextInjector(claims *Claims) *FakeClaimsInjector {
+	return &FakeClaimsInjector{claims: claims}
+}
+
+// InjectClaims injects the provided claims to the given context.
+func (f *FakeClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
+	return context.WithValue(ctx, ContextKeyClaims, f.claims), nil
+}
+
+// Compile time interface check.
+var _ ClaimsInjector = new(FakeClaimsInjector)

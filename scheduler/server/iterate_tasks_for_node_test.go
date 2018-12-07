@@ -17,11 +17,7 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {
-	ctrl := gomock.NewController(s.T())
-	accountsClient := NewMockAccountsClient(ctrl)
-	defer ctrl.Finish()
-
+func (s *ServerTestSuite) TestIterateTasksForNode_BeforeJobCreated() {
 	consumer, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
 	s.Require().NoError(err)
 
@@ -50,11 +46,7 @@ func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {
 
 	ctx := context.Background()
 
-	accessToken := s.createToken(node.Username, node.Name, accounts_proto.User_USER, "access", time.Minute)
-	jwtCredentials := auth.NewJWTCredentials(
-		accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-	client, err := s.client.ReceiveTasks(ctx, &empty.Empty{}, grpc.PerRPCCredentials(jwtCredentials))
+	client, err := s.client.ReceiveTasksForNode(ctx, &empty.Empty{})
 	s.Require().NoError(err)
 
 	var taskFromNode *scheduler_proto.Task
@@ -76,10 +68,6 @@ func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
 	}
-	jobAccessToken := s.createToken(jobRequest.Username, "", accounts_proto.User_USER, "access", time.Minute)
-
-	jobJWTCredentials := auth.NewJWTCredentials(
-		accountsClient, &accounts_proto.AuthTokens{AccessToken: jobAccessToken}, tokensFakeSaver)
 
 	var taskFromJob *scheduler_proto.Task
 	// Wait for the Node to be marked as ONLINE.
@@ -89,7 +77,7 @@ func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {
 		}
 	}
 	// RunJob blocks until the Job is scheduled. It should happen immediately as there is a Node to schedule it for.
-	taskFromJob, err = s.client.RunJob(ctx, jobRequest, grpc.PerRPCCredentials(jobJWTCredentials))
+	taskFromJob, err = s.client.RunJob(ctx, jobRequest)
 	s.Require().NoError(err)
 
 	<-taskFromNodeReceived
@@ -97,7 +85,7 @@ func (s *ServerTestSuite) TestReceiveTasks_BeforeJobCreated() {
 	s.Equal(taskFromJob.Id, taskFromNode.Id)
 }
 
-func (s *ServerTestSuite) TestReceiveTasks_AfterJobCreated() {
+func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 	ctrl := gomock.NewController(s.T())
 	accountsClient := NewMockAccountsClient(ctrl)
 	defer ctrl.Finish()
@@ -180,7 +168,7 @@ func (s *ServerTestSuite) TestReceiveTasks_AfterJobCreated() {
 	jwtCredentials := auth.NewJWTCredentials(
 		accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
 
-	client, err := s.client.ReceiveTasks(ctx, &empty.Empty{}, grpc.PerRPCCredentials(jwtCredentials))
+	client, err := s.client.ReceiveTasksForNode(ctx, &empty.Empty{}, grpc.PerRPCCredentials(jwtCredentials))
 	s.Require().NoError(err)
 
 	sg.Add(2)

@@ -15,14 +15,14 @@ import (
 	"github.com/lib/pq"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/events_proto"
+
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -283,7 +283,7 @@ func (j *Job) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +313,7 @@ func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*eve
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -442,6 +442,19 @@ func (j *Job) LoadTasksFromDB(db *gorm.DB, fields ...string) error {
 	return nil
 }
 
+// HasTerminated returns true if Job is in the final status (terminated) and never going to be scheduled again.
+func (j *Job) HasTerminated() bool {
+	return j.Status == Enum(scheduler_proto.Job_STATUS_FINISHED) || j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
+}
+
+// NeedsReschedulingOnTaskFailure returns true if the Job should be rescheduled according to the RestartPolicy.
+func (j *Job) NeedsReschedulingOnTaskFailure(task *Task) bool {
+	return j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE) &&
+		task.Status == Enum(scheduler_proto.Task_STATUS_FAILED) ||
+		j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE) &&
+			task.Status == Enum(scheduler_proto.Task_STATUS_NODE_FAILED)
+}
+
 // mapKeys returns a slice of map string keys.
 func mapKeys(m map[string]interface{}) []string {
 	keys := make([]string, len(m))
@@ -512,6 +525,41 @@ func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (u
 	return count, nil
 }
 
+// FindPendingForNode finds unscheduled Jobs that can be run on the Node.
+// It finds ALL the Jobs in DB regardless if they can all fit on the Node. `SelectJobs` function should be used to
+// select only those Jobs that fit into the Node's available resources.
+// Selected Job rows are locked FOR UPDATE.
+func (jobs *Jobs) FindPendingForNode(db *gorm.DB, node *Node) error {
+	q := db.Set("gorm:query_option", "FOR UPDATE").
+		Where("status = ?", Enum(scheduler_proto.Job_STATUS_PENDING))
+
+	q = node.whereJobCpuClass(q)
+	q = node.whereJobCpuLimit(q)
+	q = node.whereJobCpuLabels(q)
+
+	q = node.whereJobGpuClass(q)
+	q = node.whereJobGpuLimit(q)
+	q = node.whereJobGpuLabels(q)
+
+	q = node.whereJobDiskClass(q)
+	q = node.whereJobDiskLimit(q)
+	q = node.whereJobDiskLabels(q)
+
+	q = node.whereJobMemoryLimit(q)
+	q = node.whereJobMemoryLabels(q)
+
+	q = node.whereJobUsernameLabels(q)
+	q = node.whereJobNameLabels(q)
+	q = node.whereJobOtherLabels(q)
+
+	q = q.Limit(JobsScheduledForNodeQueryLimit)
+
+	if err := utils.HandleDBError(q.Find(jobs)); err != nil {
+		return errors.Wrap(err, "failed to FindPendingForNode for the Node")
+	}
+	return nil
+}
+
 // UpdateStatusForNodeFailedTasks performs a bulk update on Jobs status field for the given Job IDs whose corresponding
 // Tasks have failed due to a Node failure (abrupt disconnect).
 // The status is set to PENDING if the Job needs rescheduling on a Node failure or to FINISHED otherwise.
@@ -549,7 +597,7 @@ func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) (
 		if err != nil {
 			return nil, errors.Wrap(err, "job.ToProto failed")
 		}
-		event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewEventFromPayload failed")

@@ -8,14 +8,13 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events/events_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -40,7 +39,7 @@ func (t *Task) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +186,7 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -312,7 +311,7 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 		if err != nil {
 			return nil, errors.Wrap(err, "task.ToProto failed")
 		}
-		event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewEventFromPayload failed")

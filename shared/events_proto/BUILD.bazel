@@ -16,7 +16,7 @@ proto_library(
 go_proto_library(
     name = "events_go_proto",
     compilers = ["@io_bazel_rules_go//proto:go_grpc"],
-    importpath = "github.com/mennanov/scalemate/shared/events/events_proto",
+    importpath = "github.com/mennanov/scalemate/shared/events_proto",
     proto = ":events_proto_proto",
     visibility = ["//visibility:public"],
     deps = [
@@ -28,6 +28,6 @@ go_proto_library(
 go_library(
     name = "go_default_library",
     embed = [":events_go_proto"],
-    importpath = "github.com/mennanov/scalemate/shared/events/events_proto",
+    importpath = "github.com/mennanov/scalemate/shared/events_proto",
     visibility = ["//visibility:public"],
 )
