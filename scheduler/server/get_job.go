@@ -6,6 +6,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -29,6 +30,11 @@ func (s SchedulerServer) GetJob(ctx context.Context, r *scheduler_proto.GetJobRe
 	}
 
 	if job.Username != claims.Username && claims.Role != accounts_proto.User_ADMIN {
+		logger.WithFields(logrus.Fields{
+			"job":     job,
+			"request": r,
+			"claims":  claims,
+		}).Warn("permission denied in GetJob")
 		return nil, status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
 	}
 

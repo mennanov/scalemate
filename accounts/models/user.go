@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -202,7 +203,7 @@ func (user *User) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +235,7 @@ func (user *User) Delete(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.NewEventFromPayload(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new accounts_user.delete event")
 	}
@@ -268,7 +269,7 @@ func (user *User) Update(db *gorm.DB, payload *accounts_proto.User, fieldMask *f
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
+	event, err := events.NewEventFromPayload(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new account_users.updated event")
 	}
@@ -294,7 +295,7 @@ func (user *User) ChangePassword(db *gorm.DB, password string, bcryptCost int) (
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(
+	event, err := events.NewEventFromPayload(
 		userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new account_users.updated.password event")

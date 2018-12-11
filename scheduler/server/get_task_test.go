@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"google.golang.org/grpc/codes"
@@ -14,9 +13,6 @@ import (
 )
 
 func (s *ServerTestSuite) TestGetTask() {
-	ctrl := gomock.NewController(s.T())
-	defer ctrl.Finish()
-
 	job := &models.Job{
 		Username: "username",
 	}
@@ -62,7 +58,7 @@ func (s *ServerTestSuite) TestGetTask() {
 	})
 
 	s.T().Run("fails for other non-admin", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job.Username})
+		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: "unknown"})
 
 		response, err := s.client.GetTask(ctx, req)
 		s.assertGRPCError(err, codes.PermissionDenied)

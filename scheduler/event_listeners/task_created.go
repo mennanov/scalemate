@@ -6,18 +6,18 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // TaskCreatedAMQPEventListener sends the created Task to the corresponding channels.
 var TaskCreatedAMQPEventListener = &AMQPEventListener{
-	ExchangeName: utils.SchedulerAMQPExchangeName,
+	ExchangeName: events.SchedulerAMQPExchangeName,
 	QueueName:    "",
 	RoutingKey:   "scheduler.task.created",
 	Handler: func(s *server.SchedulerServer, eventProto *events_proto.Event) error {
-		eventPayload, err := utils.NewModelProtoFromEvent(eventProto)
+		eventPayload, err := events.NewModelProtoFromEvent(eventProto)
 		if err != nil {
-			return errors.Wrap(err, "utils.NewModelProtoFromEvent failed")
+			return errors.Wrap(err, "events.NewModelProtoFromEvent failed")
 		}
 		taskProto, ok := eventPayload.(*scheduler_proto.Task)
 		if !ok {

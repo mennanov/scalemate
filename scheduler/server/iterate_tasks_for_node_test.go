@@ -2,27 +2,19 @@ package server_test
 
 import (
 	"context"
-	"strings"
-	"sync"
-	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"google.golang.org/grpc"
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s *ServerTestSuite) TestIterateTasksForNode_BeforeJobCreated() {
-	consumer, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.SchedulerAMQPExchangeName)
-	s.Require().NoError(err)
-
+func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected() {
 	node := &models.Node{
-		Username:        "node_owner",
+		Username:        "test_username",
 		Name:            "node_name",
 		Status:          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		CpuCapacity:     4,
@@ -41,24 +33,34 @@ func (s *ServerTestSuite) TestIterateTasksForNode_BeforeJobCreated() {
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 
-	_, err = node.Create(s.service.DB)
+	_, err := node.Create(s.service.DB)
 	s.Require().NoError(err)
 
+	consumer, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
+	s.Require().NoError(err)
+
+	// Claims should contain a Node name.
+	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+		Username: node.Username,
+		NodeName: node.Name,
+	})
 	ctx := context.Background()
-
-	client, err := s.client.ReceiveTasksForNode(ctx, &empty.Empty{})
+	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{})
 	s.Require().NoError(err)
 
-	var taskFromNode *scheduler_proto.Task
-	taskFromNodeReceived := make(chan struct{})
+	var taskForNode *scheduler_proto.Task
+	taskReceivedByNode := make(chan struct{})
 	go func(c chan struct{}) {
-		taskFromNode, err = client.Recv()
+		taskForNode, err = client.Recv()
 		s.Require().NoError(err)
 		c <- struct{}{}
-	}(taskFromNodeReceived)
+	}(taskReceivedByNode)
+
+	// Wait for the Node to be marked ONLINE.
+	utils.WaitForMessages(consumer, `scheduler.node.updated`)
 
 	jobRequest := &scheduler_proto.Job{
-		Username:    "job_username",
+		Username:    "test_username",
 		DockerImage: "postgres:11",
 		CpuLimit:    1,
 		CpuClass:    scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
@@ -68,31 +70,18 @@ func (s *ServerTestSuite) TestIterateTasksForNode_BeforeJobCreated() {
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
 	}
-
-	var taskFromJob *scheduler_proto.Task
-	// Wait for the Node to be marked as ONLINE.
-	for msg := range consumer {
-		if strings.Contains(msg.RoutingKey, "scheduler.node.updated") {
-			break
-		}
-	}
-	// RunJob blocks until the Job is scheduled. It should happen immediately as there is a Node to schedule it for.
-	taskFromJob, err = s.client.RunJob(ctx, jobRequest)
+	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
-
-	<-taskFromNodeReceived
-	// By that time both client and node are expected to receive the same Task.
-	s.Equal(taskFromJob.Id, taskFromNode.Id)
+	utils.WaitForMessages(consumer, "scheduler.job.created", "scheduler.task.created")
+	<-taskReceivedByNode
+	// Verify that the Task the Node has received is for the requested Job.
+	s.Equal(jobProto.Id, taskForNode.JobId)
 }
 
 func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
-	ctrl := gomock.NewController(s.T())
-	accountsClient := NewMockAccountsClient(ctrl)
-	defer ctrl.Finish()
-
 	// Create an online Node suitable for the Job, but with exhausted resources.
 	nodeExhausted := &models.Node{
-		Username:        "node_owner",
+		Username:        "test_username",
 		Name:            "node_name1",
 		Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		CpuCapacity:     4,
@@ -113,8 +102,9 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 	_, err := nodeExhausted.Create(s.service.DB)
 	s.Require().NoError(err)
 
+	// Node that will connect afterwards.
 	node := &models.Node{
-		Username:        "node_owner",
+		Username:        "test_username",
 		Name:            "node_name2",
 		Status:          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		CpuCapacity:     4,
@@ -132,7 +122,6 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
-
 	_, err = node.Create(s.service.DB)
 	s.Require().NoError(err)
 
@@ -140,7 +129,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 
 	// Create a Job before the Node is connected.
 	jobRequest := &scheduler_proto.Job{
-		Username:    "job_username",
+		Username:    "test_username",
 		DockerImage: "postgres:11",
 		CpuLimit:    1,
 		CpuClass:    scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
@@ -150,35 +139,23 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
 	}
-	jobAccessToken := s.createToken(jobRequest.Username, "", accounts_proto.User_USER, "access", time.Minute)
-
-	jobJWTCredentials := auth.NewJWTCredentials(
-		accountsClient, &accounts_proto.AuthTokens{AccessToken: jobAccessToken}, tokensFakeSaver)
-
-	sg := &sync.WaitGroup{}
-	var taskFromJob *scheduler_proto.Task
-	go func(w *sync.WaitGroup) {
-		// RunJob will block until the Job is scheduled, so it needs to be run in a background.
-		taskFromJob, err = s.client.RunJob(ctx, jobRequest, grpc.PerRPCCredentials(jobJWTCredentials))
-		s.Require().NoError(err)
-		w.Done()
-	}(sg)
-
-	accessToken := s.createToken(node.Username, node.Name, accounts_proto.User_USER, "access", time.Minute)
-	jwtCredentials := auth.NewJWTCredentials(
-		accountsClient, &accounts_proto.AuthTokens{AccessToken: accessToken}, tokensFakeSaver)
-
-	client, err := s.client.ReceiveTasksForNode(ctx, &empty.Empty{}, grpc.PerRPCCredentials(jwtCredentials))
+	consumer, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
 	s.Require().NoError(err)
 
-	sg.Add(2)
-	var taskFromNode *scheduler_proto.Task
-	go func(w *sync.WaitGroup) {
-		taskFromNode, err = client.Recv()
-		s.Require().NoError(err)
-		w.Done()
-	}(sg)
+	jobProto, err := s.client.CreateJob(ctx, jobRequest)
+	s.Require().NoError(err)
 
-	sg.Wait()
-	s.Equal(taskFromJob.Id, taskFromNode.Id)
+	utils.WaitForMessages(consumer, "scheduler.job.created")
+
+	// Claims should contain a Node name.
+	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+		Username: node.Username,
+		NodeName: node.Name,
+	})
+	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{}, )
+	s.Require().NoError(err)
+
+	taskForNode, err := client.Recv()
+	s.Require().NoError(err)
+	s.Equal(jobProto.Id, taskForNode.JobId)
 }

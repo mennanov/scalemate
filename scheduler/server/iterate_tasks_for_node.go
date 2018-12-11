@@ -11,12 +11,14 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
+// IterateTasksForNode marks the Node as ONLINE and starts sending new Tasks for it to run.
+// Once the RPC is done the Node is marked as OFFLINE.
 func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_proto.Scheduler_IterateTasksForNodeServer) error {
 	ctx := stream.Context()
 	logger := ctxlogrus.Extract(ctx)
-
 	// Authorize this request first.
 	ctxClaims := ctx.Value(auth.ContextKeyClaims)
 	if ctxClaims == nil {
@@ -27,7 +29,6 @@ func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_pr
 	if !ok {
 		return status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
-
 	if claims.NodeName == "" {
 		return status.Error(
 			codes.PermissionDenied, "node name is missing in JWT. Authenticate as a Node, not as a client")
@@ -39,21 +40,32 @@ func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_pr
 		logger.WithFields(logrus.Fields{
 			"nodeUsername": claims.Username,
 			"nodeName":     claims.NodeName,
-		}).Warning("Could not find a Node in DB in ReceiveTasks method. Possible data inconsistency!")
+		}).Warning("Could not find a Node in DB in IterateTasksForNode method. Possible data inconsistency!")
 		return status.Errorf(codes.NotFound, "node with name '%s' ")
 	}
 
 	if node.Status == models.Enum(scheduler_proto.Node_STATUS_ONLINE) {
-		return status.Error(codes.FailedPrecondition, "this Node is already receiving Tasks")
+		return status.Error(codes.FailedPrecondition, "this Node is already online (receiving Tasks)")
 	}
 
-	if err := s.ConnectNode(node); err != nil {
+	tx := s.DB.Begin()
+	connectEvent, err := s.ConnectNode(tx, node)
+	if err != nil {
 		return errors.Wrap(err, "failed to ConnectNode")
 	}
+	if err := events.CommitAndPublish(tx, s.Publisher, connectEvent); err != nil {
+		return errors.Wrap(err, "events.CommitAndPublish failed")
+	}
+
 	// Set the Node's status as offline when this RPC exits.
 	defer func() {
-		if err := s.DisconnectNode(node); err != nil {
+		tx := s.DB.Begin()
+		disconnectEvent, err := s.DisconnectNode(tx, node)
+		if err != nil {
 			logger.WithError(err).Error("failed to DisconnectNode")
+		}
+		if err := events.CommitAndPublish(tx, s.Publisher, disconnectEvent); err != nil {
+			logger.WithError(err).Error("events.CommitAndPublish failed")
 		}
 	}()
 

@@ -1,4 +1,4 @@
-package utils_test
+package events_test
 
 import (
 	"testing"
@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -17,23 +18,27 @@ var AMQPEnvConf = utils.AMQPEnvConf{
 	Addr: "SHARED_AMQP_ADDR",
 }
 
+func init() {
+	utils.SetLogrusLevelFromEnv()
+}
+
 func TestAMQPPublisher_SendAsync(t *testing.T) {
 	exchangeName := "publisher_send_test"
 	conn, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer utils.Close(conn)
 
 	ch, err := conn.Channel()
 	require.NoError(t, err)
-	defer ch.Close()
+	defer utils.Close(ch)
 
-	err = utils.AMQPExchangeDeclare(ch, exchangeName)
+	err = events.AMQPExchangeDeclare(ch, exchangeName)
 	require.NoError(t, err)
 
-	messages, err := utils.SetUpAMQPTestConsumer(conn, exchangeName)
+	messages, err := events.NewAMQPRawConsumer(ch, exchangeName, "", "#")
 	require.NoError(t, err)
 
-	publisher, err := utils.NewAMQPPublisher(conn, exchangeName)
+	publisher, err := events.NewAMQPProducer(conn, exchangeName)
 	require.NoError(t, err)
 
 	event := &events_proto.Event{
@@ -47,28 +52,28 @@ func TestAMQPPublisher_SendAsync(t *testing.T) {
 
 	err = publisher.SendAsync(event)
 	require.NoError(t, err)
-	routingKey, err := utils.RoutingKeyFromEvent(event)
+	routingKey, err := events.RoutingKeyFromEvent(event)
 	require.NoError(t, err)
 	utils.WaitForMessages(messages, routingKey)
 }
 
 func TestAMQPPublisher_Send(t *testing.T) {
 	exchangeName := "publisher_send_test_with_confirmation"
-	conn, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
+	amqpConnection, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
 	require.NoError(t, err)
-	defer conn.Close()
+	defer utils.Close(amqpConnection)
 
-	ch, err := conn.Channel()
+	amqpChannel, err := amqpConnection.Channel()
 	require.NoError(t, err)
-	defer ch.Close()
+	defer utils.Close(amqpChannel)
 
-	err = utils.AMQPExchangeDeclare(ch, exchangeName)
-	require.NoError(t, err)
-
-	messages, err := utils.SetUpAMQPTestConsumer(conn, exchangeName)
+	err = events.AMQPExchangeDeclare(amqpChannel, exchangeName)
 	require.NoError(t, err)
 
-	publisher, err := utils.NewAMQPPublisher(conn, exchangeName)
+	messages, err := events.NewAMQPRawConsumer(amqpChannel, exchangeName, "", "#")
+	require.NoError(t, err)
+
+	publisher, err := events.NewAMQPProducer(amqpConnection, exchangeName)
 	require.NoError(t, err)
 
 	eventsToSend := []*events_proto.Event{
@@ -95,7 +100,7 @@ func TestAMQPPublisher_Send(t *testing.T) {
 	require.NoError(t, err)
 	expectedRoutingKeys := make([]string, 2)
 	for i, event := range eventsToSend {
-		rk, err := utils.RoutingKeyFromEvent(event)
+		rk, err := events.RoutingKeyFromEvent(event)
 		assert.NoError(t, err)
 		expectedRoutingKeys[i] = rk
 	}

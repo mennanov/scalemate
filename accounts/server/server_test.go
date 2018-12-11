@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/streadway/amqp"
+
 	"github.com/mennanov/scalemate/accounts/migrations"
 	"github.com/mennanov/scalemate/shared/utils"
 
@@ -38,15 +40,21 @@ func init() {
 
 type ServerTestSuite struct {
 	suite.Suite
-	service *server.AccountsServer
-	client  accounts_proto.AccountsClient
+	service        *server.AccountsServer
+	client         accounts_proto.AccountsClient
+	amqpChannel    *amqp.Channel
+	amqpConnection *amqp.Connection
 }
 
 func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 	var err error
-	s.service, err = server.NewAccountServerFromEnv(server.AccountsEnvConf)
+	s.service, err = server.NewAccountServerFromEnv(server.AccountsEnvConf, server.DBEnvConf, server.AMQPEnvConf)
+	s.Require().NoError(err)
+
+	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
+	s.Require().NoError(err)
 
 	// Prepare database.
 	s.Require().NoError(migrations.RunMigrations(s.service.DB))
@@ -70,17 +78,23 @@ func (s *ServerTestSuite) SetupSuite() {
 }
 
 func (s *ServerTestSuite) SetupTest() {
+	var err error
+	s.amqpChannel, err = s.amqpConnection.Channel()
+	s.Require().NoError(err)
+
 	cleaner.Acquire("users")
 	cleaner.Acquire("nodes")
 }
 
 func (s *ServerTestSuite) TearDownTest() {
+	s.Require().NoError(s.amqpChannel.Close())
+
 	cleaner.Clean("users")
 	cleaner.Clean("nodes")
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
-	migrations.RollbackAllMigrations(s.service.DB)
+	s.NoError(migrations.RollbackAllMigrations(s.service.DB))
 }
 
 func TestRunServerSuite(t *testing.T) {
@@ -135,13 +149,13 @@ func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
 		Role:     accounts_proto.User_USER,
 		Banned:   false,
 	}
-	user.SetPasswordHash(password, s.service.BcryptCost)
+	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
 	s.service.DB.Create(user)
 	return user
 }
 
 func (s *ServerTestSuite) createTestUser(user *models.User, password string) *models.User {
-	user.SetPasswordHash(password, s.service.BcryptCost)
+	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
 	s.service.DB.Create(user)
 	return user
 }

@@ -14,7 +14,7 @@ import (
 
 func (s *ServerTestSuite) TestGetJob() {
 	job := &models.Job{
-		Username: "username",
+		Username: "test_username",
 	}
 	_, err := job.Create(s.service.DB)
 	s.Require().NoError(err)

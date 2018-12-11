@@ -1,8 +1,10 @@
 package server
 
 import (
+	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -13,6 +15,7 @@ import (
 // IterateTasks sends a stream of Tasks for a given Job.
 func (s SchedulerServer) IterateTasks(req *scheduler_proto.IterateTasksRequest, stream scheduler_proto.Scheduler_IterateTasksServer) error {
 	ctx := stream.Context()
+	logger := ctxlogrus.Extract(ctx)
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {
 		return status.Error(codes.Unauthenticated, "unknown JWT claims type")
@@ -24,6 +27,11 @@ func (s SchedulerServer) IterateTasks(req *scheduler_proto.IterateTasksRequest, 
 	}
 
 	if job.Username != claims.Username {
+		logger.WithFields(logrus.Fields{
+			"job":     job,
+			"request": req,
+			"claims":  claims,
+		}).Warn("permission denied in IterateTasks")
 		return status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
 	}
 

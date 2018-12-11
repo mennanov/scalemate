@@ -8,7 +8,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // Register registers a new user with a "USER" role.
@@ -30,11 +30,7 @@ func (s AccountsServer) Register(ctx context.Context, r *accounts_proto.Register
 		return nil, errors.Wrap(err, "failed to create a new user")
 	}
 
-	publisher, err := utils.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create AMQP publisher instance")
-	}
-	if err := utils.SendAndCommit(tx, publisher, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to publish event")
 	}
 

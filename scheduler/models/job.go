@@ -23,6 +23,7 @@ import (
 
 	"github.com/mennanov/scalemate/shared/events_proto"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -58,8 +59,15 @@ type Job struct {
 	UsernameLabels pq.StringArray `gorm:"type:text[]"`
 	NameLabels     pq.StringArray `gorm:"type:text[]"`
 	OtherLabels    pq.StringArray `gorm:"type:text[]"`
+	Tasks          []*Task
+}
 
-	Tasks []*Task
+func (j *Job) String() string {
+	jobProto, err := j.ToProto(nil)
+	if err != nil {
+		return fmt.Sprintf("broken Job: %s", err.Error())
+	}
+	return jobProto.String()
 }
 
 func (j *Job) whereNodeCpuClass(q *gorm.DB) *gorm.DB {
@@ -283,7 +291,7 @@ func (j *Job) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +310,7 @@ func (j *Job) LoadFromDB(db *gorm.DB, fields ...string) error {
 	return utils.HandleDBError(query.First(j, j.ID))
 }
 
-// MarkJobsAsNodeFailed updates the status field of the Job and returns the corresponding event.
+// UpdateStatus updates the Job's status.
 func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*events_proto.Event, error) {
 	j.Status = Enum(status)
 	if err := utils.HandleDBError(db.Model(j).Update("status", Enum(status))); err != nil {
@@ -313,7 +321,7 @@ func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*eve
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -326,6 +334,7 @@ func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*eve
 // This method should be called before `FindSuitableNode` method as `FindSuitableNode` will return the same error
 // "failed to find a suitable Node..." regardless why the Node could not be found: Node does not exist or it does not
 // have sufficient resources.
+// FIXME: this method is not used.
 func (j *Job) SuitableNodeExists(db *gorm.DB) bool {
 	q := db.Model(&Node{}).Where("status = ?", Enum(scheduler_proto.Node_STATUS_ONLINE))
 	q = j.whereNodeCpuClass(q)
@@ -394,9 +403,9 @@ func (j *Job) FindSuitableNode(db *gorm.DB) (*Node, error) {
 }
 
 // ScheduleForNode allocates resources on the given Node and creates a new Task for it.
-func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) (*Task, []*events_proto.Event, error) {
+func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) ([]*events_proto.Event, error) {
 	if j.ID == 0 {
-		return nil, nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't schedule unsaved Job"))
+		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't schedule unsaved Job"))
 	}
 
 	// A new Task for the Job and the Node.
@@ -407,24 +416,24 @@ func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) (*Task, []*events_proto.E
 	}
 	event, err := task.Create(db)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to create a new Task")
+		return nil, errors.Wrap(err, "failed to create a new Task")
 	}
 	schedulingEvents := []*events_proto.Event{event}
 
 	event, err = node.AllocateJobResources(db, j)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to allocate Node resources")
+		return nil, errors.Wrap(err, "failed to allocate Node resources")
 	}
 	schedulingEvents = append(schedulingEvents, event)
 
 	// Update the Job status to SCHEDULED.
 	event, err = j.UpdateStatus(db, scheduler_proto.Job_STATUS_SCHEDULED)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to update Job status")
+		return nil, errors.Wrap(err, "failed to update Job status")
 	}
 	schedulingEvents = append(schedulingEvents, event)
 
-	return task, schedulingEvents, nil
+	return schedulingEvents, nil
 }
 
 // LoadTasksFromDB loads the corresponding Job from DB to the Task's Job field.
@@ -467,6 +476,7 @@ func mapKeys(m map[string]interface{}) []string {
 	return keys
 }
 
+// Jobs represent a collection of Job instances.
 type Jobs []Job
 
 // List selects Jobs from DB by the given filtering request and populates the receiver.
@@ -597,7 +607,7 @@ func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) (
 		if err != nil {
 			return nil, errors.Wrap(err, "job.ToProto failed")
 		}
-		event, err := utils.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewEventFromPayload failed")

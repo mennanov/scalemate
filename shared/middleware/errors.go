@@ -12,8 +12,8 @@ import (
 )
 
 // wrapperAndCause returns the root error and the immediate wrapper of it.
-// Both can be nil.
-func wrapperAndCause(err error) (error, error) {
+// Both returned errors can be nil.
+func wrapperAndCause(err error) (error, error) { //revive:disable-line:error-return
 	type causer interface {
 		Cause() error
 	}

@@ -14,6 +14,8 @@ import (
 
 	"github.com/mennanov/scalemate/shared/events_proto"
 
+	"github.com/mennanov/scalemate/shared/events"
+
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -23,14 +25,12 @@ import (
 // The data in this DB table is populated by listening to the Scheduler service events when a new Node is created.
 type Node struct {
 	gorm.Model
-	Username string `gorm:"not null;unique_index:idx_node_username_name"`
-	Name     string `gorm:"not null;unique_index:idx_node_username_name"`
-	//revive:disable:var-naming
+	Username    string `gorm:"not null;unique_index:idx_node_username_name"`
+	Name        string `gorm:"not null;unique_index:idx_node_username_name"`
 	CpuModel    string
 	MemoryModel string
 	GpuModel    string
 	DiskModel   string
-	//revive:enable:var-naming
 }
 
 // FromSchedulerProto populates the Node struct with values from `scheduler_proto.Node`.
@@ -96,7 +96,7 @@ func (node *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	return utils.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	return events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 }
 
 // Get gets the Node from DB by a username and a Node name.

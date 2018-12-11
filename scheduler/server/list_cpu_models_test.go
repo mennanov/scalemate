@@ -107,5 +107,3 @@ func (s *ServerTestSuite) TestListCpuModels() {
 	})
 
 }
-
-func stringEye(s string) string { return s }

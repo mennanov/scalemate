@@ -7,11 +7,12 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestRegister() {
-	messages, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.AccountsAMQPExchangeName)
+	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
 	s.Require().NoError(err)
 
 	ctx := context.Background()

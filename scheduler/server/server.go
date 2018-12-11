@@ -19,6 +19,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 	// required by gorm
 	_ "github.com/jinzhu/gorm/dialects/postgres"
@@ -52,8 +53,8 @@ type SchedulerServer struct {
 	DB *gorm.DB
 	// Authentication claims context injector.
 	ClaimsInjector auth.ClaimsInjector
-	// utils.Publisher.
-	Publisher utils.Publisher
+	// utils.Producer.
+	Publisher events.Producer
 	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
 	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
 	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
@@ -132,9 +133,9 @@ func NewSchedulerServerFromEnv(conf AppEnvConf) (*SchedulerServer, *Connections,
 		return nil, nil, errors.Wrap(err, "ConnectAMQPFromEnv failed")
 	}
 
-	publisher, err := utils.NewAMQPPublisher(amqpConnection, utils.SchedulerAMQPExchangeName)
+	publisher, err := events.NewAMQPProducer(amqpConnection, events.SchedulerAMQPExchangeName)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "utils.NewAMQPPublisher failed")
+		return nil, nil, errors.Wrap(err, "events.NewAMQPProducer failed")
 	}
 
 	return &SchedulerServer{
@@ -164,77 +165,39 @@ var (
 // ConnectNode adds the Node ID to the map of connected Nodes and updates the Node's status in DB.
 // This method should be called when the Node connects to receive Tasks.
 // FIXME: this method should be private.
-func (s *SchedulerServer) ConnectNode(node *models.Node) error {
+func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
 	if _, ok := s.NewTasksByNodeID[node.ID]; ok {
-		return ErrNodeAlreadyConnected
+		return nil, ErrNodeAlreadyConnected
 	}
-	tx := s.DB.Begin()
-	event, err := node.Updates(tx, map[string]interface{}{
+	event, err := node.Updates(db, map[string]interface{}{
 		"connected_at": time.Now(),
 		"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
 	})
 	if err != nil {
-		return err
-	}
-	if err := utils.SendAndCommit(tx, s.Publisher, event); err != nil {
-		return err
+		return nil, errors.Wrap(err, "node.Updates failed")
 	}
 	s.NewTasksByNodeID[node.ID] = make(chan *scheduler_proto.Task)
-	return nil
+	return event, nil
 }
 
-// DisconnectNode removes the Node ID from the map of connected Nodes and updates the Node's status in DB.
-// It also updates the status of all the running Jobs and corresponding Tasks to NODE_FAILED.
-// This method should be called when the Node disconnects.
+// DisconnectNode updates the Node status to OFFLINE.
 // FIXME: this method should be private.
-func (s *SchedulerServer) DisconnectNode(node *models.Node) error {
+func (s *SchedulerServer) DisconnectNode(tx *gorm.DB, node *models.Node) (*events_proto.Event, error) {
 	if _, ok := s.NewTasksByNodeID[node.ID]; !ok {
-		return ErrNodeIsNotConnected
+		return nil, ErrNodeIsNotConnected
 	}
-	tx := s.DB.Begin()
-	var disconnectedNodeEvents []*events_proto.Event
 	nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
 		"disconnected_at": time.Now(),
 		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
 	if err != nil {
-		wrappedErr := errors.Wrap(err, "node.Updates failed")
-		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
-			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
-		}
-		return wrappedErr
-	}
-	var tasks models.Tasks
-	tasksEvents, err := tasks.UpdateStatusForDisconnectedNode(tx, node.ID)
-	if err != nil {
-		wrappedErr := errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed")
-		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
-			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
-		}
-		return wrappedErr
-	}
-	jobIDs := make([]uint64, len(tasks))
-	for i, task := range tasks {
-		jobIDs[i] = task.JobID
-	}
-	var jobs models.Jobs
-	jobsEvents, err := jobs.UpdateStatusForNodeFailedTasks(tx, jobIDs)
-	if err != nil {
-		wrappedErr := errors.Wrap(err, "jobs.UpdateStatusForNodeFailedTasks failed")
-		if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
-			return errors.Wrap(wrappedErr, errors.Wrap(txErr, "failed to rollback transaction").Error())
-		}
-		return wrappedErr
-	}
-	disconnectedNodeEvents = append(disconnectedNodeEvents, nodeUpdatedEvent)
-	disconnectedNodeEvents = append(disconnectedNodeEvents, tasksEvents...)
-	disconnectedNodeEvents = append(disconnectedNodeEvents, jobsEvents...)
-	if err := utils.SendAndCommit(tx, s.Publisher, disconnectedNodeEvents...); err != nil {
-		return err
+		return nil, errors.Wrap(err, "node.Updates failed")
 	}
 
+	close(s.NewTasksByNodeID[node.ID])
 	delete(s.NewTasksByNodeID, node.ID)
-	return nil
+
+	return nodeUpdatedEvent, nil
 }
 
 // Serve creates a gRPC server and starts serving on a given address. This function is blocking and runs upon the server

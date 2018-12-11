@@ -8,7 +8,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func (s *EventListenersTestSuite) TestNodeConnectedHandler_SchedulesPendingJobsOnTheNode() {
@@ -63,7 +63,7 @@ func (s *EventListenersTestSuite) TestNodeConnectedHandler_SchedulesPendingJobsO
 	}
 	nodeProto, err := node.ToProto(mask)
 	s.Require().NoError(err)
-	eventProto, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
+	eventProto, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
 	s.Require().NoError(err)
 	// Run the handler.
 	s.Require().NoError(event_listeners.NodeConnectedAMQPEventListener.Handler(s.service, eventProto))

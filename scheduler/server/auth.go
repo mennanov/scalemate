@@ -20,7 +20,7 @@ func (s SchedulerServer) AuthFuncOverride(ctx context.Context, fullMethodName st
 		"/scheduler.scheduler_proto.Scheduler/GetJob",
 		"/scheduler.scheduler_proto.Scheduler/ListJobs",
 		"/scheduler.scheduler_proto.Scheduler/IterateTasks",
-		"/scheduler.scheduler_proto.Scheduler/ReceiveTasksForNode",
+		"/scheduler.scheduler_proto.Scheduler/IterateTasksForNode",
 		"/scheduler.scheduler_proto.Scheduler/ListTasks",
 		"/scheduler.scheduler_proto.Scheduler/GetTask":
 

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // Update updates the user'srv details. Can be executed by admins only.
@@ -29,12 +29,8 @@ func (s AccountsServer) Update(ctx context.Context, r *accounts_proto.UpdateUser
 		return nil, err
 	}
 
-	publisher, err := utils.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create AMQP publisher instance")
-	}
-	if err := utils.SendAndCommit(tx, publisher, event); err != nil {
-		return nil, errors.Wrap(err, "failed to SendAndCommit event")
+	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+		return nil, errors.Wrap(err, "failed to CommitAndPublish event")
 	}
 
 	response, err := user.ToProto(nil)

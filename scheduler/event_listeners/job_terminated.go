@@ -7,18 +7,18 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // JobTerminatedAMQPEventListener closes the corresponding Tasks channel when the Job is terminated.
 var JobTerminatedAMQPEventListener = &AMQPEventListener{
-	ExchangeName: utils.SchedulerAMQPExchangeName,
+	ExchangeName: events.SchedulerAMQPExchangeName,
 	QueueName:    "",
 	RoutingKey:   "scheduler.job.updated.#.status.#",
 	Handler: func(service *server.SchedulerServer, eventProto *events_proto.Event) error {
-		eventPayload, err := utils.NewModelProtoFromEvent(eventProto)
+		eventPayload, err := events.NewModelProtoFromEvent(eventProto)
 		if err != nil {
-			return errors.Wrap(err, "utils.NewModelProtoFromEvent failed")
+			return errors.Wrap(err, "events.NewModelProtoFromEvent failed")
 		}
 		jobProto, ok := eventPayload.(*scheduler_proto.Job)
 		if !ok {

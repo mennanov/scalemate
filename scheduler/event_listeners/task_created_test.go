@@ -3,8 +3,8 @@ package event_listeners_test
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/event_listeners"
+	"github.com/mennanov/scalemate/scheduler/models"
 )
 
 func (s *EventListenersTestSuite) TestTaskCreatedHandler_SendsTaskToAppropriateChannels() {

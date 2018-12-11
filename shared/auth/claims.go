@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Claims defines a JWT Scalemate.io specific claims.
+// Claims defines a JWT Scalemate.io specific Claims.
 type Claims struct {
 	Username string
 	// NodeName is used when authenticating Nodes. For clients it will be empty.
@@ -33,12 +33,12 @@ func NewClaimsFromStringVerified(tokenString string, jwtSecretKey []byte) (*Clai
 	}
 
 	if _, ok := token.Claims.(*Claims); !ok {
-		return nil, status.Error(codes.InvalidArgument, "invalid JWT claims")
+		return nil, status.Error(codes.InvalidArgument, "invalid JWT Claims")
 	}
 	return c, nil
 }
 
-// NewClaimsFromString parses a string token and created new claims, but DOES NOT verify the token.
+// NewClaimsFromString parses a string token and created new Claims, but DOES NOT verify the token.
 // This method does not require a secret, thus should be used on clients to verify if the token has not expired
 // before making an RPC.
 func NewClaimsFromString(tokenString string) (*Claims, error) {
@@ -68,12 +68,12 @@ func (c contextKey) String() string {
 	return "scalemate_" + string(c)
 }
 
-// ContextKeyClaims is a string key to be used to store and retrieve claims from the context.
-var ContextKeyClaims = contextKey("claims")
+// ContextKeyClaims is a string key to be used to store and retrieve Claims from the context.
+var ContextKeyClaims = contextKey("Claims")
 
-// ClaimsInjector is an interface that is used to inject parsed and verified claims to the context.
+// ClaimsInjector is an interface that is used to inject parsed and verified Claims to the context.
 type ClaimsInjector interface {
-	// Inject should extract claims from the context, verify them and return a new context with the verified claims set.
+	// Inject should extract Claims from the context, verify them and return a new context with the verified Claims set.
 	InjectClaims(context.Context) (context.Context, error)
 }
 
@@ -87,7 +87,7 @@ func NewJWTClaimsInjector(jwtSecretKey []byte) *JWTClaimsInjector {
 	return &JWTClaimsInjector{jwtSecretKey: jwtSecretKey}
 }
 
-// Inject parses the JWT from the context. Returns a new context populated with the verified claims from the JWT.
+// InjectClaims parses the JWT from the context. Returns a new context populated with the verified Claims from the JWT.
 func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
 	token, err := grpc_auth.AuthFromMD(ctx, "bearer")
 	if err != nil {
@@ -105,19 +105,19 @@ func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, 
 // Compile time interface check.
 var _ ClaimsInjector = new(JWTClaimsInjector)
 
-// FakeClaimsInjector injects already provided claims.
+// FakeClaimsInjector injects already provided Claims.
 type FakeClaimsInjector struct {
-	claims *Claims
+	Claims *Claims
 }
 
 // NewFakeClaimsContextInjector creates a new instance of NewFakeClaimsContextInjector.
 func NewFakeClaimsContextInjector(claims *Claims) *FakeClaimsInjector {
-	return &FakeClaimsInjector{claims: claims}
+	return &FakeClaimsInjector{Claims: claims}
 }
 
-// InjectClaims injects the provided claims to the given context.
+// InjectClaims injects the provided Claims to the given context.
 func (f *FakeClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
-	return context.WithValue(ctx, ContextKeyClaims, f.claims), nil
+	return context.WithValue(ctx, ContextKeyClaims, f.Claims), nil
 }
 
 // Compile time interface check.

@@ -6,6 +6,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -33,6 +34,11 @@ func (s SchedulerServer) GetTask(ctx context.Context, r *scheduler_proto.GetTask
 	}
 
 	if task.Job.Username != claims.Username && claims.Role != accounts_proto.User_ADMIN {
+		logger.WithFields(logrus.Fields{
+			"task":    task,
+			"request": r,
+			"claims":  claims,
+		}).Warn("permission denied in GetTask")
 		return nil, status.Error(codes.PermissionDenied, "the Task requested is not owned by you")
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -47,7 +48,7 @@ func (s *EventListenersTestSuite) SetupSuite() {
 }
 
 func (s *EventListenersTestSuite) SetupTest() {
-	s.service.Publisher = utils.NewFakePublisher()
+	s.service.Publisher = events.NewFakePublisher()
 
 	for _, tableName := range models.TableNames {
 		cleaner.Acquire(tableName)

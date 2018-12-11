@@ -8,11 +8,12 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestDelete() {
-	messages, err := utils.SetUpAMQPTestConsumer(s.service.AMQPConnection, utils.AccountsAMQPExchangeName)
+	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
 	s.Require().NoError(err)
 
 	user := s.createTestUserQuick("password")

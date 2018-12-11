@@ -10,6 +10,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -120,7 +121,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 	client, err := s.client.IterateTasks(ctx, req)
 	s.Require().NoError(err)
 
-	messages, err := utils.SetUpAMQPTestConsumer(s.amqpConnection, utils.SchedulerAMQPExchangeName)
+	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
 
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
@@ -128,8 +129,6 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 	go func(wg *sync.WaitGroup) {
 		// Give some time to the other go routine to receive existing Tasks.
 		time.Sleep(time.Millisecond * 100)
-		publisher, err := utils.NewAMQPPublisher(s.amqpConnection, utils.SchedulerAMQPExchangeName)
-		s.Require().NoError(err)
 
 		taskNewJob1 := &models.Task{
 			JobID:  job1.ID,
@@ -139,14 +138,14 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 		taskCreatedEvent, err := taskNewJob1.Create(s.service.DB)
 		s.Require().NoError(err)
 
-		s.Require().NoError(publisher.Send(taskCreatedEvent))
+		s.Require().NoError(s.service.Publisher.Send(taskCreatedEvent))
 		// Wait for the message to be received.
 		utils.WaitForMessages(messages, "scheduler.task.created")
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
-		s.Require().NoError(publisher.Send(taskUpdatedEvent))
-		utils.WaitForMessages(messages, "scheduler.job.updated")
+		s.Require().NoError(s.service.Publisher.Send(taskUpdatedEvent))
+		utils.WaitForMessages(messages, "scheduler.task.updated", "scheduler.job.updated")
 		wg.Done()
 	}(wg)
 
@@ -217,7 +216,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 	client, err := s.client.IterateTasks(ctx, req)
 	s.Require().NoError(err)
 
-	messages, err := utils.SetUpAMQPTestConsumer(s.amqpConnection, utils.SchedulerAMQPExchangeName)
+	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
 
 	wg := &sync.WaitGroup{}
 	wg.Add(2)
@@ -225,9 +224,6 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 	var newTaskId uint64
 
 	go func(wg *sync.WaitGroup) {
-		publisher, err := utils.NewAMQPPublisher(s.amqpConnection, utils.SchedulerAMQPExchangeName)
-		s.Require().NoError(err)
-
 		taskNewJob1 := &models.Task{
 			JobID:  job1.ID,
 			NodeID: node.ID,
@@ -237,14 +233,14 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		s.Require().NoError(err)
 		newTaskId = taskNewJob1.ID
 
-		s.Require().NoError(publisher.Send(taskCreatedEvent))
+		s.Require().NoError(s.service.Publisher.Send(taskCreatedEvent))
 		// Wait for the message to be received.
 		utils.WaitForMessages(messages, "scheduler.task.created")
 		// Give the service some time to process this event.
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
-		s.Require().NoError(publisher.Send(taskUpdatedEvent))
+		s.Require().NoError(s.service.Publisher.Send(taskUpdatedEvent))
 		utils.WaitForMessages(messages, "scheduler.job.updated")
 		wg.Done()
 	}(wg)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 const (
@@ -18,13 +18,13 @@ const (
 
 // TaskTerminatedAMQPEventListener updates the status of the corresponding Job and schedules pending Jobs on that Node.
 var TaskTerminatedAMQPEventListener = &AMQPEventListener{
-	ExchangeName: utils.SchedulerAMQPExchangeName,
+	ExchangeName: events.SchedulerAMQPExchangeName,
 	QueueName:    TaskStatusUpdatedEventsQueueName,
 	RoutingKey:   "scheduler.task.updated.#.status.#",
 	Handler: func(s *server.SchedulerServer, eventProto *events_proto.Event) error {
-		eventPayload, err := utils.NewModelProtoFromEvent(eventProto)
+		eventPayload, err := events.NewModelProtoFromEvent(eventProto)
 		if err != nil {
-			return errors.Wrap(err, "utils.NewModelProtoFromEvent failed")
+			return errors.Wrap(err, "events.NewModelProtoFromEvent failed")
 		}
 		taskProto, ok := eventPayload.(*scheduler_proto.Task)
 		if !ok {
@@ -43,9 +43,8 @@ var TaskTerminatedAMQPEventListener = &AMQPEventListener{
 			return errors.Wrap(err, "task.LoadFromDB failed")
 		}
 
-		tx := s.DB.Begin()
 		// Load the corresponding Job to check if it needs to be rescheduled.
-		if err := task.LoadJobFromDB(tx); err != nil {
+		if err := task.LoadJobFromDB(s.DB); err != nil {
 			return errors.Wrap(err, "task.LoadJobFromDB failed")
 		}
 
@@ -55,27 +54,14 @@ var TaskTerminatedAMQPEventListener = &AMQPEventListener{
 			// Make the Job available for scheduling.
 			newJobStatus = scheduler_proto.Job_STATUS_PENDING
 		}
+
+		tx := s.DB.Begin()
 		jobStatusUpdatedEvent, err := task.Job.UpdateStatus(tx, newJobStatus)
 		if err != nil {
 			return errors.Wrap(err, "failed to update Job status")
 		}
-		allEvents := []*events_proto.Event{jobStatusUpdatedEvent}
-		node := &models.Node{}
-		node.ID = task.NodeID
-		// Populate the node struct fields from DB.
-		if err := node.LoadFromDB(tx); err != nil {
-			return errors.Wrap(err, "node.LoadFromDB failed")
-		}
-		// Schedule pending Jobs for an online Node.
-		if node.Status == models.Enum(scheduler_proto.Node_STATUS_ONLINE) {
-			schedulingEvents, err := node.SchedulePendingJobs(tx)
-			if err != nil {
-				return errors.Wrap(err, "failed to schedule pending Jobs for Node")
-			}
-			allEvents = append(allEvents, schedulingEvents...)
-		}
 
-		if err := utils.SendAndCommit(tx, s.Publisher, allEvents...); err != nil {
+		if err := events.CommitAndPublish(tx, s.Publisher, jobStatusUpdatedEvent); err != nil {
 			return errors.Wrap(err, "failed to send and commit events")
 		}
 		return nil

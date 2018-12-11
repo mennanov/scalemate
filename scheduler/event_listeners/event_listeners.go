@@ -11,7 +11,7 @@ import (
 	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/scheduler/server"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 type EventHandler func(service *server.SchedulerServer, eventProto *events_proto.Event) error
@@ -25,8 +25,11 @@ type AMQPEventListener struct {
 
 // RegisteredEventListeners is a list of all event listeners that needed to be run.
 var RegisteredEventListeners = []*AMQPEventListener{
+	JobCreatedAMQPEventListener,
+	JobPendingAMQPEventListener,
 	JobTerminatedAMQPEventListener,
 	NodeConnectedAMQPEventListener,
+	NodeDisconnectedAMQPEventListener,
 	TaskCreatedAMQPEventListener,
 	TaskTerminatedAMQPEventListener,
 }
@@ -41,9 +44,14 @@ type PreparedListener struct {
 func SetUpAMQPEventListeners(listeners []*AMQPEventListener, conn *amqp.Connection) ([]*PreparedListener, error) {
 	preparedListeners := make([]*PreparedListener, len(listeners))
 	for i, listener := range listeners {
-		consumer, err := utils.NewAMQPConsumer(conn, listener.ExchangeName, listener.QueueName, listener.RoutingKey)
+		// FIXME: channel is not closed afterwards. Refactor the code for event listeners as in Accounts service.
+		channel, err := conn.Channel()
 		if err != nil {
-			return nil, errors.Wrapf(err, "utils.NewAMQPConsumer failed for listener #%d", i)
+			return nil, errors.Wrap(err, "conn.Channel failed")
+		}
+		consumer, err := events.NewAMQPRawConsumer(channel, listener.ExchangeName, listener.QueueName, listener.RoutingKey)
+		if err != nil {
+			return nil, errors.Wrapf(err, "events.NewAMQPRawConsumer failed for listener #%d", i)
 		}
 		preparedListeners[i] = &PreparedListener{listener: listener, consumer: consumer}
 	}
@@ -54,17 +62,22 @@ func SetUpAMQPEventListeners(listeners []*AMQPEventListener, conn *amqp.Connecti
 // If the context is cancelled then all the listeners safely stop and signal to the waitGroup.
 func RunEventListeners(ctx context.Context, waitGroup *sync.WaitGroup, preparedListeners []*PreparedListener, s *server.SchedulerServer) {
 	for _, preparedListener := range preparedListeners {
-		waitGroup.Add(1)
 		go runListener(ctx, waitGroup, preparedListener.consumer, preparedListener.listener.Handler, s)
 	}
 }
 
 // runListener receives the messages, parses them and calls the handler. The function exits when ctx is Done.
-func runListener(ctx context.Context, sg *sync.WaitGroup, messages <-chan amqp.Delivery, handler EventHandler, s *server.SchedulerServer, ) {
+func runListener(ctx context.Context, wg *sync.WaitGroup, messages <-chan amqp.Delivery, handler EventHandler, s *server.SchedulerServer) {
+	wg.Add(1)
 	// Receive messages, parse them and call the handler.
 	for {
 		select {
-		case msg := <-messages:
+		case msg, ok := <-messages:
+			if !ok {
+				logrus.Error("messages channel is unexpectedly closed")
+				wg.Done()
+				return
+			}
 			// Process the message in a go routine.
 			go func(msg *amqp.Delivery) {
 				eventProto := &events_proto.Event{}
@@ -73,7 +86,7 @@ func runListener(ctx context.Context, sg *sync.WaitGroup, messages <-chan amqp.D
 					return
 				}
 				if err := handler(s, eventProto); err != nil {
-					logrus.WithError(err).Errorf("failed to handle AMQP message %s", msg)
+					logrus.WithError(err).WithField("event", eventProto).Error("failed to handle AMQP message")
 					// Requeue the message only if it is not redelivered, otherwise it may get into a loop.
 					// TODO: this makes the failed message be retried only once. Figure out how to retry multiple times.
 					if err := msg.Nack(false, !msg.Redelivered); err != nil {
@@ -86,7 +99,7 @@ func runListener(ctx context.Context, sg *sync.WaitGroup, messages <-chan amqp.D
 				}
 			}(&msg)
 		case <-ctx.Done():
-			sg.Done()
+			wg.Done()
 			return
 		}
 	}

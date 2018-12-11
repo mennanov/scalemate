@@ -11,7 +11,6 @@ import (
 
 // ListCpuModels lists aggregated CPU models for the given CPU Class.
 func (s SchedulerServer) ListCpuModels(ctx context.Context, r *scheduler_proto.ListCpuModelsRequest) (*scheduler_proto.ListCpuModelsResponse, error) {
-
 	q := s.DB.Table("nodes").
 		Select("cpu_model, cpu_class, SUM(cpu_capacity) AS cpu_capacity, SUM(cpu_available) AS cpu_available, " +
 			"COUNT(id) AS nodes_count").

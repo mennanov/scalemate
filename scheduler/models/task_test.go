@@ -10,7 +10,7 @@ import (
 	"google.golang.org/genproto/protobuf/field_mask"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
@@ -151,7 +151,7 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	s.Require().NoError(err)
 	s.Require().Len(updateEvents, 1)
 	s.Require().Len(tasks, 1)
-	taskProtoMsg, err := utils.NewModelProtoFromEvent(updateEvents[0])
+	taskProtoMsg, err := events.NewModelProtoFromEvent(updateEvents[0])
 	s.Require().NoError(err)
 	taskProto, ok := taskProtoMsg.(*scheduler_proto.Task)
 	s.Require().True(ok)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // CreateJob creates a new Job.
@@ -33,6 +33,9 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 	if r.Id != 0 {
 		return nil, status.Error(codes.InvalidArgument, "field Id is readonly")
 	}
+	if r.Status != 0 {
+		return nil, status.Error(codes.InvalidArgument, "field Status is readonly")
+	}
 	if r.CreatedAt != nil {
 		return nil, status.Error(codes.InvalidArgument, "field CreatedAt is readonly")
 	}
@@ -52,7 +55,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 	if err != nil {
 		return nil, errors.Wrap(err, "job.Create failed")
 	}
-	if err := utils.SendAndCommit(tx, s.Publisher, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.Publisher, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 	jobProto, err := job.ToProto(nil)

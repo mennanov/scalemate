@@ -14,6 +14,7 @@ go_library(
     deps = [
         "//scheduler/bitarray:go_default_library",
         "//scheduler/scheduler_proto:go_default_library",
+        "//shared/events:go_default_library",
         "//shared/events_proto:go_default_library",
         "//shared/utils:go_default_library",
         "@com_github_golang_protobuf//jsonpb:go_default_library_gen",
@@ -46,6 +47,7 @@ go_test(
         "//scheduler/migrations:go_default_library",
         "//scheduler/scheduler_proto:go_default_library",
         "//scheduler/server:go_default_library",
+        "//shared/events:go_default_library",
         "//shared/utils:go_default_library",
         "@com_github_golang_protobuf//protoc-gen-go/generator:go_default_library",
         "@com_github_jinzhu_gorm//:go_default_library",

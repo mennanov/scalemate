@@ -27,6 +27,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/server"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -38,11 +39,14 @@ func init() {
 	flag.Parse()
 }
 
+func stringEye(s string) string { return s }
+
 type ServerTestSuite struct {
 	suite.Suite
 	service        *server.SchedulerServer
 	client         scheduler_proto.SchedulerClient
 	amqpConnection *amqp.Connection
+	amqpChannel    *amqp.Channel
 }
 
 func (s *ServerTestSuite) SetupSuite() {
@@ -52,30 +56,23 @@ func (s *ServerTestSuite) SetupSuite() {
 	db, err := utils.ConnectDBFromEnv(server.DBEnvConf)
 	s.Require().NoError(err)
 
-	amqpConnection, err := utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
+	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
-	s.amqpConnection = amqpConnection
 
-	publisher, err := utils.NewAMQPPublisher(amqpConnection, utils.SchedulerAMQPExchangeName)
+	publisher, err := events.NewAMQPProducer(s.amqpConnection, events.SchedulerAMQPExchangeName)
 	s.Require().NoError(err)
 
 	s.service = &server.SchedulerServer{
-		DB: db,
-		ClaimsInjector: auth.NewFakeClaimsContextInjector(&auth.Claims{
-			Username:  "test_username",
-			Role:      accounts_proto.User_USER,
-			TokenType: "access",
-		}),
+		DB:               db.LogMode(false),
 		Publisher:        publisher,
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
 		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
 	}
 
 	// Start event listeners.
-	preparedListeners, err := event_listeners.SetUpAMQPEventListeners(event_listeners.RegisteredEventListeners, amqpConnection)
+	preparedListeners, err := event_listeners.SetUpAMQPEventListeners(event_listeners.RegisteredEventListeners, s.amqpConnection)
 	s.Require().NoError(err)
-	wg := &sync.WaitGroup{}
-	event_listeners.RunEventListeners(context.Background(), wg, preparedListeners, s.service)
+	event_listeners.RunEventListeners(context.Background(), &sync.WaitGroup{}, preparedListeners, s.service)
 
 	// Prepare database.
 	s.Require().NoError(migrations.RunMigrations(s.service.DB))
@@ -96,12 +93,24 @@ func (s *ServerTestSuite) SetupSuite() {
 }
 
 func (s *ServerTestSuite) SetupTest() {
+	var err error
+	s.amqpChannel, err = s.amqpConnection.Channel()
+	s.Require().NoError(err)
+
+	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+		Username:  "test_username",
+		Role:      accounts_proto.User_USER,
+		TokenType: "access",
+	})
+
 	for _, tableName := range models.TableNames {
 		cleaner.Acquire(tableName)
 	}
 }
 
 func (s *ServerTestSuite) TearDownTest() {
+	s.Require().NoError(s.amqpChannel.Close())
+
 	for _, tableName := range models.TableNames {
 		cleaner.Clean(tableName)
 	}

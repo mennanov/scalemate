@@ -1,4 +1,4 @@
-package utils_test
+package events_test
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/mennanov/scalemate/shared/events_proto"
 
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func TestRoutingKeyFromEvent(t *testing.T) {
@@ -47,7 +47,7 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 		},
 	}
 	for _, testCase := range testCases {
-		key, err := utils.RoutingKeyFromEvent(testCase.event)
+		key, err := events.RoutingKeyFromEvent(testCase.event)
 		require.NoError(t, err)
 		assert.Equal(t, testCase.expectedKey, key)
 	}
@@ -55,7 +55,7 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 
 func TestNewEvent(t *testing.T) {
 	userProto := &accounts_proto.User{Id: 42}
-	event, err := utils.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	require.NoError(t, err)
 	payload, ok := event.Payload.(*events_proto.Event_AccountsUser)
 	require.True(t, ok)
@@ -70,7 +70,7 @@ func TestNewModelProtoFromEvent(t *testing.T) {
 			},
 		},
 	}
-	m, err := utils.NewModelProtoFromEvent(event)
+	m, err := events.NewModelProtoFromEvent(event)
 	require.NoError(t, err)
 	userMsg, ok := m.(*accounts_proto.User)
 	require.True(t, ok)

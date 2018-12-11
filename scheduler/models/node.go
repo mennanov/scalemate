@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/protoc-gen-go/generator"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/mennanov/scalemate/shared/events_proto"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -60,6 +62,14 @@ type Node struct {
 	ConnectedAt    time.Time
 	DisconnectedAt time.Time
 	ScheduledAt    time.Time
+}
+
+func (n *Node) String() string {
+	nodeProto, err := n.ToProto(nil)
+	if err != nil {
+		return fmt.Sprintf("broken Node: %s", err.Error())
+	}
+	return nodeProto.String()
 }
 
 func (n *Node) whereJobCpuClass(q *gorm.DB) *gorm.DB {
@@ -273,7 +283,7 @@ func (n *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +304,7 @@ func (n *Node) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -348,12 +358,16 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 
 // SchedulePendingJobs finds suitable Jobs that can be scheduled on the given Node and selects the best combination of
 // these Jobs so that they all fit into the Node.
+// If no pending Jobs are found that can fit into the Node, then returned events are empty (nil slice) and error is nil.
 // Each Job is then scheduled to the receiver Node.
 // Node resources are updated, Tasks are created, Job statuses are updated to SCHEDULED.
 func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
 	var jobs Jobs
 	if err := jobs.FindPendingForNode(db, n); err != nil {
-		return nil, errors.Wrap(err, "no suitable Jobs could be found for the recently connected Node")
+		return nil, errors.Wrap(err, "jobs.FindPendingForNode failed")
+	}
+	if len(jobs) == 0 {
+		return nil, nil
 	}
 
 	res := AvailableResources{
@@ -370,7 +384,7 @@ func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
 			// This Job has not been selected for scheduling: disregard it.
 			continue
 		}
-		_, schedulerEvents, err := job.ScheduleForNode(db, n)
+		schedulerEvents, err := job.ScheduleForNode(db, n)
 		if err != nil {
 			logrus.WithField("job", job).WithField("node", n).
 				Infof("unable to schedule Job for Node: %s", err.Error())

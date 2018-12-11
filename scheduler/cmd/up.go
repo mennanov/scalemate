@@ -22,12 +22,12 @@ var upCmd = &cobra.Command{
 	Short: "up runs a gRPC service",
 	Run: func(cmd *cobra.Command, args []string) {
 		schedulerServer, connections, err := server.NewSchedulerServerFromEnv(server.SchedulerEnvConf)
-		defer utils.Close(schedulerServer)
 
 		if err != nil {
 			logrus.WithError(err).Error("failed to create gRPC server from env")
 			return
 		}
+		defer utils.Close(schedulerServer)
 
 		preparedListeners, err := event_listeners.SetUpAMQPEventListeners(event_listeners.RegisteredEventListeners, connections.AMQP)
 		if err != nil {

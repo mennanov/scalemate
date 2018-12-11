@@ -9,6 +9,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
@@ -127,10 +128,12 @@ func (s *ModelsTestSuite) TestJob_ScheduleForNode() {
 	_, err = node.Create(s.db)
 	s.Require().NoError(err)
 
-	task, events, err := job.ScheduleForNode(s.db, node)
+	schedulingEvents, err := job.ScheduleForNode(s.db, node)
 	s.Require().NoError(err)
-	s.Equal(3, len(events))
-	s.Equal(node.ID, task.NodeID)
+	s.Equal(3, len(schedulingEvents))
+	eventPayload, err := events.NewModelProtoFromEvent(schedulingEvents[0])
+	s.Require().NoError(err)
+	s.Equal(node.ID, eventPayload.(*scheduler_proto.Task).NodeId)
 	nodeFromDB := &models.Node{Model: models.Model{ID: node.ID}}
 	s.Require().NoError(nodeFromDB.LoadFromDB(s.db))
 	s.Equal(float32(1), nodeFromDB.CpuAvailable)

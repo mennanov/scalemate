@@ -1,20 +1,32 @@
-package utils
+package events
 
 import (
+	"time"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/shared/events_proto"
+
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 var (
-	// ErrNoEvents is returned by Publisher.SendAsync and Pubisher.Send when events slice is empty.
+	// ErrNoEvents is returned by Producer.SendAsync and Pubisher.Send when events slice is empty.
 	ErrNoEvents = errors.New("no events")
 )
 
-// Publisher represents an event publisher interface.
-type Publisher interface {
+const (
+	// AMQPPublishRetryWait sets the waiting time between the AMQP publish retries.
+	AMQPPublishRetryWait = time.Millisecond * 500
+	// AMQPPublishRetryLimit is the maximum AMQP publish retry limit.
+	AMQPPublishRetryLimit = 10
+)
+
+// Producer represents an event publisher interface.
+type Producer interface {
 	// SendAsync is used to publish multiple events asynchronously.
 	SendAsync(events ...*events_proto.Event) error
 	// Send similar to SendAsync, but blocks until all the messages are confirmed.
@@ -23,39 +35,39 @@ type Publisher interface {
 	Close() error
 }
 
-// FakePublisher is a publisher that is meant to be used in tests.
-type FakePublisher struct {
+// FakeProducer is a publisher that is meant to be used in tests.
+type FakeProducer struct {
 	SentEvents []*events_proto.Event
 }
 
 // Compile time interface check.
-var _ Publisher = &FakePublisher{}
+var _ Producer = &FakeProducer{}
 
 // SendAsync fakes sending events and logs them instead.
-func (f *FakePublisher) SendAsync(events ...*events_proto.Event) error {
+func (f *FakeProducer) SendAsync(events ...*events_proto.Event) error {
 	f.SentEvents = append(f.SentEvents, events...)
 	return nil
 }
 
 // Send fakes sending events with confirmation and logs them instead.
-func (f *FakePublisher) Send(events ...*events_proto.Event) error {
+func (f *FakeProducer) Send(events ...*events_proto.Event) error {
 	return f.SendAsync(events...)
 }
 
 // Close imitates closing the publisher.
-func (f *FakePublisher) Close() error {
+func (f *FakeProducer) Close() error {
 	return nil
 }
 
-// NewFakePublisher creates a new FakePublisher.
-func NewFakePublisher() *FakePublisher {
-	return new(FakePublisher)
+// NewFakePublisher creates a new FakeProducer.
+func NewFakePublisher() *FakeProducer {
+	return new(FakeProducer)
 }
 
-// AMQPPublisher is an AMQP Publisher implementation.
+// AMQPProducer is an AMQP Producer implementation.
 // It sends all the events to a single exchange with the routing key generated from the event itself.
 // See RoutingKeyFromEvent() below for details.
-type AMQPPublisher struct {
+type AMQPProducer struct {
 	amqpConnection *amqp.Connection
 	// This channel is used for non-confirmation sends only.
 	amqpChannel *amqp.Channel
@@ -64,10 +76,10 @@ type AMQPPublisher struct {
 }
 
 // Compile time interface check.
-var _ Publisher = &AMQPPublisher{}
+var _ Producer = &AMQPProducer{}
 
-// NewAMQPPublisher creates a new AMQPPublisher instance.
-func NewAMQPPublisher(amqpConnection *amqp.Connection, exchangeName string) (*AMQPPublisher, error) {
+// NewAMQPProducer creates a new AMQPProducer instance.
+func NewAMQPProducer(amqpConnection *amqp.Connection, exchangeName string) (*AMQPProducer, error) {
 	amqpChannel, err := amqpConnection.Channel()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new AMQP channel")
@@ -77,11 +89,11 @@ func NewAMQPPublisher(amqpConnection *amqp.Connection, exchangeName string) (*AM
 		return nil, errors.Wrap(err, "failed to declare AMQP exchange")
 	}
 
-	return &AMQPPublisher{amqpConnection: amqpConnection, amqpChannel: amqpChannel, exchangeName: exchangeName}, nil
+	return &AMQPProducer{amqpConnection: amqpConnection, amqpChannel: amqpChannel, exchangeName: exchangeName}, nil
 }
 
 // sendAsync sends the actual events over the given AMQP channel.
-func (p *AMQPPublisher) sendAsync(amqpChannel *amqp.Channel, events ...*events_proto.Event) error {
+func (p *AMQPProducer) sendAsync(amqpChannel *amqp.Channel, events ...*events_proto.Event) error {
 	n := len(events)
 	if n == 0 {
 		return ErrNoEvents
@@ -106,24 +118,38 @@ func (p *AMQPPublisher) sendAsync(amqpChannel *amqp.Channel, events ...*events_p
 
 	// Publish the messages to AMQP.
 	for i := 0; i < n; i++ {
-		if err := amqpChannel.Publish(
-			p.exchangeName,
-			routingKeys[i],
-			false,
-			false,
-			amqp.Publishing{
-				ContentType: "application/octet-stream",
-				Body:        serializedEvents[i],
-			},
-		); err != nil {
+		if err := p.publishWithRetry(amqpChannel, routingKeys[i], serializedEvents[i], AMQPPublishRetryLimit); err != nil {
 			return errors.Wrapf(err, "failed to publish to AMQP for event #%d", i)
 		}
 	}
 	return nil
 }
 
+// publishWithRetry publishes AMQP message with increasing retry timeout.
+func (p *AMQPProducer) publishWithRetry(ch *amqp.Channel, routingKey string, body []byte, retryCount int) error {
+	var err error
+	for i := 1; i <= retryCount; i++ {
+		err = ch.Publish(
+			p.exchangeName,
+			routingKey,
+			false,
+			false,
+			amqp.Publishing{
+				ContentType: "application/octet-stream",
+				Body:        body,
+			},
+		)
+		if err == nil {
+			return nil
+		}
+		logrus.WithError(err).WithField("routingKey", routingKey).Error("failed to publish AMQP message")
+		time.Sleep(AMQPPublishRetryWait * time.Duration(i))
+	}
+	return err
+}
+
 // SendAsync sends AMQP messages with the given events asynchronously.
-func (p *AMQPPublisher) SendAsync(events ...*events_proto.Event) error {
+func (p *AMQPProducer) SendAsync(events ...*events_proto.Event) error {
 	return p.sendAsync(p.amqpChannel, events...)
 }
 
@@ -132,7 +158,7 @@ func (p *AMQPPublisher) SendAsync(events ...*events_proto.Event) error {
 // otherwise this method will block indefinitely.
 // See https://www.rabbitmq.com/confirms.html for details.
 // TODO: check if this is actually the case: will it block if there is no consumers?
-func (p *AMQPPublisher) Send(events ...*events_proto.Event) error {
+func (p *AMQPProducer) Send(events ...*events_proto.Event) error {
 	if len(events) == 0 {
 		return ErrNoEvents
 	}
@@ -142,6 +168,8 @@ func (p *AMQPPublisher) Send(events ...*events_proto.Event) error {
 	if err != nil {
 		return errors.Wrap(err, "failed to create a new AMQP channel")
 	}
+	defer utils.Close(amqpChannel)
+
 	// Enter a channel confirmation mode.
 	if err := amqpChannel.Confirm(false); err != nil {
 		return errors.Wrap(err, "failed to set a confirmation mode on a channel")
@@ -168,6 +196,6 @@ func (p *AMQPPublisher) Send(events ...*events_proto.Event) error {
 }
 
 // Close closes the AMQP channel that is used for async sending.
-func (p *AMQPPublisher) Close() error {
-	return p.amqpConnection.Close()
+func (p *AMQPProducer) Close() error {
+	return p.amqpChannel.Close()
 }

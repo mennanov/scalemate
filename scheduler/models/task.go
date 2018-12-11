@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/protobuf/protoc-gen-go/generator"
@@ -15,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -30,6 +32,14 @@ type Task struct {
 	FinishedAt time.Time
 }
 
+func (t *Task) String() string {
+	taskProto, err := t.ToProto(nil)
+	if err != nil {
+		return fmt.Sprintf("broken Task: %s", err.Error())
+	}
+	return taskProto.String()
+}
+
 // Create inserts a new Task in DB and returns a corresponding event.
 func (t *Task) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err := utils.HandleDBError(db.Create(t)); err != nil {
@@ -39,7 +49,7 @@ func (t *Task) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +196,7 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -194,7 +204,7 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	return event, nil
 }
 
-// MarkJobsAsNodeFailed checks if the requested status change is allowed and performs an UPDATE query if so.
+// UpdateStatus updates the Task's status. It returns an update event or an error if the newStatus can not be set.
 func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) (*events_proto.Event, error) {
 	taskStatusProto := scheduler_proto.Task_Status(t.Status)
 	for _, s := range TaskStatusTransitions[taskStatusProto] {
@@ -311,7 +321,7 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 		if err != nil {
 			return nil, errors.Wrap(err, "task.ToProto failed")
 		}
-		event, err := utils.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewEventFromPayload failed")

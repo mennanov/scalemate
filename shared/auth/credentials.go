@@ -29,7 +29,7 @@ func NewJWTCredentials(client accounts_proto.AccountsClient, tokens *accounts_pr
 
 // GetRequestMetadata returns authorization headers with JWT access token.
 // If the access token is expired, then the new one is obtained using the refresh token.
-func (j JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+func (j *JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
 	claimsAccess, err := NewClaimsFromString(j.tokens.AccessToken)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse access token")
@@ -66,6 +66,6 @@ func (j JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (
 }
 
 // RequireTransportSecurity requires TLS for gRPC connection.
-func (j JWTCredentials) RequireTransportSecurity() bool {
+func (j *JWTCredentials) RequireTransportSecurity() bool {
 	return true
 }

@@ -5,14 +5,13 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 // ChangePassword changes a password for the currently authenticated user.
@@ -46,11 +45,7 @@ func (s AccountsServer) ChangePassword(ctx context.Context, r *accounts_proto.Ch
 	if err != nil {
 		return nil, err
 	}
-	publisher, err := utils.NewAMQPPublisher(s.AMQPConnection, utils.AccountsAMQPExchangeName)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create AMQP publisher instance")
-	}
-	if err := utils.SendAndCommit(tx, publisher, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
 		return nil, err
 	}
 

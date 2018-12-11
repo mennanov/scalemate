@@ -14,8 +14,8 @@ http_archive(
 
 http_archive(
     name = "com_github_atlassian_bazel_tools",
-    strip_prefix = "bazel-tools-f473e3a00787db9f593e8d6cdcb0ce15158c2fd5",
-    urls = ["https://github.com/atlassian/bazel-tools/archive/f473e3a00787db9f593e8d6cdcb0ce15158c2fd5.zip"],
+    strip_prefix = "bazel-tools-96c1e41762781a1f25de2f45e6f0557c9642ef94",
+    urls = ["https://github.com/atlassian/bazel-tools/archive/96c1e41762781a1f25de2f45e6f0557c9642ef94.zip"],
 )
 
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
