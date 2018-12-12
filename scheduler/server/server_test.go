@@ -4,7 +4,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -56,14 +55,11 @@ func (s *ServerTestSuite) TestDisconnectNode_ConnectThenDisconnect_UpdatesNodeJo
 	_, err = task.Create(s.service.DB)
 	s.Require().NoError(err)
 
-	consumer, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	// Disconnect the node.
 	nodeDisconnectedEvent, err := s.service.DisconnectNode(s.service.DB, node)
 	s.Require().NoError(err)
-	s.Require().NoError(s.service.Publisher.Send(nodeDisconnectedEvent))
-	utils.WaitForMessages(consumer, "scheduler.node.updated", "scheduler.task.updated", "scheduler.job.updated")
+	s.Require().NoError(s.service.Producer.Send(nodeDisconnectedEvent))
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.node.updated", "scheduler.task.updated", "scheduler.job.updated")
 	// Verify that the corresponding Tasks and Jobs statuses are updated.
 	s.Require().NoError(task.LoadFromDB(s.service.DB))
 	s.Equal(models.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), task.Status)

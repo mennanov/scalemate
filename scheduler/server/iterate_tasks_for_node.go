@@ -53,7 +53,7 @@ func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_pr
 	if err != nil {
 		return errors.Wrap(err, "failed to ConnectNode")
 	}
-	if err := events.CommitAndPublish(tx, s.Publisher, connectEvent); err != nil {
+	if err := events.CommitAndPublish(tx, s.Producer, connectEvent); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 
@@ -64,7 +64,7 @@ func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_pr
 		if err != nil {
 			logger.WithError(err).Error("failed to DisconnectNode")
 		}
-		if err := events.CommitAndPublish(tx, s.Publisher, disconnectEvent); err != nil {
+		if err := events.CommitAndPublish(tx, s.Producer, disconnectEvent); err != nil {
 			logger.WithError(err).Error("events.CommitAndPublish failed")
 		}
 	}()

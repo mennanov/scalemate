@@ -1,4 +1,4 @@
-package event_listeners
+package server
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -9,25 +9,12 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/scheduler/server"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-const (
-	// JobCreatedEventsQueueName is the name of the AMQP queue to be used to receive events about newly created Jobs.
-	JobPendingEventsQueueName = "scheduler_job_pending"
-)
-
-// JobPendingAMQPEventListener schedules the pending Job.
-var JobPendingAMQPEventListener = &AMQPEventListener{
-	ExchangeName: events.SchedulerAMQPExchangeName,
-	QueueName:    JobPendingEventsQueueName,
-	RoutingKey:   "scheduler.job.updated.#.status.#",
-	Handler:      pendingJobHandler,
-}
-
-func pendingJobHandler(service *server.SchedulerServer, eventProto *events_proto.Event) error {
+// HandleJobPending schedules the pending Job.
+func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error {
 	eventPayload, err := events.NewModelProtoFromEvent(eventProto)
 	if err != nil {
 		return errors.Wrap(err, "events.NewModelProtoFromEvent failed")
@@ -44,7 +31,7 @@ func pendingJobHandler(service *server.SchedulerServer, eventProto *events_proto
 		return nil
 	}
 
-	tx := service.DB.Begin()
+	tx := s.DB.Begin()
 	node, err := job.FindSuitableNode(tx)
 	if err != nil {
 		wrappedErr := errors.Wrap(err, "job.FindSuitableNode failed")
@@ -71,7 +58,7 @@ func pendingJobHandler(service *server.SchedulerServer, eventProto *events_proto
 		}
 		return wrappedErr
 	}
-	if err := events.CommitAndPublish(tx, service.Publisher, schedulingEvents...); err != nil {
+	if err := events.CommitAndPublish(tx, s.Producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

@@ -1,14 +1,13 @@
-package event_listeners_test
+package server_test
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s *EventListenersTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated() {
+func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated() {
 	node := &models.Node{
 		Username: "username",
 		Name:     "node_name",
@@ -35,16 +34,16 @@ func (s *EventListenersTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTe
 	taskUpdatedEvent, err := task.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
 	s.Require().NoError(err)
 
-	s.Require().NoError(event_listeners.TaskTerminatedAMQPEventListener.Handler(s.service, taskUpdatedEvent))
+	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
-	s.Len(s.service.Publisher.(*events.FakeProducer).SentEvents, 1)
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
 
 	// Verify that the jobScheduled now has a status "FINISHED".
 	s.Require().NoError(job.LoadFromDB(s.service.DB))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
 }
 
-func (s *EventListenersTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() {
+func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() {
 	node := &models.Node{
 		Username: "username",
 		Name:     "node_name",
@@ -71,9 +70,9 @@ func (s *EventListenersTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPe
 	taskUpdatedEvent, err := task.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FAILED)
 	s.Require().NoError(err)
 
-	s.Require().NoError(event_listeners.TaskTerminatedAMQPEventListener.Handler(s.service, taskUpdatedEvent))
+	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
-	s.Len(s.service.Publisher.(*events.FakeProducer).SentEvents, 1)
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
 
 	// Verify that the jobScheduled now has a status "PENDING".
 	s.Require().NoError(job.LoadFromDB(s.service.DB))

@@ -7,10 +7,10 @@ import (
 	"net"
 	"os"
 	"path"
-	"sync"
 	"testing"
 	"time"
 
+	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/streadway/amqp"
@@ -22,7 +22,6 @@ import (
 	"gopkg.in/khaiql/dbcleaner.v2"
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
 
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/scheduler/server"
@@ -43,39 +42,36 @@ func stringEye(s string) string { return s }
 
 type ServerTestSuite struct {
 	suite.Suite
-	service        *server.SchedulerServer
-	client         scheduler_proto.SchedulerClient
-	amqpConnection *amqp.Connection
-	amqpChannel    *amqp.Channel
+	service         *server.SchedulerServer
+	client          scheduler_proto.SchedulerClient
+	db              *gorm.DB
+	amqpConnection  *amqp.Connection
+	amqpChannel     *amqp.Channel
+	amqpRawConsumer <-chan amqp.Delivery
 }
 
 func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50052"
 
-	db, err := utils.ConnectDBFromEnv(server.DBEnvConf)
+	var err error
+	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
 	s.Require().NoError(err)
 
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
 
-	publisher, err := events.NewAMQPProducer(s.amqpConnection, events.SchedulerAMQPExchangeName)
-	s.Require().NoError(err)
-
 	s.service = &server.SchedulerServer{
-		DB:               db.LogMode(false),
-		Publisher:        publisher,
+		DB:               s.db,
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
 		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
 	}
 
-	// Start event listeners.
-	preparedListeners, err := event_listeners.SetUpAMQPEventListeners(event_listeners.RegisteredEventListeners, s.amqpConnection)
-	s.Require().NoError(err)
-	event_listeners.RunEventListeners(context.Background(), &sync.WaitGroup{}, preparedListeners, s.service)
+	s.Require().NoError(s.service.SetAMQPProducer(s.amqpConnection))
+	s.Require().NoError(s.service.SetAMQPConsumers(s.amqpConnection))
 
 	// Prepare database.
-	s.Require().NoError(migrations.RunMigrations(s.service.DB))
+	s.Require().NoError(migrations.RunMigrations(s.db))
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable",
 		os.Getenv(server.DBEnvConf.Host), os.Getenv(server.DBEnvConf.Port), os.Getenv(server.DBEnvConf.User),
@@ -84,7 +80,7 @@ func (s *ServerTestSuite) SetupSuite() {
 	cleaner.SetEngine(pg)
 
 	go func() {
-		server.Serve(context.Background(), localAddr, s.service)
+		s.service.Serve(localAddr)
 	}()
 
 	// Waiting for GRPC server to start serving.
@@ -103,6 +99,9 @@ func (s *ServerTestSuite) SetupTest() {
 		TokenType: "access",
 	})
 
+	s.amqpRawConsumer, err = events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
+	s.Require().NoError(err)
+
 	for _, tableName := range models.TableNames {
 		cleaner.Acquire(tableName)
 	}
@@ -116,9 +115,11 @@ func (s *ServerTestSuite) TearDownTest() {
 	}
 }
 
-//func (s *ServerTestSuite) TearDownSuite() {
-//	migrations.RollbackAllMigrations(s.service.DB)
-//}
+func (s *ServerTestSuite) TearDownSuite() {
+	//migrations.RollbackAllMigrations(s.service.DB)
+	utils.Close(s.amqpConnection)
+	utils.Close(s.db)
+}
 
 func TestRunServerSuite(t *testing.T) {
 	suite.Run(t, new(ServerTestSuite))

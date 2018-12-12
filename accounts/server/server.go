@@ -89,17 +89,15 @@ var AccountsEnvConf = AppEnvConf{
 // AccountsServer is a wrapper for `accounts_proto.AccountsServer` that holds the application specific settings
 // and also implements some methods.
 type AccountsServer struct {
-	DB                    *gorm.DB
-	ClaimsContextInjector auth.ClaimsInjector
-	Producer              events.Producer
-	Consumers             []events.Consumer
+	DB             *gorm.DB
+	ClaimsInjector auth.ClaimsInjector
+	Producer       events.Producer
+	Consumers      []events.Consumer
 	// bcrypt cost value used to make password hashes. Should be reasonably high in PROD and low in TEST/DEV.
 	BcryptCost      int
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	JWTSecretKey    []byte
-
-	amqpConnection *amqp.Connection
 }
 
 // SetBCryptCostFromEnv sets the BcryptCost field value from environment variables.
@@ -142,29 +140,9 @@ func (s *AccountsServer) SetJWTSecretKeyFromEnv(conf AppEnvConf) error {
 	return nil
 }
 
-// SetClaimsContextInjector sets the ClaimsContextInjector to auth.NewJWTClaimsInjector with provided jwtSecretKey.
+// SetClaimsContextInjector sets the ClaimsInjector to auth.NewJWTClaimsInjector with provided jwtSecretKey.
 func (s *AccountsServer) SetClaimsContextInjector(jwtSecretKey []byte) error {
-	s.ClaimsContextInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
-	return nil
-}
-
-// SetDBConnectionFromEnv connects to DB with configuration from environment variables and sets the DB field value.
-func (s *AccountsServer) SetDBConnectionFromEnv(conf utils.DBEnvConf) error {
-	db, err := utils.ConnectDBFromEnv(conf)
-	if err != nil {
-		return errors.Wrap(err, "utils.ConnectDBFromEnv failed")
-	}
-	s.DB = db
-	return nil
-}
-
-// SetAMQPConnectionFromEnv connects to AMQP with configuration from environment variables and sets the field value.
-func (s *AccountsServer) SetAMQPConnectionFromEnv(amqpEnvConf utils.AMQPEnvConf) error {
-	connection, err := utils.ConnectAMQPFromEnv(amqpEnvConf)
-	if err != nil {
-		return errors.Wrap(err, "utils.ConnectAMQPFromEnv failed")
-	}
-	s.amqpConnection = connection
+	s.ClaimsInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
 	return nil
 }
 
@@ -183,7 +161,9 @@ func (s *AccountsServer) SetAMQPProducer(conn *amqp.Connection) error {
 
 // SetAMQPConsumers sets the Consumers field value to AMQPConsumer(s).
 func (s *AccountsServer) SetAMQPConsumers(conn *amqp.Connection) error {
-	channel, err := s.amqpConnection.Channel()
+	channel, err := conn.Channel()
+	defer utils.Close(channel)
+
 	if err != nil {
 		return errors.Wrap(err, "failed to open a new AMQP channel")
 	}
@@ -196,7 +176,7 @@ func (s *AccountsServer) SetAMQPConsumers(conn *amqp.Connection) error {
 	}
 
 	nodeConnectedConsumer, err := events.NewAMQPConsumer(
-		s.amqpConnection,
+		conn,
 		events.SchedulerAMQPExchangeName,
 		"accounts_scheduler_node_created",
 		"scheduler.node.created",
@@ -209,19 +189,14 @@ func (s *AccountsServer) SetAMQPConsumers(conn *amqp.Connection) error {
 	return nil
 }
 
-// RunConsumers starts consuming events for all consumers.
-func (s *AccountsServer) RunConsumers(ctx context.Context, wg *sync.WaitGroup) {
-	for _, consumer := range s.Consumers {
-		go consumer.Consume(ctx, wg)
-	}
-}
-
 // Compile time interface check.
 var _ accounts_proto.AccountsServer = new(AccountsServer)
 
 // NewAccountServerFromEnv create a new AccountsServer suitable for production from environment variables.
-func NewAccountServerFromEnv(appEnvConf AppEnvConf, dbEnvConf utils.DBEnvConf, amqpEnvConf utils.AMQPEnvConf) (*AccountsServer, error) {
-	s := &AccountsServer{}
+func NewAccountServerFromEnv(appEnvConf AppEnvConf, db *gorm.DB, amqpConnection *amqp.Connection) (*AccountsServer, error) {
+	s := &AccountsServer{
+		DB: db,
+	}
 	if err := s.SetAccessTokenTTLFromEnv(appEnvConf); err != nil {
 		return nil, errors.Wrap(err, "SetAccessTokenTTLFromEnv failed")
 	}
@@ -237,16 +212,10 @@ func NewAccountServerFromEnv(appEnvConf AppEnvConf, dbEnvConf utils.DBEnvConf, a
 	if err := s.SetClaimsContextInjector(s.JWTSecretKey); err != nil {
 		return nil, errors.Wrap(err, "SetClaimsContextInjector failed")
 	}
-	if err := s.SetDBConnectionFromEnv(dbEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetDBConnectionFromEnv failed")
-	}
-	if err := s.SetAMQPConnectionFromEnv(amqpEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetAMQPConnectionFromEnv failed")
-	}
-	if err := s.SetAMQPProducer(s.amqpConnection); err != nil {
+	if err := s.SetAMQPProducer(amqpConnection); err != nil {
 		return nil, errors.Wrap(err, "SetAMQPProducer failed")
 	}
-	if err := s.SetAMQPConsumers(s.amqpConnection); err != nil {
+	if err := s.SetAMQPConsumers(amqpConnection); err != nil {
 		return nil, errors.Wrap(err, "SetAMQPConsumers failed")
 	}
 	return s, nil
@@ -254,26 +223,18 @@ func NewAccountServerFromEnv(appEnvConf AppEnvConf, dbEnvConf utils.DBEnvConf, a
 
 // Close closes the server resources.
 func (s *AccountsServer) Close() error {
-	if err := s.DB.Close(); err != nil {
-		return errors.Wrap(err, "AccountsServer.DB.Close failed")
-	}
-	if err := s.Producer.Close(); err != nil {
-		return errors.Wrap(err, "AccountsServer.Producer.Close failed")
-	}
 	for _, consumer := range s.Consumers {
 		if err := consumer.Close(); err != nil {
 			return errors.Wrap(err, "consumer.Close failed")
 		}
 	}
 
-	return errors.Wrap(s.amqpConnection.Close(), "AccountsServer.amqpConnection.Close failed")
+	return errors.Wrap(s.Producer.Close(), "AccountsServer.Producer.Close failed")
 }
 
 // Serve creates a GRPC server and starts serving on a given address. This function is blocking and runs upon the server
 // termination.
-func Serve(grpcAddr string, srv *AccountsServer) {
-	setLogLevelFromEnv()
-
+func (s *AccountsServer) Serve(grpcAddr string) {
 	logrusEntry := logrus.NewEntry(logrus.StandardLogger())
 	grpc_logrus.ReplaceGrpcLogger(logrusEntry)
 
@@ -293,10 +254,10 @@ func Serve(grpcAddr string, srv *AccountsServer) {
 		)),
 	)
 
-	accounts_proto.RegisterAccountsServer(grpcServer, srv)
+	accounts_proto.RegisterAccountsServer(grpcServer, s)
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
 	f := make(chan error, 1)
 
@@ -313,33 +274,20 @@ func Serve(grpcAddr string, srv *AccountsServer) {
 
 	wg := &sync.WaitGroup{}
 	consumersCtx, consumersCtxCancel := context.WithCancel(context.Background())
-	srv.RunConsumers(consumersCtx, wg)
+	for _, consumer := range s.Consumers {
+		go consumer.Consume(consumersCtx, wg)
+	}
+
+	defer func() {
+		consumersCtxCancel()
+		wg.Wait()
+	}()
 
 	select {
-	case <-c:
+	case <-shutdown:
 		grpcServer.GracefulStop()
-		consumersCtxCancel()
-		wg.Wait()
 
 	case err := <-f:
-		consumersCtxCancel()
-		wg.Wait()
 		logrus.Fatalf("GRPC server unexpectedly failed: %s", err)
-	}
-}
-
-func setLogLevelFromEnv() {
-	lvl := os.Getenv("LOG_LEVEL")
-	switch lvl {
-	case "DEBUG":
-		logrus.SetLevel(logrus.DebugLevel)
-	case "INFO":
-		logrus.SetLevel(logrus.InfoLevel)
-	case "WARN":
-		logrus.SetLevel(logrus.WarnLevel)
-	case "ERROR":
-		logrus.SetLevel(logrus.ErrorLevel)
-	default:
-		logrus.SetLevel(logrus.InfoLevel)
 	}
 }

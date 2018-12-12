@@ -55,7 +55,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 	if err != nil {
 		return nil, errors.Wrap(err, "job.Create failed")
 	}
-	if err := events.CommitAndPublish(tx, s.Publisher, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 	jobProto, err := job.ToProto(nil)

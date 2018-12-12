@@ -6,14 +6,10 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestCreateJob_MinimalInput() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	req := &scheduler_proto.Job{
 		Username:      "test_username",
 		DockerImage:   "postgres:11",
@@ -43,5 +39,5 @@ func (s *ServerTestSuite) TestCreateJob_MinimalInput() {
 		"Status": scheduler_proto.Job_STATUS_PENDING,
 	}
 	s.Equal(expected, actual)
-	utils.WaitForMessages(messages, "scheduler.job.created")
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created")
 }

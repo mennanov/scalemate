@@ -1,17 +1,15 @@
-package event_listeners_test
+package server_test
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/genproto/protobuf/field_mask"
 
-	"github.com/mennanov/scalemate/shared/events_proto"
-
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
 )
 
-func (s *EventListenersTestSuite) TestNodeConnectedHandler_SchedulesPendingJobsOnTheNode() {
+func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode() {
 	node := &models.Node{
 		Username:        "username",
 		Name:            "node_name",
@@ -66,7 +64,7 @@ func (s *EventListenersTestSuite) TestNodeConnectedHandler_SchedulesPendingJobsO
 	eventProto, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
 	s.Require().NoError(err)
 	// Run the handler.
-	s.Require().NoError(event_listeners.NodeConnectedAMQPEventListener.Handler(s.service, eventProto))
+	s.Require().NoError(s.service.HandleNodeConnected(eventProto))
 
 	// Reload Node from DB.
 	s.Require().NoError(node.LoadFromDB(s.service.DB))

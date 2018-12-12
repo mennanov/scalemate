@@ -1,13 +1,12 @@
-package event_listeners_test
+package server_test
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
 )
 
-func (s *EventListenersTestSuite) TestTaskCreatedHandler_SendsTaskToAppropriateChannels() {
+func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels() {
 	node := &models.Node{
 		Username: "username",
 		Name:     "node_name",
@@ -42,6 +41,6 @@ func (s *EventListenersTestSuite) TestTaskCreatedHandler_SendsTaskToAppropriateC
 		tasksReceived <- struct{}{}
 	}()
 
-	s.Require().NoError(event_listeners.TaskCreatedAMQPEventListener.Handler(s.service, taskCreatedEvent))
+	s.Require().NoError(s.service.HandleTaskCreated(taskCreatedEvent))
 	<-tasksReceived
 }

@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -53,8 +56,10 @@ type SchedulerServer struct {
 	DB *gorm.DB
 	// Authentication claims context injector.
 	ClaimsInjector auth.ClaimsInjector
-	// utils.Producer.
-	Publisher events.Producer
+	// Events producer.
+	Producer events.Producer
+	// Events consumers.
+	Consumers []events.Consumer
 	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
 	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
 	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
@@ -65,6 +70,125 @@ type SchedulerServer struct {
 	// request processing (streams, etc).
 	// Requests that are expected to be processed quickly should not take any action as they will be waited to finish.
 	gracefulStop chan struct{}
+}
+
+// SetClaimsInjector sets the ClaimsInjector field to a new auth.NewJWTClaimsInjector with JWT secret key from env.
+func (s *SchedulerServer) SetClaimsInjector(conf AppEnvConf) error {
+	value := os.Getenv(conf.JWTSecretKey)
+	if value == "" {
+		return errors.New("JWT secret key is empty")
+	}
+	s.ClaimsInjector = auth.NewJWTClaimsInjector([]byte(value))
+	return nil
+}
+
+// SetAMQPProducer sets the Producer field value to AMQPProducer.
+func (s *SchedulerServer) SetAMQPProducer(conn *amqp.Connection) error {
+	if conn == nil {
+		return errors.New("amqp.Connection is nil")
+	}
+	producer, err := events.NewAMQPProducer(conn, events.SchedulerAMQPExchangeName)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPProducer failed")
+	}
+	s.Producer = producer
+	return nil
+}
+
+// SetAMQPConsumers sets the Consumers field value to AMQPConsumer(s).
+func (s *SchedulerServer) SetAMQPConsumers(conn *amqp.Connection) error {
+	channel, err := conn.Channel()
+	defer utils.Close(channel)
+
+	if err != nil {
+		return errors.Wrap(err, "failed to open a new AMQP channel")
+	}
+	// Declare all required exchanges.
+	if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
+		return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
+	}
+
+	jobCreatedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"scheduler_job_created",
+		"scheduler.job.created",
+		s.HandleJobPending)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobCreatedConsumer")
+	}
+
+	jobStatusUpdatedToPendingConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"scheduler_job_pending",
+		"scheduler.job.updated.#.status.#",
+		s.HandleJobPending)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobStatusUpdatedToPendingConsumer")
+	}
+
+	jobTerminatedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"",
+		"scheduler.job.updated.#.status.#",
+		s.HandleJobTerminated)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobTerminatedConsumer")
+	}
+
+	nodeConnectedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"scheduler_node_connected",
+		"scheduler.node.updated.#.connected_at.#",
+		s.HandleNodeConnected)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
+	}
+
+	nodeDisconnectedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"scheduler_node_disconnected",
+		"scheduler.node.updated.#.disconnected_at.#",
+		s.HandleNodeDisconnected)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeDisconnectedConsumer")
+	}
+
+	taskCreatedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"",
+		"scheduler.task.created",
+		s.HandleTaskCreated)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskCreatedConsumer")
+	}
+
+	taskTerminatedConsumer, err := events.NewAMQPConsumer(
+		conn,
+		events.SchedulerAMQPExchangeName,
+		"scheduler_task_terminated",
+		"scheduler.task.updated.#.status.#",
+		s.HandleTaskTerminated)
+	if err != nil {
+		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskTerminatedConsumer")
+	}
+
+	s.Consumers = []events.Consumer{
+		jobCreatedConsumer,
+		jobStatusUpdatedToPendingConsumer,
+		jobTerminatedConsumer,
+		nodeConnectedConsumer,
+		nodeDisconnectedConsumer,
+		taskCreatedConsumer,
+		taskTerminatedConsumer,
+	}
+
+	return nil
 }
 
 // Compile time interface check.
@@ -108,51 +232,35 @@ var SchedulerEnvConf = AppEnvConf{
 	JWTSecretKey:    "SCHEDULER_JWT_SECRET_KEY",
 }
 
-// Connections represents third party services connections.
-type Connections struct {
-	DB   *gorm.DB
-	AMQP *amqp.Connection
-}
-
 // NewSchedulerServerFromEnv creates a new SchedulerServer from environment variables.
-// It also connects to the database and AMQP.
-func NewSchedulerServerFromEnv(conf AppEnvConf) (*SchedulerServer, *Connections, error) {
-	jwtSecretKey := os.Getenv(conf.JWTSecretKey)
-
-	if jwtSecretKey == "" {
-		return nil, nil, errors.Errorf("%s env variable is empty", conf.JWTSecretKey)
-	}
-
-	db, err := utils.ConnectDBFromEnv(DBEnvConf)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "ConnectDBFromEnv failed")
-	}
-
-	amqpConnection, err := utils.ConnectAMQPFromEnv(AMQPEnvConf)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "ConnectAMQPFromEnv failed")
-	}
-
-	publisher, err := events.NewAMQPProducer(amqpConnection, events.SchedulerAMQPExchangeName)
-	if err != nil {
-		return nil, nil, errors.Wrap(err, "events.NewAMQPProducer failed")
-	}
-
-	return &SchedulerServer{
+func NewSchedulerServerFromEnv(conf AppEnvConf, db *gorm.DB, amqpConnection *amqp.Connection) (*SchedulerServer, error) {
+	s := &SchedulerServer{
 		DB:               db,
-		ClaimsInjector:   auth.NewJWTClaimsInjector([]byte(jwtSecretKey)),
-		Publisher:        publisher,
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
 		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
-	}, &Connections{DB: db, AMQP: amqpConnection}, nil
+	}
+	if err := s.SetClaimsInjector(conf); err != nil {
+		return nil, errors.Wrap(err, "SchedulerServer.SetClaimsInjector failed")
+	}
+	if err := s.SetAMQPProducer(amqpConnection); err != nil {
+		return nil, errors.Wrap(err, "SchedulerServer.SetAMQPProducer failed")
+	}
+	if err := s.SetAMQPConsumers(amqpConnection); err != nil {
+		return nil, errors.Wrap(err, "SchedulerServer.SetAMQPConsumers failed")
+	}
+
+	return s, nil
 }
 
 // Close closes the server resources.
 func (s *SchedulerServer) Close() error {
-	if err := s.DB.Close(); err != nil {
-		return err
+	for _, consumer := range s.Consumers {
+		if err := consumer.Close(); err != nil {
+			return errors.Wrap(err, "consumer.Close failed")
+		}
 	}
-	return s.Publisher.Close()
+
+	return errors.Wrap(s.Producer.Close(), "SchedulerServer.Producer.Close failed")
 }
 
 var (
@@ -182,11 +290,11 @@ func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_p
 
 // DisconnectNode updates the Node status to OFFLINE.
 // FIXME: this method should be private.
-func (s *SchedulerServer) DisconnectNode(tx *gorm.DB, node *models.Node) (*events_proto.Event, error) {
+func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
 	if _, ok := s.NewTasksByNodeID[node.ID]; !ok {
 		return nil, ErrNodeIsNotConnected
 	}
-	nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
+	nodeUpdatedEvent, err := node.Updates(db, map[string]interface{}{
 		"disconnected_at": time.Now(),
 		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
@@ -200,9 +308,9 @@ func (s *SchedulerServer) DisconnectNode(tx *gorm.DB, node *models.Node) (*event
 	return nodeUpdatedEvent, nil
 }
 
-// Serve creates a gRPC server and starts serving on a given address. This function is blocking and runs upon the server
-// termination.
-func Serve(ctx context.Context, grpcAddr string, srv *SchedulerServer) {
+// Serve creates a gRPC server and starts serving on a given address.
+// It also starts all the consumers.
+func (s *SchedulerServer) Serve(grpcAddr string) {
 	utils.SetLogrusLevelFromEnv()
 
 	// TODO: create the logrus entry in some parent scope, not here.
@@ -221,9 +329,12 @@ func Serve(ctx context.Context, grpcAddr string, srv *SchedulerServer) {
 		)),
 		grpc.StreamInterceptor(grpc_auth.StreamServerInterceptor(AuthFunc)),
 	)
-	scheduler_proto.RegisterSchedulerServer(grpcServer, srv)
+	scheduler_proto.RegisterSchedulerServer(grpcServer, s)
 
 	f := make(chan error, 1)
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
 	go func(f chan error) {
 		lis, err := net.Listen("tcp", grpcAddr)
@@ -236,10 +347,21 @@ func Serve(ctx context.Context, grpcAddr string, srv *SchedulerServer) {
 		}
 	}(f)
 
+	consumersCtx, consumersCtxCancel := context.WithCancel(context.Background())
+	wg := &sync.WaitGroup{}
+	for _, consumer := range s.Consumers {
+		go consumer.Consume(consumersCtx, wg)
+	}
+
+	defer func() {
+		consumersCtxCancel()
+		wg.Wait()
+	}()
+
 	select {
-	case <-ctx.Done():
+	case <-shutdown:
 		logrus.Info("Gracefully stopping gRPC server...")
-		close(srv.gracefulStop)
+		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-f:

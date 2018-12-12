@@ -1,15 +1,14 @@
-package event_listeners_test
+package server_test
 
 import (
 	"time"
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
 )
 
-func (s *EventListenersTestSuite) TestNodeDisconnectedHandler_UpdatesCorrespondingTasks() {
+func (s *ServerTestSuite) TestHandleNodeDisconnected_UpdatesCorrespondingTasks() {
 	node := &models.Node{
 		Username: "username",
 		Name:     "node_name",
@@ -33,7 +32,7 @@ func (s *EventListenersTestSuite) TestNodeDisconnectedHandler_UpdatesCorrespondi
 	})
 	s.Require().NoError(err)
 
-	s.Require().NoError(event_listeners.NodeDisconnectedAMQPEventListener.Handler(s.service, nodeUpdatedEvent))
+	s.Require().NoError(s.service.HandleNodeDisconnected(nodeUpdatedEvent))
 	// Verify that the Task's status is updated.
 	s.Require().NoError(task.LoadFromDB(s.service.DB))
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -36,9 +35,6 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 	_, err := node.Create(s.service.DB)
 	s.Require().NoError(err)
 
-	consumer, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	// Claims should contain a Node name.
 	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
 		Username: node.Username,
@@ -57,7 +53,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 	}(taskReceivedByNode)
 
 	// Wait for the Node to be marked ONLINE.
-	utils.WaitForMessages(consumer, `scheduler.node.updated`)
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated`)
 
 	jobRequest := &scheduler_proto.Job{
 		Username:    "test_username",
@@ -72,7 +68,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 	}
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
-	utils.WaitForMessages(consumer, "scheduler.job.created", "scheduler.task.created")
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created", "scheduler.task.created")
 	<-taskReceivedByNode
 	// Verify that the Task the Node has received is for the requested Job.
 	s.Equal(jobProto.Id, taskForNode.JobId)
@@ -139,13 +135,11 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
 	}
-	consumer, err := events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
 
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
 
-	utils.WaitForMessages(consumer, "scheduler.job.created")
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created")
 
 	// Claims should contain a Node name.
 	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{

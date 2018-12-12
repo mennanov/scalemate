@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jinzhu/gorm"
 	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/accounts/migrations"
@@ -42,6 +43,7 @@ type ServerTestSuite struct {
 	suite.Suite
 	service        *server.AccountsServer
 	client         accounts_proto.AccountsClient
+	db             *gorm.DB
 	amqpChannel    *amqp.Channel
 	amqpConnection *amqp.Connection
 }
@@ -50,10 +52,13 @@ func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 	var err error
-	s.service, err = server.NewAccountServerFromEnv(server.AccountsEnvConf, server.DBEnvConf, server.AMQPEnvConf)
+	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
 
-	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
+	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
+	s.Require().NoError(err)
+
+	s.service, err = server.NewAccountServerFromEnv(server.AccountsEnvConf, s.db, s.amqpConnection)
 	s.Require().NoError(err)
 
 	// Prepare database.
@@ -69,7 +74,7 @@ func (s *ServerTestSuite) SetupSuite() {
 		panic(fmt.Sprintf("Failed to create gRPC server: %+v", err))
 	}
 	go func() {
-		server.Serve(localAddr, s.service)
+		s.service.Serve(localAddr)
 	}()
 
 	// Waiting for GRPC server to start serving.
@@ -95,6 +100,8 @@ func (s *ServerTestSuite) TearDownTest() {
 
 func (s *ServerTestSuite) TearDownSuite() {
 	s.NoError(migrations.RollbackAllMigrations(s.service.DB))
+	utils.Close(s.amqpConnection)
+	utils.Close(s.db)
 }
 
 func TestRunServerSuite(t *testing.T) {

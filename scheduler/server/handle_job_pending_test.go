@@ -1,13 +1,12 @@
-package event_listeners_test
+package server_test
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/event_listeners"
 	"github.com/mennanov/scalemate/scheduler/models"
 )
 
-func (s *EventListenersTestSuite) TestJobPendingHandler_JobScheduledToAvailableNode() {
+func (s *ServerTestSuite) TestHandleJobPending_JobScheduledToAvailableNode() {
 	node := &models.Node{
 		Username:        "node_username",
 		Name:            "node_name",
@@ -35,7 +34,7 @@ func (s *EventListenersTestSuite) TestJobPendingHandler_JobScheduledToAvailableN
 	jobCreatedEvent, err := job.Create(s.service.DB)
 	s.Require().NoError(err)
 
-	s.Require().NoError(event_listeners.JobPendingAMQPEventListener.Handler(s.service, jobCreatedEvent))
+	s.Require().NoError(s.service.HandleJobPending(jobCreatedEvent))
 	// Verify that the corresponding Task is created.
 	s.Require().NoError(job.LoadTasksFromDB(s.service.DB))
 	s.Require().Len(job.Tasks, 1)
