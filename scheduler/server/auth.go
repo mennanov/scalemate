@@ -6,7 +6,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// TODO: create a layer (interface of with the same service method names) for each type of Resource that will handle CRUD operations permissions.
+// TODO: create a layer (interface of with the same service method names) for each type of Resource that will handle
+//  CRUD operations permissions.
 // Example:
 
 // AuthFuncOverride implements an authentication and (partially) authorization for gRPC methods in Scheduler Service.

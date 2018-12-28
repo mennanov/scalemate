@@ -233,7 +233,12 @@ var SchedulerEnvConf = AppEnvConf{
 }
 
 // NewSchedulerServerFromEnv creates a new SchedulerServer from environment variables.
-func NewSchedulerServerFromEnv(conf AppEnvConf, db *gorm.DB, amqpConnection *amqp.Connection) (*SchedulerServer, error) {
+// FIXME: rewrite with option functions.
+func NewSchedulerServerFromEnv(
+	conf AppEnvConf,
+	db *gorm.DB,
+	amqpConnection *amqp.Connection,
+) (*SchedulerServer, error) {
 	s := &SchedulerServer{
 		DB:               db,
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),

@@ -32,4 +32,9 @@ warningCode = 1
 [rule.unnecessary-stmt]
 [rule.struct-tag]
 [rule.modifies-value-receiver]
-
+[rule.redefines-builtin-id]
+[rule.range-val-in-closure]
+[rule.waitgroup-by-value]
+[rule.atomic]
+[rule.line-length-limit]
+  arguments = [120]

@@ -10,7 +10,10 @@ import (
 )
 
 // ListDiskModels lists aggregated Disk models for the given Disk Class.
-func (s SchedulerServer) ListDiskModels(ctx context.Context, r *scheduler_proto.ListDiskModelsRequest) (*scheduler_proto.ListDiskModelsResponse, error) {
+func (s SchedulerServer) ListDiskModels(
+	ctx context.Context,
+	r *scheduler_proto.ListDiskModelsRequest,
+) (*scheduler_proto.ListDiskModelsResponse, error) {
 
 	q := s.DB.Table("nodes").
 		Select("disk_model, disk_class, SUM(disk_capacity) AS disk_capacity, SUM(disk_available) AS disk_available, " +

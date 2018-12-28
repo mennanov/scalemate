@@ -106,7 +106,12 @@ func RoutingKeyFromEvent(event *events_proto.Event) (string, error) {
 }
 
 // NewEventFromPayload creates a new events_proto.Event instance for the given model, event type and service.
-func NewEventFromPayload(payload proto.Message, eventType events_proto.Event_Type, service events_proto.Service, fieldMask *field_mask.FieldMask) (*events_proto.Event, error) {
+func NewEventFromPayload(
+	payload proto.Message,
+	eventType events_proto.Event_Type,
+	service events_proto.Service,
+	fieldMask *field_mask.FieldMask,
+) (*events_proto.Event, error) {
 	createdAt, err := ptypes.TimestampProto(time.Now())
 	if err != nil {
 		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")

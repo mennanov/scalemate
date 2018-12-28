@@ -333,13 +333,17 @@ func (n *Node) LoadFromDB(db *gorm.DB, fields ...string) error {
 // resources that are going to be used by the given Job.
 func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event, error) {
 	if n.CpuAvailable < job.CpuLimit {
-		return nil, errors.Errorf("failed to allocate Node CPU: %f requested, %f available", job.CpuLimit, n.CpuAvailable)
+		return nil, errors.
+			Errorf("failed to allocate Node CPU: %f requested, %f available", job.CpuLimit, n.CpuAvailable)
 	}
 	if n.MemoryAvailable < job.MemoryLimit {
-		return nil, errors.Errorf("failed to allocate Node memory: %d requested, %d available", job.MemoryLimit, n.MemoryAvailable)
+		return nil, errors.
+			Errorf("failed to allocate Node memory: %d requested, %d available", job.MemoryLimit,
+				n.MemoryAvailable)
 	}
 	if n.DiskAvailable < job.DiskLimit {
-		return nil, errors.Errorf("failed to allocate Node disk: %d requested, %d available", job.DiskLimit, n.DiskAvailable)
+		return nil, errors.
+			Errorf("failed to allocate Node disk: %d requested, %d available", job.DiskLimit, n.DiskAvailable)
 	}
 	nodeUpdates := map[string]interface{}{
 		"cpu_available":    n.CpuAvailable - job.CpuLimit,
@@ -349,7 +353,8 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 	}
 	if job.GpuLimit > 0 {
 		if n.GpuAvailable < job.GpuLimit {
-			return nil, errors.Errorf("failed to allocate Node GPU: %d requested, %d available", job.GpuLimit, n.GpuAvailable)
+			return nil, errors.
+				Errorf("failed to allocate Node GPU: %d requested, %d available", job.GpuLimit, n.GpuAvailable)
 		}
 		nodeUpdates["gpu_available"] = n.GpuAvailable - job.GpuLimit
 	}

@@ -14,7 +14,10 @@ import (
 )
 
 // ListTasks lists Tasks owned by the User.
-func (s SchedulerServer) ListTasks(ctx context.Context, r *scheduler_proto.ListTasksRequest) (*scheduler_proto.ListTasksResponse, error) {
+func (s SchedulerServer) ListTasks(
+	ctx context.Context,
+	r *scheduler_proto.ListTasksRequest,
+) (*scheduler_proto.ListTasksResponse, error) {
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")

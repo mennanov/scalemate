@@ -13,7 +13,10 @@ import (
 // PasswordNodeAuth authenticates a Node by a username, password, Node name and hardware specs.
 // It creates a JWT to be used later for other methods across all the other services. This JWT will contain the name of
 // the Node.
-func (s AccountsServer) PasswordNodeAuth(ctx context.Context, r *accounts_proto.PasswordNodeAuthRequest) (*accounts_proto.AuthTokens, error) {
+func (s AccountsServer) PasswordNodeAuth(
+	ctx context.Context,
+	r *accounts_proto.PasswordNodeAuthRequest,
+) (*accounts_proto.AuthTokens, error) {
 	user := &models.User{}
 	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
 		return nil, err

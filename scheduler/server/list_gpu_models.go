@@ -10,8 +10,10 @@ import (
 )
 
 // ListGpuModels lists aggregated GPU models for the given GPU Class.
-func (s SchedulerServer) ListGpuModels(ctx context.Context, r *scheduler_proto.ListGpuModelsRequest) (*scheduler_proto.ListGpuModelsResponse, error) {
-
+func (s SchedulerServer) ListGpuModels(
+	ctx context.Context,
+	r *scheduler_proto.ListGpuModelsRequest,
+) (*scheduler_proto.ListGpuModelsResponse, error) {
 	q := s.DB.Table("nodes").
 		Select("gpu_model, gpu_class, SUM(gpu_capacity) AS gpu_capacity, SUM(gpu_available) AS gpu_available, " +
 			"COUNT(id) AS nodes_count").

@@ -38,7 +38,13 @@ type AMQPConsumer struct {
 var _ Consumer = new(AMQPConsumer)
 
 // NewAMQPConsumer creates a new instance of AMQPConsumer.
-func NewAMQPConsumer(connection *amqp.Connection, exchangeName string, queueName string, routingKey string, handler EventHandler) (*AMQPConsumer, error) {
+func NewAMQPConsumer(
+	connection *amqp.Connection,
+	exchangeName string,
+	queueName string,
+	routingKey string,
+	handler EventHandler,
+) (*AMQPConsumer, error) {
 	channel, err := connection.Channel()
 	if err != nil {
 		return nil, errors.Wrap(err, "connection.Channel failed")
@@ -80,7 +86,8 @@ func (l *AMQPConsumer) Consume(ctx context.Context, wg *sync.WaitGroup) {
 					return
 				}
 				if err := l.handler(eventProto); err != nil {
-					logrus.WithError(err).WithField("event", eventProto).Error("failed to handle AMQP message")
+					logrus.WithError(err).WithField("event", eventProto).
+						Error("failed to handle AMQP message")
 					// Requeue the message only if it is not redelivered, otherwise it may get into a loop.
 					// TODO: this makes the failed message be retried only once. Figure out how to retry multiple times.
 					if err := msg.Nack(false, !msg.Redelivered); err != nil {
@@ -104,7 +111,12 @@ func (l *AMQPConsumer) Close() error {
 }
 
 // NewAMQPRawConsumer declares an AMQP queue, binds a consumer to it and returns a channel to receive messages.
-func NewAMQPRawConsumer(channel *amqp.Channel, exchangeName, queueName, routingKey string) (<-chan amqp.Delivery, error) {
+func NewAMQPRawConsumer(
+	channel *amqp.Channel,
+	exchangeName,
+	queueName,
+	routingKey string,
+) (<-chan amqp.Delivery, error) {
 	queue, err := channel.QueueDeclare(
 		queueName,
 		true, // FIXME: figure out if it should be false for temp queues.

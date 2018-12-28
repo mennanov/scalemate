@@ -13,7 +13,10 @@ import (
 )
 
 // IterateTasks sends a stream of Tasks for a given Job.
-func (s SchedulerServer) IterateTasks(req *scheduler_proto.IterateTasksRequest, stream scheduler_proto.Scheduler_IterateTasksServer) error {
+func (s SchedulerServer) IterateTasks(
+	req *scheduler_proto.IterateTasksRequest,
+	stream scheduler_proto.Scheduler_IterateTasksServer,
+) error {
 	ctx := stream.Context()
 	logger := ctxlogrus.Extract(ctx)
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)

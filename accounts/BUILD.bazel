@@ -8,13 +8,16 @@ go_library(
     deps = ["//accounts/cmd:go_default_library"],
 )
 
-filegroup(
-    name = "go_srcs",
-    srcs = [
-        "//accounts/cmd:go_srcs",
-        "//accounts/migrations:go_srcs",
-        "//accounts/models:go_srcs",
-        "//accounts/server:go_srcs",
-    ] + glob(["*.go"]),
-    visibility = ["//visibility:public"],
+load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
+go_revive_test(
+    name = "go_lint",
+    # Go source files to be linted.
+    srcs = glob(["*.go"]),
+    # Revive .toml config.
+    config = "//:revive.toml",  # it can also be a regular Bazel label.
+    formatter = "stylish",
+    # The paths have to be relative to the workspace root.
+    paths = [
+        "./...",
+    ],
 )

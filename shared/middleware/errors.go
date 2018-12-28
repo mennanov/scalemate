@@ -52,7 +52,12 @@ func firstErrorWithStack(errors ...error) stackTracer {
 // StackTraceErrorInterceptor unwraps the error, logs the stack trace if the error's code is listed in the logCodes.
 // If `logAll` is true, the error will be logged even if there is no stack trace available.
 func StackTraceErrorInterceptor(logAll bool, logCodes ...codes.Code) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (_ interface{}, err error) {
+	return func(
+		ctx context.Context,
+		req interface{},
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (_ interface{}, err error) {
 		response, err := handler(ctx, req)
 		if err != nil {
 			wrapperErr, rootErr := wrapperAndCause(err)

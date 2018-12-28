@@ -142,7 +142,12 @@ func (user *User) IsAllowedToAuthenticate() error {
 // NewJWTSigned creates a new JWT and signs it with a secret key.
 // When authenticating Nodes `nodeName` argument must not be empty.
 // It returns an encoded JWT string to be used over the wire.
-func (user *User) NewJWTSigned(ttl time.Duration, isAccessToken bool, jwtSecretKey []byte, nodeName string) (string, error) {
+func (user *User) NewJWTSigned(
+	ttl time.Duration,
+	isAccessToken bool,
+	jwtSecretKey []byte,
+	nodeName string,
+) (string, error) {
 	now := time.Now()
 	expiresAt := now.Add(ttl).Unix()
 
@@ -174,7 +179,12 @@ func (user *User) NewJWTSigned(ttl time.Duration, isAccessToken bool, jwtSecretK
 
 // GenerateAuthTokensResponse creates a new `accounts_proto.AuthTokens` response with access and refresh tokens
 // for the given user. When authenticating a Node `nodeName` must not be empty.
-func (user *User) GenerateAuthTokensResponse(ttlAccessToken, ttlRefreshToken time.Duration, jwtSecretKey []byte, nodeName string) (*accounts_proto.AuthTokens, error) {
+func (user *User) GenerateAuthTokensResponse(
+	ttlAccessToken,
+	ttlRefreshToken time.Duration,
+	jwtSecretKey []byte,
+	nodeName string,
+) (*accounts_proto.AuthTokens, error) {
 	accessToken, err := user.NewJWTSigned(ttlAccessToken, true, jwtSecretKey, nodeName)
 	if err != nil {
 		return nil, err
@@ -203,7 +213,8 @@ func (user *User) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.
+		NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +246,8 @@ func (user *User) Delete(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.
+		NewEventFromPayload(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new accounts_user.delete event")
 	}
@@ -243,7 +255,11 @@ func (user *User) Delete(db *gorm.DB) (*events_proto.Event, error) {
 }
 
 // Update updates the user data by the given payload and field mask.
-func (user *User) Update(db *gorm.DB, payload *accounts_proto.User, fieldMask *field_mask.FieldMask) (*events_proto.Event, error) {
+func (user *User) Update(
+	db *gorm.DB,
+	payload *accounts_proto.User,
+	fieldMask *field_mask.FieldMask,
+) (*events_proto.Event, error) {
 	u := &User{}
 	if err := u.FromProto(payload); err != nil {
 		return nil, errors.Wrap(err, "failed to populate user from proto")
@@ -269,7 +285,8 @@ func (user *User) Update(db *gorm.DB, payload *accounts_proto.User, fieldMask *f
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
+	event, err := events.
+		NewEventFromPayload(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new account_users.updated event")
 	}

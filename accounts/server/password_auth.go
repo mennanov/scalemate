@@ -12,7 +12,10 @@ import (
 
 // PasswordAuth authenticates a user by a username and a password.
 // It creates a JWT to be used later for other methods across all the other services.
-func (s AccountsServer) PasswordAuth(ctx context.Context, r *accounts_proto.PasswordAuthRequest) (*accounts_proto.AuthTokens, error) {
+func (s AccountsServer) PasswordAuth(
+	ctx context.Context,
+	r *accounts_proto.PasswordAuthRequest,
+) (*accounts_proto.AuthTokens, error) {
 	user := &models.User{}
 
 	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {

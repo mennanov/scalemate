@@ -14,14 +14,18 @@ import (
 )
 
 // ListJobs lists Jobs owned by the User.
-func (s SchedulerServer) ListJobs(ctx context.Context, r *scheduler_proto.ListJobsRequest) (*scheduler_proto.ListJobsResponse, error) {
+func (s SchedulerServer) ListJobs(
+	ctx context.Context,
+	r *scheduler_proto.ListJobsRequest,
+) (*scheduler_proto.ListJobsResponse, error) {
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
 
 	if claims.Username != r.Username && claims.Role != accounts_proto.User_ADMIN {
-		return nil, status.Errorf(codes.PermissionDenied, "you can only view Jobs for user '%s'", claims.Username)
+		return nil, status.
+			Errorf(codes.PermissionDenied, "you can only view Jobs for user '%s'", claims.Username)
 	}
 
 	var jobs models.Jobs

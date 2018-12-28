@@ -193,7 +193,12 @@ func (s *AccountsServer) SetAMQPConsumers(conn *amqp.Connection) error {
 var _ accounts_proto.AccountsServer = new(AccountsServer)
 
 // NewAccountServerFromEnv create a new AccountsServer suitable for production from environment variables.
-func NewAccountServerFromEnv(appEnvConf AppEnvConf, db *gorm.DB, amqpConnection *amqp.Connection) (*AccountsServer, error) {
+// FIXME: rewrite with option functions (see https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis).
+func NewAccountServerFromEnv(
+	appEnvConf AppEnvConf,
+	db *gorm.DB,
+	amqpConnection *amqp.Connection,
+) (*AccountsServer, error) {
 	s := &AccountsServer{
 		DB: db,
 	}

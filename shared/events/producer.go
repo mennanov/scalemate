@@ -118,7 +118,8 @@ func (p *AMQPProducer) sendAsync(amqpChannel *amqp.Channel, events ...*events_pr
 
 	// Publish the messages to AMQP.
 	for i := 0; i < n; i++ {
-		if err := p.publishWithRetry(amqpChannel, routingKeys[i], serializedEvents[i], AMQPPublishRetryLimit); err != nil {
+		if err := p.publishWithRetry(amqpChannel, routingKeys[i], serializedEvents[i], AMQPPublishRetryLimit);
+			err != nil {
 			return errors.Wrapf(err, "failed to publish to AMQP for event #%d", i)
 		}
 	}

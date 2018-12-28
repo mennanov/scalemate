@@ -15,7 +15,10 @@ import (
 )
 
 // GetTask gets the Task by its ID. Task can be accessed by its owner (or admin) only.
-func (s SchedulerServer) GetTask(ctx context.Context, r *scheduler_proto.GetTaskRequest) (*scheduler_proto.Task, error) {
+func (s SchedulerServer) GetTask(
+	ctx context.Context,
+	r *scheduler_proto.GetTaskRequest,
+) (*scheduler_proto.Task, error) {
 	logger := ctxlogrus.Extract(ctx)
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {

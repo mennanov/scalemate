@@ -13,7 +13,10 @@ import (
 
 // TokenAuth performs authentication by a JWT refresh token.
 // If all credentials are valid a new pair of access and refresh JWT are issued.
-func (s AccountsServer) TokenAuth(ctx context.Context, r *accounts_proto.TokenAuthRequest) (*accounts_proto.AuthTokens, error) {
+func (s AccountsServer) TokenAuth(
+	ctx context.Context,
+	r *accounts_proto.TokenAuthRequest,
+) (*accounts_proto.AuthTokens, error) {
 	claims, err := auth.NewClaimsFromStringVerified(r.GetRefreshToken(), s.JWTSecretKey)
 	if err != nil {
 		return nil, err
@@ -35,7 +38,8 @@ func (s AccountsServer) TokenAuth(ctx context.Context, r *accounts_proto.TokenAu
 	}
 
 	// Generate auth tokens.
-	response, err := user.GenerateAuthTokensResponse(s.AccessTokenTTL, s.RefreshTokenTTL, s.JWTSecretKey, claims.NodeName)
+	response, err := user.
+		GenerateAuthTokensResponse(s.AccessTokenTTL, s.RefreshTokenTTL, s.JWTSecretKey, claims.NodeName)
 	if err != nil {
 		return nil, err
 	}

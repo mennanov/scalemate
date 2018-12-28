@@ -22,7 +22,11 @@ var (
 
 // LoginController performs a gRPC call to verify user credentials. If everything is OK it saves AuthTokens
 // so that they can be reused later.
-func LoginController(client accounts_proto.AccountsClient, username, password string) (*accounts_proto.AuthTokens, error) {
+func LoginController(
+	client accounts_proto.AccountsClient,
+	username,
+	password string,
+) (*accounts_proto.AuthTokens, error) {
 	if username == "" {
 		return nil, ErrEmptyUsername
 	}

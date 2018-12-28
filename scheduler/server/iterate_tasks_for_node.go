@@ -16,7 +16,10 @@ import (
 
 // IterateTasksForNode marks the Node as ONLINE and starts sending new Tasks for it to run.
 // Once the RPC is done the Node is marked as OFFLINE.
-func (s SchedulerServer) IterateTasksForNode(_ *empty.Empty, stream scheduler_proto.Scheduler_IterateTasksForNodeServer) error {
+func (s SchedulerServer) IterateTasksForNode(
+	_ *empty.Empty,
+	stream scheduler_proto.Scheduler_IterateTasksForNodeServer,
+) error {
 	ctx := stream.Context()
 	logger := ctxlogrus.Extract(ctx)
 	// Authorize this request first.

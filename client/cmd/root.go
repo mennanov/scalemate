@@ -50,7 +50,7 @@ var rootCmd = &cobra.Command{
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
-		os.Exit(1)
+		os.Exit(1) //revive:disable-line:deep-exit
 	}
 }
 
@@ -60,9 +60,13 @@ func init() {
 	// Here you will define your flags and configuration settings.
 	// Cobra supports persistent flags, which, if defined here,
 	// will be global for your application.
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scalemate.yaml)")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
-	rootCmd.PersistentFlags().StringVar(&accounts.ServiceAddr, "accountsAddr", "localhost:8000", "Scalemate.io Accounts service tcp address")
+	rootCmd.PersistentFlags().
+		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scalemate.yaml)")
+	rootCmd.PersistentFlags().
+		BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().
+		StringVar(&accounts.ServiceAddr, "accountsAddr", "localhost:8000",
+			"Scalemate.io Accounts service tcp address")
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -75,7 +79,7 @@ func initConfig() {
 		home, err := homedir.Dir()
 		if err != nil {
 			fmt.Println(err)
-			os.Exit(1)
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
 
 		// Search config in home directory with name ".scalemate" (without extension).

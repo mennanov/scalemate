@@ -453,7 +453,8 @@ func (j *Job) LoadTasksFromDB(db *gorm.DB, fields ...string) error {
 
 // HasTerminated returns true if Job is in the final status (terminated) and never going to be scheduled again.
 func (j *Job) HasTerminated() bool {
-	return j.Status == Enum(scheduler_proto.Job_STATUS_FINISHED) || j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
+	return j.Status == Enum(scheduler_proto.Job_STATUS_FINISHED) ||
+		j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
 }
 
 // NeedsReschedulingOnTaskFailure returns true if the Job should be rescheduled according to the RestartPolicy.

@@ -296,7 +296,8 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 	var updateEvents []*events_proto.Event
 	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
 
-	rows, err := db.Raw("UPDATE tasks SET status = ?, updated_at = ? WHERE node_id = ? AND status = ? RETURNING tasks.*",
+	rows, err := db.Raw(
+		"UPDATE tasks SET status = ?, updated_at = ? WHERE node_id = ? AND status = ? RETURNING tasks.*",
 		// Set clause.
 		Enum(scheduler_proto.Task_STATUS_NODE_FAILED), time.Now(),
 		// Where clause.

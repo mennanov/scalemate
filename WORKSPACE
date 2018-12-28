@@ -12,11 +12,21 @@ http_archive(
     sha256 = "6e875ab4b6bf64a38c352887760f21203ab054676d9c1b274963907e0768740d",
 )
 
-http_archive(
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+
+git_repository(
     name = "com_github_atlassian_bazel_tools",
-    strip_prefix = "bazel-tools-96c1e41762781a1f25de2f45e6f0557c9642ef94",
-    urls = ["https://github.com/atlassian/bazel-tools/archive/96c1e41762781a1f25de2f45e6f0557c9642ef94.zip"],
+    remote = "https://github.com/mennanov/bazel-tools.git",
+    commit = "67472091d1276a4cb67c77464531dcbd2a0f3684",
 )
+
+# Uncomment once https://github.com/atlassian/bazel-tools/pull/46 is merged.
+#http_archive(
+#    name = "com_github_atlassian_bazel_tools",
+#    strip_prefix = "bazel-tools-96c1e41762781a1f25de2f45e6f0557c9642ef94",
+#    urls = ["https://github.com/atlassian/bazel-tools/archive/96c1e41762781a1f25de2f45e6f0557c9642ef94.zip"],
+#)
 
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
 
@@ -31,8 +41,6 @@ gazelle_dependencies()
 load("@com_github_atlassian_bazel_tools//gorevive:deps.bzl", "go_revive_dependencies")
 
 go_revive_dependencies()
-
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 git_repository(
     name = "bazel_gomock",

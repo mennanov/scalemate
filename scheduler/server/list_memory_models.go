@@ -11,7 +11,10 @@ import (
 )
 
 // ListMemoryModels lists aggregated GPU models for the given GPU Class.
-func (s SchedulerServer) ListMemoryModels(ctx context.Context, _ *empty.Empty) (*scheduler_proto.ListMemoryModelsResponse, error) {
+func (s SchedulerServer) ListMemoryModels(
+	ctx context.Context,
+	_ *empty.Empty,
+) (*scheduler_proto.ListMemoryModelsResponse, error) {
 
 	q := s.DB.Table("nodes").
 		Select("memory_model, SUM(memory_capacity) AS memory_capacity, " +

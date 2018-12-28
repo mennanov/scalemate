@@ -19,7 +19,11 @@ type JWTCredentials struct {
 }
 
 // NewJWTCredentials creates a new instance of JWTCredentials.
-func NewJWTCredentials(client accounts_proto.AccountsClient, tokens *accounts_proto.AuthTokens, tokensSaver TokensSaver) *JWTCredentials {
+func NewJWTCredentials(
+	client accounts_proto.AccountsClient,
+	tokens *accounts_proto.AuthTokens,
+	tokensSaver TokensSaver,
+) *JWTCredentials {
 	return &JWTCredentials{
 		client: client,
 		save:   tokensSaver,

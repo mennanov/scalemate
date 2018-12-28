@@ -17,7 +17,10 @@ import (
 // ChangePassword changes a password for the currently authenticated user.
 // Info about the current user is obtained from the JWT claims.
 // This method can be executed by admins and the actual user only.
-func (s AccountsServer) ChangePassword(ctx context.Context, r *accounts_proto.ChangePasswordRequest) (*empty.Empty, error) {
+func (s AccountsServer) ChangePassword(
+	ctx context.Context,
+	r *accounts_proto.ChangePasswordRequest,
+) (*empty.Empty, error) {
 	ctxClaims := ctx.Value(auth.ContextKeyClaims)
 	if ctxClaims == nil {
 		return nil, status.Error(codes.Unauthenticated, "no JWT claims found")
