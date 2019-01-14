@@ -100,128 +100,137 @@ type AccountsServer struct {
 	JWTSecretKey    []byte
 }
 
-// SetBCryptCostFromEnv sets the BcryptCost field value from environment variables.
-func (s *AccountsServer) SetBCryptCostFromEnv(conf AppEnvConf) error {
-	value, err := strconv.Atoi(os.Getenv(conf.BCryptCost))
-	if err != nil {
-		return errors.Wrap(err, "strconv.Atoi failed")
+// WithBCryptCostFromEnv sets the BcryptCost field value from environment variables.
+func WithBCryptCostFromEnv(conf AppEnvConf) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		value, err := strconv.Atoi(os.Getenv(conf.BCryptCost))
+		if err != nil {
+			return errors.Wrap(err, "strconv.Atoi failed")
+		}
+		s.BcryptCost = value
+		return nil
 	}
-	s.BcryptCost = value
-	return nil
 }
 
-// SetAccessTokenTTLFromEnv sets the AccessTokenTTL field value from environment variables.
-func (s *AccountsServer) SetAccessTokenTTLFromEnv(conf AppEnvConf) error {
-	value, err := time.ParseDuration(os.Getenv(conf.AccessTokenTTL))
-	if err != nil {
-		return errors.Wrapf(err, "time.ParseDuration failed for '%s'", os.Getenv(conf.AccessTokenTTL))
+// WithAccessTokenTTLFromEnv sets the AccessTokenTTL field value from environment variables.
+func WithAccessTokenTTLFromEnv(conf AppEnvConf) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		value, err := time.ParseDuration(os.Getenv(conf.AccessTokenTTL))
+		if err != nil {
+			return errors.Wrapf(err, "time.ParseDuration failed for '%s'", os.Getenv(conf.AccessTokenTTL))
+		}
+		s.AccessTokenTTL = value
+		return nil
 	}
-	s.AccessTokenTTL = value
-	return nil
 }
 
-// SetRefreshTokenTTLFromEnv sets the RefreshTokenTTL field value from environment variables.
-func (s *AccountsServer) SetRefreshTokenTTLFromEnv(conf AppEnvConf) error {
-	value, err := time.ParseDuration(os.Getenv(conf.RefreshTokenTTL))
-	if err != nil {
-		return errors.Wrapf(err, "time.ParseDuration failed for '%s'", os.Getenv(conf.RefreshTokenTTL))
+// WithRefreshTokenTTLFromEnv creates an option that sets the RefreshTokenTTL field value from environment variables.
+func WithRefreshTokenTTLFromEnv(conf AppEnvConf) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		value, err := time.ParseDuration(os.Getenv(conf.RefreshTokenTTL))
+		if err != nil {
+			return errors.Wrapf(err, "time.ParseDuration failed for '%s'", os.Getenv(conf.RefreshTokenTTL))
+		}
+		s.RefreshTokenTTL = value
+		return nil
 	}
-	s.RefreshTokenTTL = value
-	return nil
 }
 
-// SetJWTSecretKeyFromEnv sets the JWTSecretKey field value from environment variables.
-func (s *AccountsServer) SetJWTSecretKeyFromEnv(conf AppEnvConf) error {
+// JWTSecretKeyFromEnv gets the JWT secret key value from environment variables.
+func JWTSecretKeyFromEnv(conf AppEnvConf) ([]byte, error) {
 	value := os.Getenv(conf.JWTSecretKey)
 	if value == "" {
-		return errors.New("JWT secret key is empty")
+		return nil, errors.New("JWT secret key is empty")
 	}
-	s.JWTSecretKey = []byte(value)
-	return nil
+	return []byte(value), nil
 }
 
-// SetClaimsContextInjector sets the ClaimsInjector to auth.NewJWTClaimsInjector with provided jwtSecretKey.
-func (s *AccountsServer) SetClaimsContextInjector(jwtSecretKey []byte) error {
-	s.ClaimsInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
-	return nil
+// WithJWTSecretKey creates an option that sets the JWTSecretKey field value.
+func WithJWTSecretKey(jwtSecretKey []byte) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		s.JWTSecretKey = jwtSecretKey
+		return nil
+	}
 }
 
-// SetAMQPProducer sets the Producer field value to AMQPProducer.
-func (s *AccountsServer) SetAMQPProducer(conn *amqp.Connection) error {
-	if conn == nil {
-		return errors.New("amqp.Connection is nil")
+// WithClaimsInjector creates an option that sets the ClaimsInjector to auth.NewJWTClaimsInjector with the
+// provided jwtSecretKey.
+func WithClaimsInjector(jwtSecretKey []byte) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		s.ClaimsInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
+		return nil
 	}
-	producer, err := events.NewAMQPProducer(conn, events.AccountsAMQPExchangeName)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPProducer failed")
-	}
-	s.Producer = producer
-	return nil
 }
 
-// SetAMQPConsumers sets the Consumers field value to AMQPConsumer(s).
-func (s *AccountsServer) SetAMQPConsumers(conn *amqp.Connection) error {
-	channel, err := conn.Channel()
-	defer utils.Close(channel)
+// WithAMQPProducer creates an option that sets the Producer field value to AMQPProducer.
+func WithAMQPProducer(conn *amqp.Connection) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		if conn == nil {
+			return errors.New("amqp.Connection is nil")
+		}
+		producer, err := events.NewAMQPProducer(conn, events.AccountsAMQPExchangeName)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPProducer failed")
+		}
+		s.Producer = producer
+		return nil
+	}
+}
 
-	if err != nil {
-		return errors.Wrap(err, "failed to open a new AMQP channel")
-	}
-	// Declare all required exchanges.
-	if err := events.AMQPExchangeDeclare(channel, events.AccountsAMQPExchangeName); err != nil {
-		return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.AccountsAMQPExchangeName)
-	}
-	if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
-		return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
-	}
+// WithAMQPConsumers creates an option that sets the Consumers field value to AMQPConsumer(s).
+func WithAMQPConsumers(conn *amqp.Connection) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		channel, err := conn.Channel()
+		defer utils.Close(channel)
 
-	nodeConnectedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"accounts_scheduler_node_created",
-		"scheduler.node.created",
-		s.HandleSchedulerNodeCreatedEvent)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
-	}
-	s.Consumers = []events.Consumer{nodeConnectedConsumer}
+		if err != nil {
+			return errors.Wrap(err, "failed to open a new AMQP channel")
+		}
+		// Declare all required exchanges.
+		if err := events.AMQPExchangeDeclare(channel, events.AccountsAMQPExchangeName); err != nil {
+			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.AccountsAMQPExchangeName)
+		}
+		if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
+			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
+		}
 
-	return nil
+		nodeConnectedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"accounts_scheduler_node_created",
+			"scheduler.node.created",
+			s.HandleSchedulerNodeCreatedEvent)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
+		}
+		s.Consumers = []events.Consumer{nodeConnectedConsumer}
+
+		return nil
+	}
+}
+
+// WithDBConnection creates an option that sets the DB field to an existing DB connection.
+func WithDBConnection(db *gorm.DB) AccountsServerOption {
+	return func(s *AccountsServer) error {
+		s.DB = db
+		return nil
+	}
 }
 
 // Compile time interface check.
 var _ accounts_proto.AccountsServer = new(AccountsServer)
 
-// NewAccountServerFromEnv create a new AccountsServer suitable for production from environment variables.
-// FIXME: rewrite with option functions (see https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis).
-func NewAccountServerFromEnv(
-	appEnvConf AppEnvConf,
-	db *gorm.DB,
-	amqpConnection *amqp.Connection,
-) (*AccountsServer, error) {
-	s := &AccountsServer{
-		DB: db,
-	}
-	if err := s.SetAccessTokenTTLFromEnv(appEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetAccessTokenTTLFromEnv failed")
-	}
-	if err := s.SetRefreshTokenTTLFromEnv(appEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetRefreshTokenTTLFromEnv failed")
-	}
-	if err := s.SetBCryptCostFromEnv(appEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetBCryptCostFromEnv failed")
-	}
-	if err := s.SetJWTSecretKeyFromEnv(appEnvConf); err != nil {
-		return nil, errors.Wrap(err, "SetJWTSecretKeyFromEnv failed")
-	}
-	if err := s.SetClaimsContextInjector(s.JWTSecretKey); err != nil {
-		return nil, errors.Wrap(err, "SetClaimsContextInjector failed")
-	}
-	if err := s.SetAMQPProducer(amqpConnection); err != nil {
-		return nil, errors.Wrap(err, "SetAMQPProducer failed")
-	}
-	if err := s.SetAMQPConsumers(amqpConnection); err != nil {
-		return nil, errors.Wrap(err, "SetAMQPConsumers failed")
+// AccountsServerOption modifies the SchedulerServer.
+type AccountsServerOption func(server *AccountsServer) error
+
+// NewAccountsServer creates a new AccountsServer and applies the given options to it.
+func NewAccountsServer(options ...AccountsServerOption) (*AccountsServer, error) {
+	s := &AccountsServer{}
+
+	for _, option := range options {
+		if err := option(s); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }

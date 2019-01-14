@@ -72,127 +72,142 @@ type SchedulerServer struct {
 	gracefulStop chan struct{}
 }
 
-// SetClaimsInjector sets the ClaimsInjector field to a new auth.NewJWTClaimsInjector with JWT secret key from env.
-func (s *SchedulerServer) SetClaimsInjector(conf AppEnvConf) error {
-	value := os.Getenv(conf.JWTSecretKey)
-	if value == "" {
-		return errors.New("JWT secret key is empty")
-	}
-	s.ClaimsInjector = auth.NewJWTClaimsInjector([]byte(value))
-	return nil
-}
-
-// SetAMQPProducer sets the Producer field value to AMQPProducer.
-func (s *SchedulerServer) SetAMQPProducer(conn *amqp.Connection) error {
-	if conn == nil {
-		return errors.New("amqp.Connection is nil")
-	}
-	producer, err := events.NewAMQPProducer(conn, events.SchedulerAMQPExchangeName)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPProducer failed")
-	}
-	s.Producer = producer
-	return nil
-}
-
-// SetAMQPConsumers sets the Consumers field value to AMQPConsumer(s).
-func (s *SchedulerServer) SetAMQPConsumers(conn *amqp.Connection) error {
-	channel, err := conn.Channel()
-	defer utils.Close(channel)
-
-	if err != nil {
-		return errors.Wrap(err, "failed to open a new AMQP channel")
-	}
-	// Declare all required exchanges.
-	if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
-		return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
-	}
-
-	jobCreatedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"scheduler_job_created",
-		"scheduler.job.created",
-		s.HandleJobPending)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobCreatedConsumer")
-	}
-
-	jobStatusUpdatedToPendingConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"scheduler_job_pending",
-		"scheduler.job.updated.#.status.#",
-		s.HandleJobPending)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobStatusUpdatedToPendingConsumer")
-	}
-
-	jobTerminatedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"",
-		"scheduler.job.updated.#.status.#",
-		s.HandleJobTerminated)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobTerminatedConsumer")
-	}
-
-	nodeConnectedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"scheduler_node_connected",
-		"scheduler.node.updated.#.connected_at.#",
-		s.HandleNodeConnected)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
-	}
-
-	nodeDisconnectedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"scheduler_node_disconnected",
-		"scheduler.node.updated.#.disconnected_at.#",
-		s.HandleNodeDisconnected)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeDisconnectedConsumer")
-	}
-
-	taskCreatedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"",
-		"scheduler.task.created",
-		s.HandleTaskCreated)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskCreatedConsumer")
-	}
-
-	taskTerminatedConsumer, err := events.NewAMQPConsumer(
-		conn,
-		events.SchedulerAMQPExchangeName,
-		"scheduler_task_terminated",
-		"scheduler.task.updated.#.status.#",
-		s.HandleTaskTerminated)
-	if err != nil {
-		return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskTerminatedConsumer")
-	}
-
-	s.Consumers = []events.Consumer{
-		jobCreatedConsumer,
-		jobStatusUpdatedToPendingConsumer,
-		jobTerminatedConsumer,
-		nodeConnectedConsumer,
-		nodeDisconnectedConsumer,
-		taskCreatedConsumer,
-		taskTerminatedConsumer,
-	}
-
-	return nil
-}
-
 // Compile time interface check.
 var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
+
+// WithDBConnection creates an option that sets the DB field to an existing DB connection.
+func WithDBConnection(db *gorm.DB) SchedulerServerOption {
+	return func(s *SchedulerServer) error {
+		s.DB = db
+		return nil
+	}
+}
+
+// WithClaimsInjector creates an option that sets ClaimsInjector field to a new auth.NewJWTClaimsInjector with JWT
+// secret key from env.
+func WithClaimsInjector(conf AppEnvConf) SchedulerServerOption {
+	return func(s *SchedulerServer) error {
+		value := os.Getenv(conf.JWTSecretKey)
+		if value == "" {
+			return errors.New("JWT secret key is empty")
+		}
+		s.ClaimsInjector = auth.NewJWTClaimsInjector([]byte(value))
+		return nil
+	}
+}
+
+// WithAMQPProducer creates an option that sets the Producer field value to AMQPProducer.
+func WithAMQPProducer(conn *amqp.Connection) SchedulerServerOption {
+	return func(s *SchedulerServer) error {
+		if conn == nil {
+			return errors.New("amqp.Connection is nil")
+		}
+		producer, err := events.NewAMQPProducer(conn, events.SchedulerAMQPExchangeName)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPProducer failed")
+		}
+		s.Producer = producer
+		return nil
+	}
+}
+
+// WithAMQPConsumers creates an option that sets the Consumers field value to AMQPConsumer(s).
+func WithAMQPConsumers(conn *amqp.Connection) SchedulerServerOption {
+	return func(s *SchedulerServer) error {
+		channel, err := conn.Channel()
+		defer utils.Close(channel)
+
+		if err != nil {
+			return errors.Wrap(err, "failed to open a new AMQP channel")
+		}
+		// Declare all required exchanges.
+		if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
+			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
+		}
+
+		jobCreatedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"scheduler_job_created",
+			"scheduler.job.created",
+			s.HandleJobPending)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobCreatedConsumer")
+		}
+
+		jobStatusUpdatedToPendingConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"scheduler_job_pending",
+			"scheduler.job.updated.#.status.#",
+			s.HandleJobPending)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobStatusUpdatedToPendingConsumer")
+		}
+
+		jobTerminatedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"",
+			"scheduler.job.updated.#.status.#",
+			s.HandleJobTerminated)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobTerminatedConsumer")
+		}
+
+		nodeConnectedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"scheduler_node_connected",
+			"scheduler.node.updated.#.connected_at.#",
+			s.HandleNodeConnected)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
+		}
+
+		nodeDisconnectedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"scheduler_node_disconnected",
+			"scheduler.node.updated.#.disconnected_at.#",
+			s.HandleNodeDisconnected)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeDisconnectedConsumer")
+		}
+
+		taskCreatedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"",
+			"scheduler.task.created",
+			s.HandleTaskCreated)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskCreatedConsumer")
+		}
+
+		taskTerminatedConsumer, err := events.NewAMQPConsumer(
+			conn,
+			events.SchedulerAMQPExchangeName,
+			"scheduler_task_terminated",
+			"scheduler.task.updated.#.status.#",
+			s.HandleTaskTerminated)
+		if err != nil {
+			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskTerminatedConsumer")
+		}
+
+		s.Consumers = []events.Consumer{
+			jobCreatedConsumer,
+			jobStatusUpdatedToPendingConsumer,
+			jobTerminatedConsumer,
+			nodeConnectedConsumer,
+			nodeDisconnectedConsumer,
+			taskCreatedConsumer,
+			taskTerminatedConsumer,
+		}
+
+		return nil
+	}
+}
 
 // AMQPEnvConf maps to the name of the env variable with the AMQP address to connect to.
 var AMQPEnvConf = utils.AMQPEnvConf{
@@ -232,26 +247,20 @@ var SchedulerEnvConf = AppEnvConf{
 	JWTSecretKey:    "SCHEDULER_JWT_SECRET_KEY",
 }
 
-// NewSchedulerServerFromEnv creates a new SchedulerServer from environment variables.
-// FIXME: rewrite with option functions.
-func NewSchedulerServerFromEnv(
-	conf AppEnvConf,
-	db *gorm.DB,
-	amqpConnection *amqp.Connection,
-) (*SchedulerServer, error) {
+// SchedulerServerOption modifies the SchedulerServer.
+type SchedulerServerOption func(server *SchedulerServer) error
+
+// NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
+func NewSchedulerServer(options ...SchedulerServerOption) (*SchedulerServer, error) {
 	s := &SchedulerServer{
-		DB:               db,
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
 		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
+		gracefulStop:     make(chan struct{}),
 	}
-	if err := s.SetClaimsInjector(conf); err != nil {
-		return nil, errors.Wrap(err, "SchedulerServer.SetClaimsInjector failed")
-	}
-	if err := s.SetAMQPProducer(amqpConnection); err != nil {
-		return nil, errors.Wrap(err, "SchedulerServer.SetAMQPProducer failed")
-	}
-	if err := s.SetAMQPConsumers(amqpConnection); err != nil {
-		return nil, errors.Wrap(err, "SchedulerServer.SetAMQPConsumers failed")
+	for _, option := range options {
+		if err := option(s); err != nil {
+			return nil, err
+		}
 	}
 
 	return s, nil

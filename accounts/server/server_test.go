@@ -58,7 +58,19 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
 	s.Require().NoError(err)
 
-	s.service, err = server.NewAccountServerFromEnv(server.AccountsEnvConf, s.db, s.amqpConnection)
+	jwtSecretKey, err := server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
+	s.Require().NoError(err)
+
+	s.service, err = server.NewAccountsServer(
+		server.WithDBConnection(s.db),
+		server.WithAMQPConsumers(s.amqpConnection),
+		server.WithAMQPProducer(s.amqpConnection),
+		server.WithJWTSecretKey(jwtSecretKey),
+		server.WithClaimsInjector(jwtSecretKey),
+		server.WithAccessTokenTTLFromEnv(server.AccountsEnvConf),
+		server.WithRefreshTokenTTLFromEnv(server.AccountsEnvConf),
+		server.WithBCryptCostFromEnv(server.AccountsEnvConf),
+	)
 	s.Require().NoError(err)
 
 	// Prepare database.

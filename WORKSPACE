@@ -21,12 +21,11 @@ git_repository(
     commit = "67472091d1276a4cb67c77464531dcbd2a0f3684",
 )
 
-# Uncomment once https://github.com/atlassian/bazel-tools/pull/46 is merged.
-#http_archive(
-#    name = "com_github_atlassian_bazel_tools",
-#    strip_prefix = "bazel-tools-96c1e41762781a1f25de2f45e6f0557c9642ef94",
-#    urls = ["https://github.com/atlassian/bazel-tools/archive/96c1e41762781a1f25de2f45e6f0557c9642ef94.zip"],
-#)
+http_archive(
+    name = "com_github_atlassian_bazel_tools",
+    strip_prefix = "bazel-tools-1e588b1efac2c9dca66626b62a873f65de64de4b",
+    urls = ["https://github.com/atlassian/bazel-tools/archive/1e588b1efac2c9dca66626b62a873f65de64de4b.zip"],
+)
 
 load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
 

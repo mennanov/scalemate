@@ -61,14 +61,13 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
 
-	s.service = &server.SchedulerServer{
-		DB:               s.db,
-		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
-		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
-	}
-
-	s.Require().NoError(s.service.SetAMQPProducer(s.amqpConnection))
-	s.Require().NoError(s.service.SetAMQPConsumers(s.amqpConnection))
+	service, err := server.NewSchedulerServer(
+		server.WithDBConnection(s.db),
+		server.WithAMQPProducer(s.amqpConnection),
+		server.WithAMQPConsumers(s.amqpConnection),
+	)
+	s.Require().NoError(err)
+	s.service = service
 
 	// Prepare database.
 	s.Require().NoError(migrations.RunMigrations(s.db))

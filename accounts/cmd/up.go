@@ -30,7 +30,22 @@ var upCmd = &cobra.Command{
 		}
 		defer utils.Close(amqpConnection)
 
-		accountsServer, err := server.NewAccountServerFromEnv(server.AccountsEnvConf, db, amqpConnection)
+		jwtSecretKey, err := server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
+		if err != nil {
+			fmt.Printf("server.JWTSecretKeyFromEnv failed: %s", err)
+			return
+		}
+
+		accountsServer, err := server.NewAccountsServer(
+			server.WithDBConnection(db),
+			server.WithAMQPConsumers(amqpConnection),
+			server.WithAMQPProducer(amqpConnection),
+			server.WithJWTSecretKey(jwtSecretKey),
+			server.WithClaimsInjector(jwtSecretKey),
+			server.WithAccessTokenTTLFromEnv(server.AccountsEnvConf),
+			server.WithRefreshTokenTTLFromEnv(server.AccountsEnvConf),
+			server.WithBCryptCostFromEnv(server.AccountsEnvConf),
+		)
 		if err != nil {
 			fmt.Printf("Failed to start gRPC server: %+v\n", err)
 			return

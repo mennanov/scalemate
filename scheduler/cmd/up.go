@@ -30,9 +30,14 @@ var upCmd = &cobra.Command{
 		}
 		defer utils.Close(amqpConnection)
 
-		schedulerServer, err := server.NewSchedulerServerFromEnv(server.SchedulerEnvConf, db, amqpConnection)
+		schedulerServer, err := server.NewSchedulerServer(
+			server.WithDBConnection(db),
+			server.WithAMQPProducer(amqpConnection),
+			server.WithAMQPConsumers(amqpConnection),
+			server.WithClaimsInjector(server.SchedulerEnvConf),
+		)
 		if err != nil {
-			logrus.WithError(err).Error("server.NewSchedulerServerFromEnv failed")
+			logrus.WithError(err).Error("server.NewSchedulerServer failed")
 			return
 		}
 		defer utils.Close(schedulerServer)
