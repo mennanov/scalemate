@@ -1,0 +1,30 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "go_default_library",
+    srcs = ["main.go"],
+    importpath = "github.com/mennanov/scalemate/agent",
+    visibility = ["//visibility:private"],
+    deps = ["//agent/cmd:go_default_library"],
+)
+
+go_binary(
+    name = "agent",
+    embed = [":go_default_library"],
+    visibility = ["//visibility:public"],
+)
+
+load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
+
+go_revive_test(
+    name = "go_lint",
+    # Go source files to be linted.
+    srcs = glob(["*.go"]),
+    # Revive .toml config.
+    config = "//:revive.toml",  # it can also be a regular Bazel label.
+    formatter = "stylish",
+    # The paths have to be relative to the workspace root.
+    paths = [
+        "./...",
+    ],
+)
