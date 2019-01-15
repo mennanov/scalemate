@@ -78,7 +78,7 @@ go_test(
         "//shared/events:go_default_library",
         "//shared/events_proto:go_default_library",
         "//shared/utils:go_default_library",
-        "@com_github_golang_protobuf//protoc-gen-go/generator:go_default_library",
+        "@com_github_golang_protobuf//protoc-gen-go/generator:go_default_library_gen",
         "@com_github_jinzhu_gorm//:go_default_library",
         "@com_github_mennanov_fieldmask_utils//:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
@@ -97,6 +97,7 @@ go_test(
 )
 
 load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
+
 go_revive_test(
     name = "go_lint",
     # Go source files to be linted.

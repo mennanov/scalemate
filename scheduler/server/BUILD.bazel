@@ -104,6 +104,7 @@ go_test(
 )
 
 load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
+
 go_revive_test(
     name = "go_lint",
     # Go source files to be linted.
