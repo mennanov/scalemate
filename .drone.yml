@@ -7,7 +7,7 @@ pipeline:
   test:
     image: l.gcr.io/google/bazel:latest
     commands:
-      - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test --ram_utilization_factor=40 //...:all --test_output=errors --nocache_test_results
+      - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test //...:all --test_output=errors --nocache_test_results
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/bazel-drone-output:/tmp/bazel-drone-output
