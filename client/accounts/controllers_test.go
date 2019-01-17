@@ -16,8 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/mennanov/scalemate/client/auth"
-	shared_auth "github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
 func TestLoginController(t *testing.T) {
@@ -263,7 +262,7 @@ func createToken(ttl time.Duration, tokenType string) string {
 	now := time.Now()
 	expiresAt := now.Add(ttl).Unix()
 
-	claims := &shared_auth.Claims{
+	claims := &auth.Claims{
 		Username:  "username",
 		Role:      accounts_proto.User_ADMIN,
 		TokenType: tokenType,

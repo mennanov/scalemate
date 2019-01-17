@@ -26,6 +26,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 
 	"github.com/mennanov/scalemate/client/accounts"
+	"github.com/mennanov/scalemate/client/scheduler"
 )
 
 var (
@@ -64,9 +65,18 @@ func init() {
 		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scalemate.yaml)")
 	rootCmd.PersistentFlags().
 		BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+
 	rootCmd.PersistentFlags().
-		StringVar(&accounts.ServiceAddr, "accountsAddr", "localhost:8000",
+		StringVar(&accounts.ServiceAddr, "accounts_addr", "localhost:8000",
 			"Scalemate.io Accounts service tcp address")
+	viper.BindPFlag("accounts_addr", rootCmd.PersistentFlags().Lookup("accounts_addr"))
+	viper.SetDefault("accounts_addr", "localhost:8000")
+
+	rootCmd.PersistentFlags().
+		StringVar(&scheduler.ServiceAddr, "scheduler_addr", "localhost:8001",
+			"Scalemate.io Scheduler service tcp address")
+	viper.BindPFlag("scheduler_addr", rootCmd.PersistentFlags().Lookup("scheduler_addr"))
+	viper.SetDefault("scheduler_addr", "localhost:8001")
 }
 
 // initConfig reads in config file and ENV variables if set.

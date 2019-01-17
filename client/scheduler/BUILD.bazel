@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "go_default_library",
+    srcs = [
+        "controllers.go",
+        "views.go",
+    ],
+    importpath = "github.com/mennanov/scalemate/client/scheduler",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//accounts/accounts_proto:go_default_library",
+        "//scheduler/scheduler_proto:go_default_library",
+        "//shared/auth:go_default_library",
+        "@org_golang_google_grpc//:go_default_library",
+    ],
+)
+
+go_test(
+    name = "go_default_test",
+    srcs = ["controllers_test.go"],
+    embed = [":go_default_library"],
+)

@@ -15,12 +15,12 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
+	"github.com/mennanov/scalemate/shared/client"
 )
 
 var (
@@ -35,17 +35,18 @@ var loginCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if loginUsername == "" {
 			if err := userInput("Username", &loginUsername); err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
+				client.DisplayMessage(os.Stderr, err.Error())
 				return
 			}
 		}
 		if loginPassword == "" {
 			if err := userPasswordInput("Password", &loginPassword); err != nil {
-				fmt.Fprintf(os.Stderr, err.Error())
+				client.DisplayMessage(os.Stderr, err.Error())
 				return
 			}
 		}
-		_, err := accounts.LoginController(accounts.NewAccountsClient(), loginUsername, loginPassword)
+		_, err := accounts.LoginController(
+			client.NewAccountsClient(accounts.ServiceAddr), loginUsername, loginPassword)
 		accounts.LoginView(os.Stdout, os.Stderr, err)
 	},
 }

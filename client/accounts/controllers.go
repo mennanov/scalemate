@@ -7,9 +7,11 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
-	"github.com/mennanov/scalemate/client/auth"
-	shared_auth "github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/auth"
 )
+
+// ServiceAddr is a network address of the Accounts service.
+var ServiceAddr string
 
 var (
 	// ErrEmptyUsername is used when a username is expected, but it is empty.
@@ -90,8 +92,8 @@ func ChangePasswordController(client accounts_proto.AccountsClient, password str
 	if err != nil {
 		return err
 	}
-	jwtCredentials := shared_auth.NewJWTCredentials(client, tokens, auth.SaveTokens)
-	claims, err := shared_auth.NewClaimsFromString(tokens.AccessToken)
+	jwtCredentials := auth.NewJWTCredentials(client, tokens, auth.SaveTokens)
+	claims, err := auth.NewClaimsFromString(tokens.AccessToken)
 	if err != nil {
 		return err
 	}

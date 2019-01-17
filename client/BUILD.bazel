@@ -5,7 +5,10 @@ go_library(
     srcs = ["main.go"],
     importpath = "github.com/mennanov/scalemate/client",
     visibility = ["//visibility:private"],
-    deps = ["//client/cmd:go_default_library"],
+    deps = [
+        "//client/cmd:go_default_library",
+        "//shared/client:go_default_library",
+    ],
 )
 
 go_binary(
