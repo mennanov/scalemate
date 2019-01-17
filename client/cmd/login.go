@@ -15,8 +15,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
@@ -35,19 +33,19 @@ var loginCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if loginUsername == "" {
 			if err := userInput("Username", &loginUsername); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 		}
 		if loginPassword == "" {
 			if err := userPasswordInput("Password", &loginPassword); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 		}
 		_, err := accounts.LoginController(
 			client.NewAccountsClient(accounts.ServiceAddr), loginUsername, loginPassword)
-		accounts.LoginView(os.Stdout, os.Stderr, err)
+		accounts.LoginView(logger, err)
 	},
 }
 

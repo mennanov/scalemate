@@ -30,8 +30,9 @@ import (
 )
 
 var (
-	cfgFile string
-	verbose bool
+	cfgFile  string
+	logLevel uint32
+	logger   *logrus.Logger
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -42,7 +43,10 @@ var rootCmd = &cobra.Command{
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		setupLogger(verbose)
+		logger = logrus.New()
+
+		logger.SetOutput(os.Stdout)
+		logger.SetLevel(logrus.Level(logLevel))
 	},
 }
 
@@ -64,7 +68,7 @@ func init() {
 	rootCmd.PersistentFlags().
 		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scalemate.yaml)")
 	rootCmd.PersistentFlags().
-		BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+		Uint32VarP(&logLevel, "logLevel", "v", uint32(logrus.InfoLevel), "verbosity level")
 
 	rootCmd.PersistentFlags().
 		StringVar(&accounts.ServiceAddr, "accounts_addr", "localhost:8000",
@@ -102,14 +106,6 @@ func initConfig() {
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err == nil {
 		fmt.Println("Using config file:", viper.ConfigFileUsed())
-	}
-}
-
-func setupLogger(verbose bool) {
-	if verbose {
-		logrus.SetLevel(logrus.DebugLevel)
-	} else {
-		logrus.SetLevel(logrus.ErrorLevel)
 	}
 }
 

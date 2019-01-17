@@ -15,8 +15,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
@@ -27,7 +25,7 @@ var logoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Log out",
 	Run: func(cmd *cobra.Command, args []string) {
-		accounts.LogoutView(os.Stdout, os.Stderr, accounts.LogoutController())
+		accounts.LogoutView(logger, accounts.LogoutController())
 	},
 }
 

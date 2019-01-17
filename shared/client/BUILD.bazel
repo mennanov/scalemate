@@ -4,7 +4,6 @@ go_library(
     name = "go_default_library",
     srcs = [
         "client.go",
-        "utils.go",
         "views.go",
     ],
     importpath = "github.com/mennanov/scalemate/shared/client",

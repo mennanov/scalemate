@@ -22,7 +22,8 @@ import (
 
 // jobsCmd represents the jobs command
 var jobsCmd = &cobra.Command{
-	Use: "jobs",
+	Use:   "jobs",
+	Short: "Create, list and get jobs",
 }
 
 // jobsCreateCmd represents the job creation command
@@ -31,15 +32,22 @@ var jobsCreateCmd = &cobra.Command{
 	Short: "Create a new Job",
 	Long: `Create a new Job entity which will be scheduled immediately. 
 	Once the Job is scheduled a corresponding Task entity is created.`,
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Println("create called")
+		dockerImage := args[0]
+		var dockerCommand []string
+		if len(args) > 1 {
+			dockerCommand = args[1:]
+		}
+		fmt.Println("image:", dockerImage, "command", dockerCommand)
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(jobsCmd)
-
 	jobsCmd.AddCommand(jobsCreateCmd)
+
+	rootCmd.AddCommand(jobsCmd)
 
 	// Here you will define your flags and configuration settings.
 
@@ -49,5 +57,7 @@ func init() {
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// jobsCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	jobsCreateCmd.Flags().BoolP("daemon", "d", false,
+		"Don't wait for an established p2p connection to run a container")
+
 }

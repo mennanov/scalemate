@@ -1,8 +1,7 @@
 package client
 
 import (
-	"io"
-
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -32,7 +31,7 @@ type GRPCErrorMessages struct {
 }
 
 // ErrorView handles error messages representation.
-func ErrorView(errWriter io.Writer, errMessages *GRPCErrorMessages, err error) {
+func ErrorView(logger *logrus.Logger, errMessages *GRPCErrorMessages, err error) {
 	msg := err.Error()
 	if statusCode, ok := status.FromError(err); ok {
 		switch statusCode.Code() {
@@ -102,5 +101,5 @@ func ErrorView(errWriter io.Writer, errMessages *GRPCErrorMessages, err error) {
 			}
 		}
 	}
-	DisplayMessage(errWriter, msg)
+	logger.Error(msg)
 }

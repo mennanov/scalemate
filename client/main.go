@@ -15,20 +15,19 @@
 package main
 
 import (
-	"os"
+	"fmt"
 
 	"github.com/mennanov/scalemate/client/cmd"
-	"github.com/mennanov/scalemate/shared/client"
 )
 
 func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			if err, ok := r.(error); ok {
-				client.DisplayMessagef(os.Stderr, "Error: %s", err.Error())
+				fmt.Printf("Error: %s\n", err.Error())
 				return
 			}
-			client.DisplayMessagef(os.Stderr, "Error: %s", r)
+			fmt.Printf("Error: %s\n", r)
 		}
 	}()
 

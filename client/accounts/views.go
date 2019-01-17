@@ -2,17 +2,17 @@ package accounts
 
 import (
 	"fmt"
-	"io"
 
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/client"
 )
 
 // LoginView handles LoginController results representation.
-func LoginView(outWriter, errWriter io.Writer, err error) {
+func LoginView(logger *logrus.Logger, err error) {
 	if err != nil {
-		client.ErrorView(errWriter, &client.GRPCErrorMessages{
+		client.ErrorView(logger, &client.GRPCErrorMessages{
 			InvalidArgument: func(s *status.Status) string {
 				return fmt.Sprintf("invalid login credentials: %s", s.Message())
 			},
@@ -25,13 +25,13 @@ func LoginView(outWriter, errWriter io.Writer, err error) {
 		}, err)
 		return
 	}
-	client.DisplayMessage(outWriter, "Logged in.")
+	logger.Info("Logged in.")
 }
 
 // RegisterView handles RegisterController results representation.
-func RegisterView(outWriter, errWriter io.Writer, err error) {
+func RegisterView(logger *logrus.Logger, err error) {
 	if err != nil {
-		client.ErrorView(errWriter, &client.GRPCErrorMessages{
+		client.ErrorView(logger, &client.GRPCErrorMessages{
 			InvalidArgument: func(s *status.Status) string {
 				return fmt.Sprintf("invalid parameters: %s", s.Message())
 			},
@@ -41,13 +41,13 @@ func RegisterView(outWriter, errWriter io.Writer, err error) {
 		}, err)
 		return
 	}
-	client.DisplayMessage(outWriter, "Registration complete. You may now login.")
+	logger.Info("Registration complete. You may now login.")
 }
 
 // ChangePasswordView handles ChangePasswordController results representation.
-func ChangePasswordView(outWriter, errWriter io.Writer, err error) {
+func ChangePasswordView(logger *logrus.Logger, err error) {
 	if err != nil {
-		client.ErrorView(errWriter, &client.GRPCErrorMessages{
+		client.ErrorView(logger, &client.GRPCErrorMessages{
 			InvalidArgument: func(s *status.Status) string {
 				return fmt.Sprintf("invalid parameters: %s", s.Message())
 			},
@@ -57,14 +57,14 @@ func ChangePasswordView(outWriter, errWriter io.Writer, err error) {
 		}, err)
 		return
 	}
-	client.DisplayMessage(outWriter, "Password has been changed. Please, log in.")
+	logger.Info("Password has been changed. Please, log in.")
 }
 
 // LogoutView handles LogoutController representation.
-func LogoutView(outWriter, errWriter io.Writer, err error) {
+func LogoutView(logger *logrus.Logger, err error) {
 	if err != nil {
-		client.ErrorView(errWriter, &client.GRPCErrorMessages{}, err)
+		client.ErrorView(logger, &client.GRPCErrorMessages{}, err)
 		return
 	}
-	client.DisplayMessage(outWriter, "Logged out.")
+	logger.Info("Logged out.")
 }

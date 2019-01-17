@@ -23,7 +23,6 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 				Id:          0,
 				Username:    "username",
 				Status:      scheduler_proto.Job_STATUS_CANCELLED,
-				DockerImage: "nginx:latest",
 				CpuLimit:    4,
 				CpuClass:    scheduler_proto.CPUClass_CPU_CLASS_ADVANCED,
 				MemoryLimit: 2048,
@@ -32,7 +31,9 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 				DiskLimit:   10240,
 				DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
 				RunConfig: &scheduler_proto.Job_RunConfig{
-					Ports: []int32{80, 443},
+					Image:   "nginx:latest",
+					Command: "nginx --daemon=false",
+					Ports:   map[uint32]uint32{8080: 80, 4443: 443},
 					Volumes: map[string]string{
 						"./nginx.conf": "/etc/nginx/nginx.conf",
 					},
@@ -52,16 +53,15 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 				NameLabels:     []string{"node1", "node2"},
 				OtherLabels:    []string{"Europe/Samara", "USA/SF"},
 			},
-			mask: "username,status,docker_image,cpu_limit,cpu_class,memory_limit,gpu_limit,gpu_class,disk_limit," +
+			mask: "username,status,cpu_limit,cpu_class,memory_limit,gpu_limit,gpu_class,disk_limit," +
 				"disk_class,run_config,created_at,updated_at,restart_policy,cpu_labels,gpu_labels,disk_labels," +
 				"memory_labels,username_labels,name_labels,other_labels",
 		},
 		{
 			job: &scheduler_proto.Job{
-				Username:    "username",
-				DockerImage: "nginx:latest",
+				Username: "username",
 			},
-			mask: "username,docker_image",
+			mask: "username",
 		},
 	}
 
@@ -90,7 +90,6 @@ func (s *ModelsTestSuite) TestJob_ScheduleForNode() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -146,7 +145,6 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExistsSuccess() {
 	job := &models.Job{
 		Username:       "username",
 		Status:         models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:    "nginx:latest",
 		CpuLimit:       1.5,
 		CpuClass:       models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:    1000,
@@ -214,7 +212,6 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByCpuClass() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
 		MemoryLimit:   1000,
@@ -263,7 +260,6 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByGpuClass() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -312,7 +308,6 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByDiskClass() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -361,7 +356,6 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByLabels() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -415,7 +409,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -494,7 +487,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -567,7 +559,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -640,7 +631,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -713,7 +703,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -786,7 +775,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
-		DockerImage:   "nginx:latest",
 		CpuLimit:      1.5,
 		CpuClass:      models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 		MemoryLimit:   1000,
@@ -926,7 +914,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:       "job1_username",
 			Status:         models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage:    "postgres:latest",
 			CpuLimit:       1,
 			CpuClass:       models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 			MemoryLimit:    2000,
@@ -946,7 +933,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job2_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			CpuLimit:    1,
 			CpuClass:    models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 			MemoryLimit: 2000,
@@ -959,7 +945,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job3_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			CpuLimit:    3.5,
 			MemoryLimit: 2000,
 			GpuLimit:    2,
@@ -968,7 +953,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job4_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			// CpuLimit is too high.
 			CpuLimit:    4,
 			MemoryLimit: 2000,
@@ -978,7 +962,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job5_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			CpuLimit:    3,
 			// Memory limit is too high.
 			MemoryLimit: 8000,
@@ -988,7 +971,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job6_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			CpuLimit:    3,
 			MemoryLimit: 4000,
 			// GpuLimit is too high.
@@ -998,7 +980,6 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		{
 			Username:    "job7_username",
 			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			DockerImage: "postgres:latest",
 			CpuLimit:    3,
 			MemoryLimit: 4000,
 			GpuLimit:    2,

@@ -93,8 +93,31 @@ message Job {
     // Readonly.
     Status status = 14 [(shared.proto.validator.field) = {int_lt: 1}];
 
-    // Docker image name, e.g. "postgres:latest".
-    string docker_image = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
+    message RunConfig {
+        // Docker image name, e.g. "postgres:latest".
+        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
+        // Docker optional command with an arguments string, e.g. "bash -c 'echo hi'".
+        string command = 2;
+        // Exposed ports as a map <local port, remote container port>.
+        map<uint32, uint32> ports = 3;
+        // Docker volumes as a map <host path relative to the working dir, container absolute path>,
+        // e.g. "./postgres_data:/var/lib/postgresql".
+        map<string, string> volumes = 4;
+        // Paths to be downloaded from a Node after the Job is finished as a map
+        // <path relative to the working dir on a remote Node, local path>, e.g. "./postgres_data:/tmp/pg_data".
+        map<string, string> download_paths = 5;
+        // Paths to be uploaded to a remote Node before container is started as a map
+        // <local path, path relative to the working dir on a remote Node>, e.g. "./:./".
+        map<string, string> upload_paths = 6;
+        // Exclude these local paths from being uploaded to a remote Node.
+        repeated string upload_paths_exclude = 7;
+        // Docker container environment variables.
+        map<string, string> environment_variables = 8;
+        // Overwrite the default ENTRYPOINT of the image.
+        string entrypoint = 9;
+    }
+    // Docker specific parameters like image name, ports, volumes, etc.
+    RunConfig run_config = 3;
 
     // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
     float cpu_limit = 4 [(shared.proto.validator.field) = {float_gt: 0}];
@@ -110,12 +133,6 @@ message Job {
     // Disk limit in Megabytes. This includes the image size, writable container layer and volumes.
     uint32 disk_limit = 9 [(shared.proto.validator.field) = {int_gt: 31}];
     DiskClass disk_class = 10;
-
-    message RunConfig {
-        repeated int32 ports = 1; // Exposed ports.
-        map<string, string> volumes = 2; // Docker volumes.
-    }
-    RunConfig run_config = 11;
 
     // Readonly.
     google.protobuf.Timestamp created_at = 12;

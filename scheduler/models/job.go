@@ -33,7 +33,6 @@ type Job struct {
 	Model
 	Username    string `gorm:"type:varchar(32);index"`
 	Status      Enum   `gorm:"type:smallint;not null"`
-	DockerImage string `gorm:"not null"`
 
 	// CpuLimit https://docs.docker.com/config/containers/resource_constraints/#cpu
 	CpuLimit float32 `gorm:"type:real;not null"`
@@ -166,7 +165,6 @@ func (j *Job) FromProto(p *scheduler_proto.Job) error {
 	j.ID = p.GetId()
 	j.Username = p.GetUsername()
 	j.Status = Enum(p.GetStatus())
-	j.DockerImage = p.GetDockerImage()
 	j.CpuLimit = p.GetCpuLimit()
 	j.CpuClass = Enum(p.GetCpuClass())
 	j.MemoryLimit = p.GetMemoryLimit()
@@ -220,7 +218,6 @@ func (j *Job) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Job, er
 	p.Id = j.ID
 	p.Username = j.Username
 	p.Status = scheduler_proto.Job_Status(j.Status)
-	p.DockerImage = j.DockerImage
 	p.CpuLimit = j.CpuLimit
 	p.CpuClass = scheduler_proto.CPUClass(j.CpuClass)
 	p.MemoryLimit = j.MemoryLimit

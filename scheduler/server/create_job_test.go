@@ -12,7 +12,6 @@ import (
 func (s *ServerTestSuite) TestCreateJob_MinimalInput() {
 	req := &scheduler_proto.Job{
 		Username:      "test_username",
-		DockerImage:   "postgres:11",
 		CpuLimit:      1,
 		MemoryLimit:   2000,
 		DiskLimit:     1000,
@@ -24,13 +23,12 @@ func (s *ServerTestSuite) TestCreateJob_MinimalInput() {
 	s.Require().NotNil(res)
 	s.True(res.Id > 0)
 
-	mask := fieldmask_utils.MaskFromString("Username,DockerImage,CpuLimit,MemoryLimit,DiskLimit,RestartPolicy,Status")
+	mask := fieldmask_utils.MaskFromString("Username,CpuLimit,MemoryLimit,DiskLimit,RestartPolicy,Status")
 	actual := make(map[string]interface{})
 	err = fieldmask_utils.StructToMap(mask, res, actual, stringEye, stringEye)
 	s.Require().NoError(err)
 	expected := map[string]interface{}{
 		"Username":      req.Username,
-		"DockerImage":   req.DockerImage,
 		"CpuLimit":      req.CpuLimit,
 		"MemoryLimit":   req.MemoryLimit,
 		"DiskLimit":     req.DiskLimit,

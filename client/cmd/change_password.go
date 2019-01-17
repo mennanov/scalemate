@@ -15,8 +15,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
@@ -35,19 +33,19 @@ var changePasswordCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if changePasswordPassword == "" {
 			if err := userPasswordInput("Password", &changePasswordPassword); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 			if err := userPasswordInput("Same password again", &changePasswordConfirm); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 			if changePasswordPassword != changePasswordConfirm {
-				client.DisplayMessage(os.Stderr, "Passwords do not match.")
+				logger.Error("Passwords do not match.")
 				return
 			}
 		}
-		accounts.ChangePasswordView(os.Stdout, os.Stderr,
+		accounts.ChangePasswordView(logger,
 			accounts.ChangePasswordController(client.NewAccountsClient(accounts.ServiceAddr), changePasswordPassword))
 	},
 }

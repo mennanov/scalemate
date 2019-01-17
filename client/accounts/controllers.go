@@ -55,7 +55,7 @@ func LoginController(
 
 // LogoutController deletes the file that stores AuthTokens making it impossible to make RPCs afterwards.
 func LogoutController() error {
-	return errors.Wrap(auth.DeleteTokens(), "could not delete saved auth tokens")
+	return errors.Wrap(auth.DeleteTokens(), "could not delete saved auth tokens. Are you logged in?")
 }
 
 // RegisterController registers a new user account. User needs to login afterwards.

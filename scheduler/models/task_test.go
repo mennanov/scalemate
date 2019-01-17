@@ -18,7 +18,6 @@ func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
 	job := &models.Job{
 		Username:    "username",
 		Status:      models.Enum(scheduler_proto.Job_STATUS_FINISHED),
-		DockerImage: "nginx:latest",
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)

@@ -57,7 +57,6 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 
 	jobRequest := &scheduler_proto.Job{
 		Username:    "test_username",
-		DockerImage: "postgres:11",
 		CpuLimit:    1,
 		CpuClass:    scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
 		MemoryLimit: 4000,
@@ -126,7 +125,6 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 	// Create a Job before the Node is connected.
 	jobRequest := &scheduler_proto.Job{
 		Username:    "test_username",
-		DockerImage: "postgres:11",
 		CpuLimit:    1,
 		CpuClass:    scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
 		MemoryLimit: 4000,

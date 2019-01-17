@@ -15,8 +15,6 @@
 package cmd
 
 import (
-	"os"
-
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/accounts"
@@ -36,24 +34,24 @@ var registerCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		if registerUsername == "" {
 			if err := userInput("Username", &registerUsername); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 		}
 		if registerEmail == "" {
 			if err := userInput("Email", &registerEmail); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 		}
 		if registerPassword == "" {
 			if err := userPasswordInput("Password", &registerPassword); err != nil {
-				client.DisplayMessage(os.Stderr, err.Error())
+				logger.Error(err.Error())
 				return
 			}
 		}
 
-		accounts.RegisterView(os.Stdout, os.Stderr,
+		accounts.RegisterView(logger,
 			accounts.RegisterController(
 				client.NewAccountsClient(accounts.ServiceAddr), registerUsername, registerEmail, registerPassword))
 	},
