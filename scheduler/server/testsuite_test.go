@@ -95,7 +95,7 @@ func (s *ServerTestSuite) SetupTest() {
 	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
 		Username:  "test_username",
 		Role:      accounts_proto.User_USER,
-		TokenType: "access",
+		TokenType: auth.TokenTypeAccess,
 	})
 
 	s.amqpRawConsumer, err = events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")

@@ -10,6 +10,16 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// TokenType is a JWT type which can either be Access or Refresh (see below).
+type TokenType int8
+
+const (
+	// TokenTypeAccess stands for an Access token type.
+	TokenTypeAccess TokenType = 0
+	// TokenTypeRefresh stands for a Refresh token type.
+	TokenTypeRefresh TokenType = 1
+)
+
 // Claims defines a JWT Scalemate.io specific Claims.
 type Claims struct {
 	Username string
@@ -17,7 +27,7 @@ type Claims struct {
 	NodeName string
 	// A role defined in accounts.proto User message.
 	Role      accounts_proto.User_Role
-	TokenType string
+	TokenType TokenType
 	jwt.StandardClaims
 }
 

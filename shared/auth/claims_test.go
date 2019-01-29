@@ -20,7 +20,7 @@ func TestSignedString(t *testing.T) {
 	claims := &auth.Claims{
 		Username:  "username",
 		Role:      accounts_proto.User_ADMIN,
-		TokenType: "access",
+		TokenType: auth.TokenTypeAccess,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expiresAt,
 			Issuer:    "Scalemate.io",

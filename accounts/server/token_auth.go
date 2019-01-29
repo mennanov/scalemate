@@ -22,9 +22,8 @@ func (s AccountsServer) TokenAuth(
 		return nil, err
 	}
 
-	if claims.TokenType != "refresh" {
-		return nil, status.Errorf(codes.InvalidArgument, "token of type 'refresh' is expected, got: %s",
-			claims.TokenType)
+	if claims.TokenType != auth.TokenTypeRefresh {
+		return nil, status.Errorf(codes.InvalidArgument, "refresh token type is expected", claims.TokenType)
 	}
 
 	user := &models.User{}

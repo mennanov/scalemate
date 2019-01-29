@@ -197,7 +197,7 @@ func (s *ServerTestSuite) assertAuthTokensValid(tokens *accounts_proto.AuthToken
 	s.Equal(user.Username, accessTokenClaims.Username)
 	s.Equal(user.Role, accessTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), accessTokenClaims.IssuedAt)
-	s.Equal("access", accessTokenClaims.TokenType)
+	s.Equal(auth.TokenTypeAccess, accessTokenClaims.TokenType)
 	s.WithinDuration(issuedAt.Add(s.service.AccessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0), s.service.AccessTokenTTL)
 	s.Equal(nodeName, accessTokenClaims.NodeName)
 
@@ -207,7 +207,7 @@ func (s *ServerTestSuite) assertAuthTokensValid(tokens *accounts_proto.AuthToken
 	s.Equal(user.Username, refreshTokenClaims.Username)
 	s.Equal(user.Role, refreshTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), refreshTokenClaims.IssuedAt)
-	s.Equal("refresh", refreshTokenClaims.TokenType)
+	s.Equal(auth.TokenTypeRefresh, refreshTokenClaims.TokenType)
 	s.WithinDuration(issuedAt.Add(s.service.RefreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0), s.service.RefreshTokenTTL)
 	s.Equal(nodeName, refreshTokenClaims.NodeName)
 
@@ -227,9 +227,9 @@ func (s *ServerTestSuite) accessCredentialsQuick(ttl time.Duration, role account
 }
 
 func (s *ServerTestSuite) userAccessCredentials(user *models.User, ttl time.Duration) grpc.CallOption {
-	accessToken, err := user.NewJWTSigned(ttl, true, s.service.JWTSecretKey, "")
+	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, s.service.JWTSecretKey, "")
 	s.Require().NoError(err)
-	refreshToken, err := user.NewJWTSigned(ttl*2, false, s.service.JWTSecretKey, "")
+	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, s.service.JWTSecretKey, "")
 	s.Require().NoError(err)
 	jwtCredentials := auth.NewJWTCredentials(
 		s.client,

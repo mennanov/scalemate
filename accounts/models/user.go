@@ -144,17 +144,12 @@ func (user *User) IsAllowedToAuthenticate() error {
 // It returns an encoded JWT string to be used over the wire.
 func (user *User) NewJWTSigned(
 	ttl time.Duration,
-	isAccessToken bool,
+	tokenType auth.TokenType,
 	jwtSecretKey []byte,
 	nodeName string,
 ) (string, error) {
 	now := time.Now()
 	expiresAt := now.Add(ttl).Unix()
-
-	tokenType := "refresh"
-	if isAccessToken {
-		tokenType = "access"
-	}
 
 	claims := &auth.Claims{
 		Username:  user.Username,
@@ -185,12 +180,12 @@ func (user *User) GenerateAuthTokensResponse(
 	jwtSecretKey []byte,
 	nodeName string,
 ) (*accounts_proto.AuthTokens, error) {
-	accessToken, err := user.NewJWTSigned(ttlAccessToken, true, jwtSecretKey, nodeName)
+	accessToken, err := user.NewJWTSigned(ttlAccessToken, auth.TokenTypeAccess, jwtSecretKey, nodeName)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := user.NewJWTSigned(ttlRefreshToken, false, jwtSecretKey, nodeName)
+	refreshToken, err := user.NewJWTSigned(ttlRefreshToken, auth.TokenTypeRefresh, jwtSecretKey, nodeName)
 	if err != nil {
 		return nil, err
 	}

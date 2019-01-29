@@ -106,15 +106,17 @@ message Job {
         // Paths to be downloaded from a Node after the Job is finished as a map
         // <path relative to the working dir on a remote Node, local path>, e.g. "./postgres_data:/tmp/pg_data".
         map<string, string> download_paths = 5;
+        // Exclude these remote paths from being downloaded.
+        repeated string download_paths_exclude = 6;
         // Paths to be uploaded to a remote Node before container is started as a map
         // <local path, path relative to the working dir on a remote Node>, e.g. "./:./".
-        map<string, string> upload_paths = 6;
+        map<string, string> upload_paths = 7;
         // Exclude these local paths from being uploaded to a remote Node.
-        repeated string upload_paths_exclude = 7;
+        repeated string upload_paths_exclude = 8;
         // Docker container environment variables.
-        map<string, string> environment_variables = 8;
+        map<string, string> environment_variables = 9;
         // Overwrite the default ENTRYPOINT of the image.
-        string entrypoint = 9;
+        string entrypoint = 10;
     }
     // Docker specific parameters like image name, ports, volumes, etc.
     RunConfig run_config = 3;

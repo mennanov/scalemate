@@ -5,38 +5,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/golang/mock/gomock"
-	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
-
-func createToken(ttl time.Duration, tokenType string) string {
-	now := time.Now()
-	expiresAt := now.Add(ttl).Unix()
-
-	claims := &auth.Claims{
-		Username:  "username",
-		Role:      accounts_proto.User_ADMIN,
-		TokenType: tokenType,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expiresAt,
-			Issuer:    "Scalemate.io",
-			IssuedAt:  now.Unix(),
-			Id:        uuid.New().String(),
-		},
-	}
-	secret := []byte("allyourbase")
-	tokenString, err := claims.SignedString(secret)
-	if err != nil {
-		panic(err)
-	}
-	return tokenString
-}
 
 func TestGetRequestMetadataValidToken(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -52,8 +28,8 @@ func TestGetRequestMetadataValidToken(t *testing.T) {
 		return nil
 	}
 	authTokens := &accounts_proto.AuthTokens{
-		AccessToken:  createToken(time.Minute, "access"),
-		RefreshToken: createToken(30*time.Minute, "refresh"),
+		AccessToken:  utils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
+		RefreshToken: utils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 	creds := auth.NewJWTCredentials(client, authTokens, tokenSaver)
 	metadata, err := creds.GetRequestMetadata(context.Background())
@@ -70,14 +46,14 @@ func TestGetRequestMetadataInvalidToken(t *testing.T) {
 
 	// Existing AuthTokens.
 	authTokens := &accounts_proto.AuthTokens{
-		AccessToken:  createToken(-time.Minute, "access"), // Token expired 1 minute ago.
-		RefreshToken: createToken(5*time.Minute, "refresh"),
+		AccessToken:  utils.CreateTestingTokenString(-time.Minute, auth.TokenTypeAccess, ""), // Token expired 1 minute ago.
+		RefreshToken: utils.CreateTestingTokenString(5*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 
 	// AuthTokens to be returned by the client mock.
 	newAuthTokens := &accounts_proto.AuthTokens{
-		AccessToken:  createToken(time.Minute, "access"),
-		RefreshToken: createToken(30*time.Minute, "refresh"),
+		AccessToken:  utils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
+		RefreshToken: utils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 
 	// TokenAuthRequest to be used to refresh tokens.

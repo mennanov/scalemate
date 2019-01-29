@@ -2,9 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 
 	"github.com/mennanov/scalemate/shared/auth"
@@ -17,13 +19,29 @@ var ServiceAddr string
 func CreateJobController(
 	accountsClient accounts_proto.AccountsClient,
 	schedulerClient scheduler_proto.SchedulerClient,
-	job *scheduler_proto.Job,
+	image string,
+	command string,
+	flags *JobsCreateCmdFlags,
 ) (*scheduler_proto.Job, error) {
+	job, err := flags.ToJobProto()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse flags")
+	}
+	job.RunConfig.Image = image
+	job.RunConfig.Command = command
+
 	tokens, err := auth.LoadTokens()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to load authentication tokens. Are you logged in?")
 	}
 	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	claims, err := auth.NewClaimsFromString(tokens.AccessToken)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to parse authentication tokens. Try re-login")
+	}
+	job.Username = claims.Username
+	fmt.Println("job:", job.String())
 
 	return schedulerClient.CreateJob(context.Background(), job, grpc.PerRPCCredentials(jwtCredentials))
 }

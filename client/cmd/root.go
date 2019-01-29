@@ -45,7 +45,7 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		logger = logrus.New()
 
-		logger.SetOutput(os.Stdout)
+		logger.SetOutput(os.Stderr)
 		logger.SetLevel(logrus.Level(logLevel))
 	},
 }
@@ -68,7 +68,7 @@ func init() {
 	rootCmd.PersistentFlags().
 		StringVar(&cfgFile, "config", "", "config file (default is $HOME/.scalemate.yaml)")
 	rootCmd.PersistentFlags().
-		Uint32VarP(&logLevel, "logLevel", "v", uint32(logrus.InfoLevel), "verbosity level")
+		Uint32Var(&logLevel, "logLevel", uint32(logrus.InfoLevel), "verbosity level")
 
 	rootCmd.PersistentFlags().
 		StringVar(&accounts.ServiceAddr, "accounts_addr", "localhost:8000",

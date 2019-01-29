@@ -3,12 +3,9 @@ package accounts_test
 import (
 	"context"
 	"testing"
-	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,6 +14,7 @@ import (
 
 	"github.com/mennanov/scalemate/client/accounts"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func TestLoginController(t *testing.T) {
@@ -208,6 +206,9 @@ func TestChangePasswordController(t *testing.T) {
 		}
 		err := auth.SaveTokens(authTokens)
 		require.NoError(t, err)
+		defer func() {
+			require.NoError(t, auth.DeleteTokens())
+		}()
 
 		client := NewMockAccountsClient(ctrl)
 
@@ -219,12 +220,8 @@ func TestChangePasswordController(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		authTokens := &accounts_proto.AuthTokens{
-			AccessToken:  createToken(time.Minute, "access"),
-			RefreshToken: createToken(30*time.Minute, "refresh"),
-		}
-		err := auth.SaveTokens(authTokens)
-		require.NoError(t, err)
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "username")
+		defer deleteTokens()
 
 		ctx := context.Background()
 		client := NewMockAccountsClient(ctrl)
@@ -232,7 +229,7 @@ func TestChangePasswordController(t *testing.T) {
 			ChangePassword(ctx, &accounts_proto.ChangePasswordRequest{Username: "username", Password: "password"}, gomock.Any()).
 			Return(&empty.Empty{}, nil)
 
-		err = accounts.ChangePasswordController(client, "password")
+		err := accounts.ChangePasswordController(client, "password")
 		assert.NoError(t, err)
 	})
 
@@ -240,12 +237,8 @@ func TestChangePasswordController(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		authTokens := &accounts_proto.AuthTokens{
-			AccessToken:  createToken(time.Minute, "access"),
-			RefreshToken: createToken(30*time.Minute, "refresh"),
-		}
-		err := auth.SaveTokens(authTokens)
-		require.NoError(t, err)
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "username")
+		defer deleteTokens()
 
 		ctx := context.Background()
 		client := NewMockAccountsClient(ctrl)
@@ -253,30 +246,7 @@ func TestChangePasswordController(t *testing.T) {
 			ChangePassword(ctx, &accounts_proto.ChangePasswordRequest{Username: "username", Password: "password"}, gomock.Any()).
 			Return(&empty.Empty{}, status.Error(codes.PermissionDenied, "permissions denied"))
 
-		err = accounts.ChangePasswordController(client, "password")
+		err := accounts.ChangePasswordController(client, "password")
 		assert.Error(t, err)
 	})
-}
-
-func createToken(ttl time.Duration, tokenType string) string {
-	now := time.Now()
-	expiresAt := now.Add(ttl).Unix()
-
-	claims := &auth.Claims{
-		Username:  "username",
-		Role:      accounts_proto.User_ADMIN,
-		TokenType: tokenType,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expiresAt,
-			Issuer:    "Scalemate.io",
-			IssuedAt:  now.Unix(),
-			Id:        uuid.New().String(),
-		},
-	}
-	secret := []byte("allyourbase")
-	tokenString, err := claims.SignedString(secret)
-	if err != nil {
-		panic(err)
-	}
-	return tokenString
 }
