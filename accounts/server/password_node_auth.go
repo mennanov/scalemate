@@ -18,7 +18,7 @@ func (s AccountsServer) PasswordNodeAuth(
 	r *accounts_proto.PasswordNodeAuthRequest,
 ) (*accounts_proto.AuthTokens, error) {
 	user := &models.User{}
-	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
+	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
 		return nil, err
 	}
 	if err := user.ComparePassword(r.GetPassword()); err != nil {
@@ -29,7 +29,7 @@ func (s AccountsServer) PasswordNodeAuth(
 		return nil, err
 	}
 	node := &models.Node{}
-	if err := node.Get(s.DB, r.GetUsername(), r.GetNodeName()); err != nil {
+	if err := node.Get(s.db, r.GetUsername(), r.GetNodeName()); err != nil {
 		return nil, err
 	}
 	// Perform hardware models checks.
@@ -53,7 +53,7 @@ func (s AccountsServer) PasswordNodeAuth(
 
 	// Generate auth tokens.
 	response, err := user.GenerateAuthTokensResponse(
-		s.AccessTokenTTL, s.RefreshTokenTTL, s.JWTSecretKey, r.GetNodeName())
+		s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, r.GetNodeName())
 	if err != nil {
 		return nil, err
 	}

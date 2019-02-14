@@ -29,7 +29,7 @@ func (s *ServerTestSuite) TestChangePassword() {
 	s.NotNil(res)
 
 	// Verify that the user's password is updated.
-	err = user.LookUp(s.service.DB, &accounts_proto.UserLookupRequest{Id: uint32(user.ID)})
+	err = user.LookUp(s.db, &accounts_proto.UserLookupRequest{Id: uint32(user.ID)})
 	s.Require().NoError(err)
 	s.NotEqual(user.PasswordHash, originalPasswordHash)
 	utils.WaitForMessages(messages, "accounts.user.updated.*?password_changed_at.*?")

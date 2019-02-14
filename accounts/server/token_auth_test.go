@@ -50,7 +50,7 @@ func (s *ServerTestSuite) TestTokenAuth_WithNodeName() {
 		MemoryModel: "DDR3-1600MHz",
 		DiskModel:   "251GB APPLE SSD SM0256F",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -114,7 +114,7 @@ func (s *ServerTestSuite) TestTokenAuthBannedUser() {
 
 	// Mark user as banned.
 	user.Banned = true
-	s.service.DB.Save(user)
+	s.db.Save(user)
 
 	req2 := &accounts_proto.TokenAuthRequest{
 		RefreshToken: res.GetRefreshToken(),

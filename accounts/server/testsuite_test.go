@@ -42,12 +42,16 @@ func init() {
 
 type ServerTestSuite struct {
 	suite.Suite
-	service        *server.AccountsServer
-	client         accounts_proto.AccountsClient
-	db             *gorm.DB
-	amqpChannel    *amqp.Channel
-	amqpConnection *amqp.Connection
-	shutdown       chan os.Signal
+	service         *server.AccountsServer
+	client          accounts_proto.AccountsClient
+	db              *gorm.DB
+	amqpChannel     *amqp.Channel
+	amqpConnection  *amqp.Connection
+	shutdown        chan os.Signal
+	bCryptCost      int
+	accessTokenTTL  time.Duration
+	refreshTokenTTL time.Duration
+	jwtSecretKey    []byte
 }
 
 func (s *ServerTestSuite) SetupSuite() {
@@ -62,7 +66,16 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
 	s.Require().NoError(err)
 
-	jwtSecretKey, err := server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
+	s.jwtSecretKey, err = server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
+	s.Require().NoError(err)
+
+	s.bCryptCost, err = server.BCryptCostFromEnv(server.AccountsEnvConf)
+	s.Require().NoError(err)
+
+	s.accessTokenTTL, err = server.AccessTokenFromEnv(server.AccountsEnvConf)
+	s.Require().NoError(err)
+
+	s.refreshTokenTTL, err = server.RefreshTokenFromEnv(server.AccountsEnvConf)
 	s.Require().NoError(err)
 
 	s.service, err = server.NewAccountsServer(
@@ -70,11 +83,11 @@ func (s *ServerTestSuite) SetupSuite() {
 		server.WithDBConnection(s.db),
 		server.WithAMQPConsumers(s.amqpConnection),
 		server.WithAMQPProducer(s.amqpConnection),
-		server.WithJWTSecretKey(jwtSecretKey),
-		server.WithClaimsInjector(jwtSecretKey),
-		server.WithAccessTokenTTLFromEnv(server.AccountsEnvConf),
-		server.WithRefreshTokenTTLFromEnv(server.AccountsEnvConf),
-		server.WithBCryptCostFromEnv(server.AccountsEnvConf),
+		server.WithJWTSecretKey(s.jwtSecretKey),
+		server.WithClaimsInjector(s.jwtSecretKey),
+		server.WithAccessTokenTTL(s.accessTokenTTL),
+		server.WithRefreshTokenTTL(s.refreshTokenTTL),
+		server.WithBCryptCost(s.bCryptCost),
 	)
 	s.Require().NoError(err)
 
@@ -174,13 +187,13 @@ func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
 		Role:     accounts_proto.User_USER,
 		Banned:   false,
 	}
-	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
+	s.Require().NoError(user.SetPasswordHash(password, s.bCryptCost))
 	s.db.Create(user)
 	return user
 }
 
 func (s *ServerTestSuite) createTestUser(user *models.User, password string) *models.User {
-	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
+	s.Require().NoError(user.SetPasswordHash(password, s.bCryptCost))
 	s.db.Create(user)
 	return user
 }
@@ -197,24 +210,24 @@ func (s *ServerTestSuite) assertGRPCError(err error, code codes.Code) {
 }
 
 func (s *ServerTestSuite) assertAuthTokensValid(tokens *accounts_proto.AuthTokens, user *models.User, issuedAt time.Time, nodeName string) {
-	accessTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.AccessToken, s.service.JWTSecretKey)
+	accessTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.AccessToken, s.jwtSecretKey)
 	s.Require().NoError(err)
 
 	s.Equal(user.Username, accessTokenClaims.Username)
 	s.Equal(user.Role, accessTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), accessTokenClaims.IssuedAt)
 	s.Equal(auth.TokenTypeAccess, accessTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(s.service.AccessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0), s.service.AccessTokenTTL)
+	s.WithinDuration(issuedAt.Add(s.accessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0), s.accessTokenTTL)
 	s.Equal(nodeName, accessTokenClaims.NodeName)
 
-	refreshTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.RefreshToken, s.service.JWTSecretKey)
+	refreshTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.RefreshToken, s.jwtSecretKey)
 	s.Require().NoError(err)
 
 	s.Equal(user.Username, refreshTokenClaims.Username)
 	s.Equal(user.Role, refreshTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), refreshTokenClaims.IssuedAt)
 	s.Equal(auth.TokenTypeRefresh, refreshTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(s.service.RefreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0), s.service.RefreshTokenTTL)
+	s.WithinDuration(issuedAt.Add(s.refreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0), s.refreshTokenTTL)
 	s.Equal(nodeName, refreshTokenClaims.NodeName)
 
 	s.True(accessTokenClaims.ExpiresAt < refreshTokenClaims.ExpiresAt)
@@ -233,9 +246,9 @@ func (s *ServerTestSuite) accessCredentialsQuick(ttl time.Duration, role account
 }
 
 func (s *ServerTestSuite) userAccessCredentials(user *models.User, ttl time.Duration) grpc.CallOption {
-	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, s.service.JWTSecretKey, "")
+	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, s.jwtSecretKey, "")
 	s.Require().NoError(err)
-	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, s.service.JWTSecretKey, "")
+	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, s.jwtSecretKey, "")
 	s.Require().NoError(err)
 	jwtCredentials := auth.NewJWTCredentials(
 		s.client,

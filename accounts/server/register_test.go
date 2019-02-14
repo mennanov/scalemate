@@ -27,7 +27,7 @@ func (s *ServerTestSuite) TestRegister() {
 
 	// Verify that user is created in DB.
 	user := &models.User{}
-	err = s.service.DB.Where("username = ?", req.Username).First(user).Error
+	err = s.db.Where("username = ?", req.Username).First(user).Error
 	s.Require().NoError(err)
 	s.NotEqual("", user.PasswordHash)
 	utils.WaitForMessages(messages, "accounts.user.created")
@@ -64,7 +64,7 @@ func (s *ServerTestSuite) TestRegisterDuplicates() {
 
 		s.assertGRPCError(err, codes.AlreadyExists)
 
-		s.service.DB.Model(user).Count(&count)
+		s.db.Model(user).Count(&count)
 		// Only 1 existing user is expected.
 		s.Equal(1, count)
 	}
@@ -98,7 +98,7 @@ func (s *ServerTestSuite) TestRegisterValidationFails() {
 	}
 
 	var count int
-	s.service.DB.Model(&models.User{}).Count(&count)
+	s.db.Model(&models.User{}).Count(&count)
 	// No users should be created.
 	s.Equal(0, count)
 }

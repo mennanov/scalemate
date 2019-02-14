@@ -17,17 +17,17 @@ func (s AccountsServer) Create(ctx context.Context, r *accounts_proto.CreateUser
 		return nil, errors.Wrap(err, "user.FromProto failed")
 	}
 
-	if err := user.SetPasswordHash(r.GetPassword(), s.BcryptCost); err != nil {
+	if err := user.SetPasswordHash(r.GetPassword(), s.bCryptCost); err != nil {
 		return nil, err
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := user.Create(tx)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send event and commit")
 	}
 

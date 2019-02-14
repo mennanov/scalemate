@@ -24,7 +24,7 @@ func (s AccountsServer) AuthFuncOverride(ctx context.Context, fullMethodName str
 		"/accounts.accounts_proto.Accounts/List",
 		"/accounts.accounts_proto.Accounts/Get":
 
-		ctx, err = s.ClaimsInjector.InjectClaims(ctx)
+		ctx, err = s.claimsInjector.InjectClaims(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func (s AccountsServer) AuthFuncOverride(ctx context.Context, fullMethodName str
 
 	case "/accounts.accounts_proto.Accounts/ChangePassword":
 		// This method is allowed for admins or the user performing the request. This is checked in the handler itself.
-		ctx, err = s.ClaimsInjector.InjectClaims(ctx)
+		ctx, err = s.claimsInjector.InjectClaims(ctx)
 		if err != nil {
 			return nil, err
 		}

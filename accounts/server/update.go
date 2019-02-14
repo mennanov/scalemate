@@ -19,17 +19,17 @@ func (s AccountsServer) Update(ctx context.Context, r *accounts_proto.UpdateUser
 	}
 
 	user := &models.User{}
-	if err := user.LookUp(s.DB, r.GetLookup()); err != nil {
+	if err := user.LookUp(s.db, r.GetLookup()); err != nil {
 		return nil, err
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := user.Update(tx, r.User, r.UpdateMask)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to CommitAndPublish event")
 	}
 

@@ -40,15 +40,15 @@ func (s AccountsServer) ChangePassword(
 	}
 
 	user := &models.User{}
-	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
+	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
 		return nil, err
 	}
-	tx := s.DB.Begin()
-	event, err := user.ChangePassword(tx, r.GetPassword(), s.BcryptCost)
+	tx := s.db.Begin()
+	event, err := user.ChangePassword(tx, r.GetPassword(), s.bCryptCost)
 	if err != nil {
 		return nil, err
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, err
 	}
 

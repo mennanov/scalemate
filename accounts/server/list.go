@@ -14,7 +14,7 @@ func (s AccountsServer) List(
 	r *accounts_proto.ListUsersRequest,
 ) (*accounts_proto.ListUsersResponse, error) {
 	var users models.Users
-	totalCount, err := users.List(s.DB, r)
+	totalCount, err := users.List(s.db, r)
 	if err != nil {
 		return nil, err
 	}

@@ -16,16 +16,16 @@ import (
 // Can be executed by admins only.
 func (s AccountsServer) Delete(ctx context.Context, r *accounts_proto.UserLookupRequest) (*empty.Empty, error) {
 	user := &models.User{}
-	if err := user.LookUp(s.DB, r); err != nil {
+	if err := user.LookUp(s.db, r); err != nil {
 		return nil, err
 	}
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := user.Delete(tx)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to CommitAndPublish event")
 	}
 

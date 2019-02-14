@@ -26,7 +26,7 @@ func (s *ServerTestSuite) TestHandleSchedulerNodeCreatedEvent_CreatesNodeInDB() 
 
 	// The Node is expected to be created in DB.
 	node := &models.Node{}
-	s.Require().NoError(node.Get(s.service.DB, nodeProto.Username, nodeProto.Name))
+	s.Require().NoError(node.Get(s.db, nodeProto.Username, nodeProto.Name))
 	s.Equal(nodeProto.Username, node.Username)
 	s.Equal(nodeProto.Name, node.Name)
 	s.Equal(nodeProto.CpuModel, node.CpuModel)

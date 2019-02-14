@@ -39,6 +39,24 @@ var upCmd = &cobra.Command{
 			return
 		}
 
+		bCryptCost, err := server.BCryptCostFromEnv(server.AccountsEnvConf)
+		if err != nil {
+			fmt.Printf("server.BCryptCostFromEnv failed: %s", err)
+			return
+		}
+
+		accessTokenTTL, err := server.AccessTokenFromEnv(server.AccountsEnvConf)
+		if err != nil {
+			fmt.Printf("server.AccessTokenFromEnv failed: %s", err)
+			return
+		}
+
+		refreshTokenTTL, err := server.RefreshTokenFromEnv(server.AccountsEnvConf)
+		if err != nil {
+			fmt.Printf("server.RefreshTokenFromEnv failed: %s", err)
+			return
+		}
+
 		logger := logrus.StandardLogger()
 		utils.SetLogrusLevelFromEnv(logger)
 
@@ -49,9 +67,9 @@ var upCmd = &cobra.Command{
 			server.WithAMQPProducer(amqpConnection),
 			server.WithJWTSecretKey(jwtSecretKey),
 			server.WithClaimsInjector(jwtSecretKey),
-			server.WithAccessTokenTTLFromEnv(server.AccountsEnvConf),
-			server.WithRefreshTokenTTLFromEnv(server.AccountsEnvConf),
-			server.WithBCryptCostFromEnv(server.AccountsEnvConf),
+			server.WithAccessTokenTTL(accessTokenTTL),
+			server.WithRefreshTokenTTL(refreshTokenTTL),
+			server.WithBCryptCost(bCryptCost),
 		)
 		if err != nil {
 			fmt.Printf("Failed to start gRPC server: %+v\n", err)

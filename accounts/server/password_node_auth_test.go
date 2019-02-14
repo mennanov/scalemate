@@ -21,7 +21,7 @@ func (s *ServerTestSuite) TestPasswordNodeAuth() {
 		MemoryModel: "DDR3-1600MHz",
 		DiskModel:   "251GB APPLE SSD SM0256F",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -48,7 +48,7 @@ func (s *ServerTestSuite) TestPasswordNodeAuth_NodeNotFound() {
 		Username: user.Username,
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -73,7 +73,7 @@ func (s *ServerTestSuite) TestPasswordNodeAuth_HardwareModelsChecksFail() {
 		MemoryModel: "DDR3-1600MHz",
 		DiskModel:   "251GB APPLE SSD SM0256F",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()

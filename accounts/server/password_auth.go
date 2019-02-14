@@ -18,7 +18,7 @@ func (s AccountsServer) PasswordAuth(
 ) (*accounts_proto.AuthTokens, error) {
 	user := &models.User{}
 
-	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
+	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
 		return nil, err
 	}
 
@@ -32,7 +32,7 @@ func (s AccountsServer) PasswordAuth(
 	}
 
 	// Generate auth tokens.
-	response, err := user.GenerateAuthTokensResponse(s.AccessTokenTTL, s.RefreshTokenTTL, s.JWTSecretKey, "")
+	response, err := user.GenerateAuthTokensResponse(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, "")
 	if err != nil {
 		return nil, err
 	}

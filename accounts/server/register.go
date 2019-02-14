@@ -20,17 +20,17 @@ func (s AccountsServer) Register(ctx context.Context, r *accounts_proto.Register
 		Banned:   false,
 	}
 
-	if err := user.SetPasswordHash(r.GetPassword(), s.BcryptCost); err != nil {
+	if err := user.SetPasswordHash(r.GetPassword(), s.bCryptCost); err != nil {
 		return nil, err
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := user.Create(tx)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new user")
 	}
 
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to publish event")
 	}
 

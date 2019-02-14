@@ -48,7 +48,7 @@ func (s *ServerTestSuite) TestCreate() {
 
 	// Verify that user is created in DB.
 	user := &models.User{}
-	err = s.service.DB.First(user, res.GetId()).Error
+	err = s.db.First(user, res.GetId()).Error
 	s.Require().NoError(err)
 	s.NotEqual("", user.PasswordHash)
 	utils.WaitForMessages(messages, "accounts.user.created")
@@ -75,14 +75,14 @@ func (s *ServerTestSuite) TestCreateDuplicates() {
 
 	users := &[]models.User{}
 
-	s.service.DB.Find(&users).Count(&count)
+	s.db.Find(&users).Count(&count)
 	s.Equal(1, count)
 
 	// The second consecutive request should fail.
 	_, err = s.client.Create(ctx, req, creds)
 	s.assertGRPCError(err, codes.AlreadyExists)
 
-	s.service.DB.Find(&users).Count(&count)
+	s.db.Find(&users).Count(&count)
 	s.Equal(1, count)
 	utils.WaitForMessages(messages, "accounts.user.created")
 }

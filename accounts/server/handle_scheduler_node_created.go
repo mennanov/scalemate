@@ -18,12 +18,12 @@ func (s AccountsServer) HandleSchedulerNodeCreatedEvent(eventProto *events_proto
 	node := &models.Node{}
 	node.FromSchedulerProto(eventNode.SchedulerNode)
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := node.Create(tx)
 	if err != nil {
 		return errors.Wrap(err, "node.Create failed")
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

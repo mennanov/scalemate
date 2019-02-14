@@ -12,7 +12,7 @@ import (
 // Get gets details for the requested user.
 func (s AccountsServer) Get(ctx context.Context, r *accounts_proto.UserLookupRequest) (*accounts_proto.User, error) {
 	user := &models.User{}
-	if err := user.LookUp(s.DB, r); err != nil {
+	if err := user.LookUp(s.db, r); err != nil {
 		return nil, err
 	}
 

@@ -17,7 +17,7 @@ func (s AccountsServer) TokenAuth(
 	ctx context.Context,
 	r *accounts_proto.TokenAuthRequest,
 ) (*accounts_proto.AuthTokens, error) {
-	claims, err := auth.NewClaimsFromStringVerified(r.GetRefreshToken(), s.JWTSecretKey)
+	claims, err := auth.NewClaimsFromStringVerified(r.GetRefreshToken(), s.jwtSecretKey)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +28,7 @@ func (s AccountsServer) TokenAuth(
 
 	user := &models.User{}
 
-	if err := user.LookUp(s.DB, &accounts_proto.UserLookupRequest{Username: claims.Username}); err != nil {
+	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: claims.Username}); err != nil {
 		return nil, err
 	}
 
@@ -38,7 +38,7 @@ func (s AccountsServer) TokenAuth(
 
 	// Generate auth tokens.
 	response, err := user.
-		GenerateAuthTokensResponse(s.AccessTokenTTL, s.RefreshTokenTTL, s.JWTSecretKey, claims.NodeName)
+		GenerateAuthTokensResponse(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, claims.NodeName)
 	if err != nil {
 		return nil, err
 	}
