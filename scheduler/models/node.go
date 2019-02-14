@@ -11,7 +11,6 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -59,9 +58,9 @@ type Node struct {
 	// User defined labels.
 	Labels pq.StringArray `gorm:"type:text[]"`
 
-	ConnectedAt    time.Time
-	DisconnectedAt time.Time
-	ScheduledAt    time.Time
+	ConnectedAt    *time.Time
+	DisconnectedAt *time.Time
+	ScheduledAt    *time.Time
 }
 
 func (n *Node) String() string {
@@ -158,46 +157,56 @@ func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, 
 	p.DiskClassMin = scheduler_proto.DiskClass(n.DiskClassMin)
 	p.DiskModel = n.DiskModel
 
-	connectedAt, err := ptypes.TimestampProto(n.ConnectedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if n.ConnectedAt != nil {
+		connectedAt, err := ptypes.TimestampProto(*n.ConnectedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.ConnectedAt = connectedAt
 	}
-	p.ConnectedAt = connectedAt
 
-	disconnectedAt, err := ptypes.TimestampProto(n.DisconnectedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if n.DisconnectedAt != nil {
+		disconnectedAt, err := ptypes.TimestampProto(*n.DisconnectedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.DisconnectedAt = disconnectedAt
 	}
-	p.DisconnectedAt = disconnectedAt
 
-	scheduledAt, err := ptypes.TimestampProto(n.ScheduledAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if n.ScheduledAt != nil {
+		scheduledAt, err := ptypes.TimestampProto(*n.ScheduledAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.ScheduledAt = scheduledAt
 	}
-	p.ScheduledAt = scheduledAt
 
-	createdAt, err := ptypes.TimestampProto(n.CreatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !n.CreatedAt.IsZero() {
+		createdAt, err := ptypes.TimestampProto(n.CreatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.CreatedAt = createdAt
 	}
-	p.CreatedAt = createdAt
 
-	updatedAt, err := ptypes.TimestampProto(n.UpdatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !n.UpdatedAt.IsZero() {
+		updatedAt, err := ptypes.TimestampProto(n.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.UpdatedAt = updatedAt
 	}
-	p.UpdatedAt = updatedAt
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
-		pFiltered := &scheduler_proto.Node{Id: uint64(n.ID)}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
+		nodeProtoFiltered := &scheduler_proto.Node{Id: uint64(n.ID)}
+		if err := fieldmask_utils.StructToStruct(mask, p, nodeProtoFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
-		return pFiltered, nil
+		return nodeProtoFiltered, nil
 	}
 
 	return p, nil
@@ -237,7 +246,7 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.ConnectedAt = connectedAt
+		n.ConnectedAt = &connectedAt
 	}
 
 	if p.DisconnectedAt != nil {
@@ -245,7 +254,7 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.DisconnectedAt = disconnectedAt
+		n.DisconnectedAt = &disconnectedAt
 	}
 
 	if p.ScheduledAt != nil {
@@ -253,7 +262,7 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.ScheduledAt = scheduledAt
+		n.ScheduledAt = &scheduledAt
 	}
 
 	if p.CreatedAt != nil {
@@ -345,11 +354,12 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 		return nil, errors.
 			Errorf("failed to allocate Node disk: %d requested, %d available", job.DiskLimit, n.DiskAvailable)
 	}
+	now := time.Now()
 	nodeUpdates := map[string]interface{}{
 		"cpu_available":    n.CpuAvailable - job.CpuLimit,
 		"memory_available": n.MemoryAvailable - job.MemoryLimit,
 		"disk_available":   n.DiskAvailable - job.DiskLimit,
-		"scheduled_at":     time.Now(),
+		"scheduled_at":     &now,
 	}
 	if job.GpuLimit > 0 {
 		if n.GpuAvailable < job.GpuLimit {
@@ -389,11 +399,9 @@ func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
 			// This Job has not been selected for scheduling: disregard it.
 			continue
 		}
-		schedulerEvents, err := job.ScheduleForNode(db, n)
+		schedulerEvents, err := job.CreateTask(db, n)
 		if err != nil {
-			logrus.WithField("job", job).WithField("node", n).
-				Infof("unable to schedule Job for Node: %s", err.Error())
-			return nil, errors.Wrap(err, "job.ScheduleForNode failed")
+			return nil, errors.Wrapf(err, "job.CreateTask failed for Job: %s", job.String())
 		}
 		allEvents = append(allEvents, schedulerEvents...)
 	}

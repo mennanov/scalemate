@@ -89,13 +89,13 @@ func (user *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User
 	}
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
 		// Always include ID and username regardless of the field mask.
 		pFiltered := &accounts_proto.User{Id: uint64(user.ID), Username: user.Username}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
+		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
 		return pFiltered, nil
@@ -259,18 +259,18 @@ func (user *User) Update(
 	if err := u.FromProto(payload); err != nil {
 		return nil, errors.Wrap(err, "failed to populate user from proto")
 	}
-	mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+	mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	// Update the `user` struct field values.
-	if err := fieldmask_utils.StructToStruct(mask, u, user, generator.CamelCase, stringEye); err != nil {
+	if err := fieldmask_utils.StructToStruct(mask, u, user); err != nil {
 		return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 	}
 
 	// Prepare the UPDATE query map.
 	data := make(map[string]interface{})
-	if err := fieldmask_utils.StructToMap(mask, u, data, generator.CamelCase, gorm.ToDBName); err != nil {
+	if err := fieldmask_utils.StructToMap(mask, u, data); err != nil {
 		return nil, errors.Wrap(err, "fieldmask_utils.StructToMap failed")
 	}
 	if err := utils.HandleDBError(db.Model(user).Updates(data)); err != nil {

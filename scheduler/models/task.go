@@ -11,7 +11,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -28,8 +27,8 @@ type Task struct {
 	Node       *Node
 	NodeID     uint64 `gorm:"not null;index" sql:"type:integer REFERENCES nodes(id)"`
 	Status     Enum   `gorm:"type:smallint"`
-	StartedAt  time.Time
-	FinishedAt time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
 }
 
 func (t *Task) String() string {
@@ -64,40 +63,48 @@ func (t *Task) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Task, 
 	p.NodeId = t.NodeID
 	p.Status = scheduler_proto.Task_Status(t.Status)
 
-	createdAt, err := ptypes.TimestampProto(t.CreatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !t.CreatedAt.IsZero() {
+		createdAt, err := ptypes.TimestampProto(t.CreatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.CreatedAt = createdAt
 	}
-	p.CreatedAt = createdAt
 
-	updatedAt, err := ptypes.TimestampProto(t.UpdatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !t.UpdatedAt.IsZero() {
+		updatedAt, err := ptypes.TimestampProto(t.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.UpdatedAt = updatedAt
 	}
-	p.UpdatedAt = updatedAt
 
-	startedAt, err := ptypes.TimestampProto(t.StartedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if t.StartedAt != nil {
+		startedAt, err := ptypes.TimestampProto(*t.StartedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.StartedAt = startedAt
 	}
-	p.StartedAt = startedAt
 
-	finishedAt, err := ptypes.TimestampProto(t.FinishedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if t.FinishedAt != nil {
+		finishedAt, err := ptypes.TimestampProto(*t.FinishedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.FinishedAt = finishedAt
 	}
-	p.FinishedAt = finishedAt
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
-		pFiltered := &scheduler_proto.Task{Id: uint64(t.ID)}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
+		taskProtoFiltered := &scheduler_proto.Task{Id: uint64(t.ID)}
+		if err := fieldmask_utils.StructToStruct(mask, p, taskProtoFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
-		return pFiltered, nil
+		return taskProtoFiltered, nil
 	}
 
 	return p, nil
@@ -131,7 +138,7 @@ func (t *Task) FromProto(p *scheduler_proto.Task) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		t.StartedAt = startedAt
+		t.StartedAt = &startedAt
 	}
 
 	if p.FinishedAt != nil {
@@ -139,7 +146,7 @@ func (t *Task) FromProto(p *scheduler_proto.Task) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		t.FinishedAt = finishedAt
+		t.FinishedAt = &finishedAt
 	}
 
 	return nil
@@ -169,7 +176,7 @@ func (t *Task) LoadJobFromDB(db *gorm.DB, fields ...string) error {
 
 // TaskStatusTransitions defines possible Task status transitions.
 var TaskStatusTransitions = map[scheduler_proto.Task_Status][]scheduler_proto.Task_Status{
-	scheduler_proto.Task_STATUS_UNKNOWN: {
+	scheduler_proto.Task_STATUS_NEW: {
 		scheduler_proto.Task_STATUS_RUNNING,
 	},
 	scheduler_proto.Task_STATUS_RUNNING: {
@@ -221,8 +228,7 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 
 // HasTerminated returns true if the Task has terminated (not running regardless the reason).
 func (t *Task) HasTerminated() bool {
-	return t.Status != Enum(scheduler_proto.Task_STATUS_UNKNOWN) &&
-		t.Status != Enum(scheduler_proto.Task_STATUS_RUNNING)
+	return t.Status != Enum(scheduler_proto.Task_STATUS_NEW) && t.Status != Enum(scheduler_proto.Task_STATUS_RUNNING)
 }
 
 // Tasks represent a collection of Tasks with methods working with a collection of Tasks rather than just 1 instance.
@@ -307,11 +313,7 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 		return nil, errors.Wrap(err, "failed to update Tasks status to NODE_FAILED")
 	}
 
-	defer func() {
-		if err := rows.Close(); err != nil {
-			logrus.WithError(err).Error("rows.Close failed in tasks.UpdateStatusForDisconnectedNode")
-		}
-	}()
+	defer rows.Close()
 
 	for rows.Next() {
 		var task Task

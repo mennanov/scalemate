@@ -64,7 +64,7 @@ func (s *ServerTestSuite) TestListDiskModels() {
 		s.Equal(2, len(res.DiskModels))
 		mask := fieldmask_utils.MaskFromString("DiskModel,DiskClass,DiskCapacity,DiskAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"DiskModel":     "model1",
@@ -75,7 +75,7 @@ func (s *ServerTestSuite) TestListDiskModels() {
 		}, resMap)
 
 		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[1], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.DiskModels[1], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"DiskModel":     "model2",
@@ -95,7 +95,7 @@ func (s *ServerTestSuite) TestListDiskModels() {
 		s.Equal(1, len(res.DiskModels))
 		mask := fieldmask_utils.MaskFromString("DiskModel,DiskClass,DiskCapacity,DiskAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"DiskModel":     "model2",

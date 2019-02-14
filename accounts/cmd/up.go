@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -36,7 +39,11 @@ var upCmd = &cobra.Command{
 			return
 		}
 
+		logger := logrus.StandardLogger()
+		utils.SetLogrusLevelFromEnv(logger)
+
 		accountsServer, err := server.NewAccountsServer(
+			server.WithLogger(logger),
 			server.WithDBConnection(db),
 			server.WithAMQPConsumers(amqpConnection),
 			server.WithAMQPProducer(amqpConnection),
@@ -52,9 +59,10 @@ var upCmd = &cobra.Command{
 		}
 		defer utils.Close(accountsServer)
 
-		utils.SetLogrusLevelFromEnv()
+		shutdown := make(chan os.Signal)
+		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-		accountsServer.Serve(grpcAddr)
+		accountsServer.Serve(grpcAddr, shutdown)
 	},
 }
 

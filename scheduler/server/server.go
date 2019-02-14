@@ -4,15 +4,14 @@ import (
 	"context"
 	"net"
 	"os"
-	"os/signal"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
+	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
 	"github.com/streadway/amqp"
@@ -53,7 +52,9 @@ var LoggedErrorCodes = []codes.Code{
 // SchedulerServer is a wrapper for `scheduler_proto.SchedulerServer` that holds the application specific settings
 // and also implements some additional methods.
 type SchedulerServer struct {
-	DB *gorm.DB
+	// Logrus entry to be used for all the logging.
+	logger *logrus.Logger
+	DB     *gorm.DB
 	// Authentication claims context injector.
 	ClaimsInjector auth.ClaimsInjector
 	// Events producer.
@@ -75,8 +76,16 @@ type SchedulerServer struct {
 // Compile time interface check.
 var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
 
+// WithLogger creates an option that sets the logger.
+func WithLogger(logger *logrus.Logger) Option {
+	return func(s *SchedulerServer) error {
+		s.logger = logger
+		return nil
+	}
+}
+
 // WithDBConnection creates an option that sets the DB field to an existing DB connection.
-func WithDBConnection(db *gorm.DB) SchedulerServerOption {
+func WithDBConnection(db *gorm.DB) Option {
 	return func(s *SchedulerServer) error {
 		s.DB = db
 		return nil
@@ -85,7 +94,7 @@ func WithDBConnection(db *gorm.DB) SchedulerServerOption {
 
 // WithClaimsInjector creates an option that sets ClaimsInjector field to a new auth.NewJWTClaimsInjector with JWT
 // secret key from env.
-func WithClaimsInjector(conf AppEnvConf) SchedulerServerOption {
+func WithClaimsInjector(conf AppEnvConf) Option {
 	return func(s *SchedulerServer) error {
 		value := os.Getenv(conf.JWTSecretKey)
 		if value == "" {
@@ -97,7 +106,7 @@ func WithClaimsInjector(conf AppEnvConf) SchedulerServerOption {
 }
 
 // WithAMQPProducer creates an option that sets the Producer field value to AMQPProducer.
-func WithAMQPProducer(conn *amqp.Connection) SchedulerServerOption {
+func WithAMQPProducer(conn *amqp.Connection) Option {
 	return func(s *SchedulerServer) error {
 		if conn == nil {
 			return errors.New("amqp.Connection is nil")
@@ -112,7 +121,7 @@ func WithAMQPProducer(conn *amqp.Connection) SchedulerServerOption {
 }
 
 // WithAMQPConsumers creates an option that sets the Consumers field value to AMQPConsumer(s).
-func WithAMQPConsumers(conn *amqp.Connection) SchedulerServerOption {
+func WithAMQPConsumers(conn *amqp.Connection) Option {
 	return func(s *SchedulerServer) error {
 		channel, err := conn.Channel()
 		defer utils.Close(channel)
@@ -123,16 +132,6 @@ func WithAMQPConsumers(conn *amqp.Connection) SchedulerServerOption {
 		// Declare all required exchanges.
 		if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
 			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
-		}
-
-		jobCreatedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"scheduler_job_created",
-			"scheduler.job.created",
-			s.HandleJobPending)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobCreatedConsumer")
 		}
 
 		jobStatusUpdatedToPendingConsumer, err := events.NewAMQPConsumer(
@@ -196,7 +195,6 @@ func WithAMQPConsumers(conn *amqp.Connection) SchedulerServerOption {
 		}
 
 		s.Consumers = []events.Consumer{
-			jobCreatedConsumer,
 			jobStatusUpdatedToPendingConsumer,
 			jobTerminatedConsumer,
 			nodeConnectedConsumer,
@@ -247,11 +245,11 @@ var SchedulerEnvConf = AppEnvConf{
 	JWTSecretKey:    "SCHEDULER_JWT_SECRET_KEY",
 }
 
-// SchedulerServerOption modifies the SchedulerServer.
-type SchedulerServerOption func(server *SchedulerServer) error
+// Option modifies the SchedulerServer.
+type Option func(server *SchedulerServer) error
 
 // NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
-func NewSchedulerServer(options ...SchedulerServerOption) (*SchedulerServer, error) {
+func NewSchedulerServer(options ...Option) (*SchedulerServer, error) {
 	s := &SchedulerServer{
 		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
 		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
@@ -291,8 +289,9 @@ func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_p
 	if _, ok := s.NewTasksByNodeID[node.ID]; ok {
 		return nil, ErrNodeAlreadyConnected
 	}
+	now := time.Now()
 	event, err := node.Updates(db, map[string]interface{}{
-		"connected_at": time.Now(),
+		"connected_at": &now,
 		"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
 	})
 	if err != nil {
@@ -308,8 +307,9 @@ func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*event
 	if _, ok := s.NewTasksByNodeID[node.ID]; !ok {
 		return nil, ErrNodeIsNotConnected
 	}
+	now := time.Now()
 	nodeUpdatedEvent, err := node.Updates(db, map[string]interface{}{
-		"disconnected_at": time.Now(),
+		"disconnected_at": &now,
 		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
 	if err != nil {
@@ -324,17 +324,15 @@ func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*event
 
 // Serve creates a gRPC server and starts serving on a given address.
 // It also starts all the consumers.
-func (s *SchedulerServer) Serve(grpcAddr string) {
-	utils.SetLogrusLevelFromEnv()
-
-	// TODO: create the logrus entry in some parent scope, not here.
-	logrusEntry := logrus.NewEntry(logrus.StandardLogger())
-	grpc_logrus.ReplaceGrpcLogger(logrusEntry)
-
+func (s *SchedulerServer) Serve(grpcAddr string, shutdown chan os.Signal) {
+	entry := logrus.NewEntry(s.logger)
+	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
 		grpc.Creds(utils.TLSServerCredentialsFromEnv(TLSEnvConf)),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpc_logrus.UnaryServerInterceptor(logrusEntry),
+			grpc_ctxtags.UnaryServerInterceptor(),
+			grpc_logrus.UnaryServerInterceptor(entry),
+			middleware.LoggerRequestIDInterceptor("request.id"),
 			// grpc_logrus.PayloadUnaryServerInterceptor(logrusEntry),
 			grpc_auth.UnaryServerInterceptor(AuthFunc),
 			grpc_validator.UnaryServerInterceptor(),
@@ -347,15 +345,12 @@ func (s *SchedulerServer) Serve(grpcAddr string) {
 
 	f := make(chan error, 1)
 
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-
 	go func(f chan error) {
 		lis, err := net.Listen("tcp", grpcAddr)
 		if err != nil {
 			panic(err)
 		}
-		logrus.Infof("Serving on %s", lis.Addr().String())
+		s.logger.Infof("Serving on %s", lis.Addr().String())
 		if err := grpcServer.Serve(lis); err != nil {
 			f <- err
 		}
@@ -363,22 +358,23 @@ func (s *SchedulerServer) Serve(grpcAddr string) {
 
 	consumersCtx, consumersCtxCancel := context.WithCancel(context.Background())
 	wg := &sync.WaitGroup{}
-	for _, consumer := range s.Consumers {
-		go consumer.Consume(consumersCtx, wg)
-	}
 
 	defer func() {
 		consumersCtxCancel()
 		wg.Wait()
 	}()
 
+	for _, consumer := range s.Consumers {
+		go consumer.Consume(consumersCtx, wg)
+	}
+
 	select {
 	case <-shutdown:
-		logrus.Info("Gracefully stopping gRPC server...")
+		s.logger.Info("Gracefully stopping gRPC server...")
 		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-f:
-		logrus.WithError(err).Errorf("GRPC server unexpectedly failed")
+		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
 	}
 }

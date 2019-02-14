@@ -29,7 +29,9 @@ func CreateJobView(logger *logrus.Logger, jsonOut io.Writer, job *scheduler_prot
 		return
 	}
 	logger.Info("Job has been created.")
-	m := &jsonpb.Marshaler{}
+	m := &jsonpb.Marshaler{
+		Indent: "  ",
+	}
 	if err := m.Marshal(jsonOut, job); err != nil {
 		logger.WithError(err).Error("failed to marshal Job proto to JSON")
 	}

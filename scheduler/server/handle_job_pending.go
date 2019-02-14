@@ -4,7 +4,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -23,21 +22,25 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 	if !ok {
 		return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Job")
 	}
+	if jobProto.Status != scheduler_proto.Job_STATUS_PENDING {
+		return nil
+	}
+
 	job := &models.Job{}
 	if err := job.FromProto(jobProto); err != nil {
 		return errors.Wrap(err, "job.FromProto failed")
 	}
-	if job.Status != models.Enum(scheduler_proto.Job_STATUS_PENDING) {
-		return nil
+	if err := job.LoadFromDB(s.DB); err != nil {
+		return errors.Wrap(err, "job.LoadFromDB failed")
 	}
 
 	tx := s.DB.Begin()
 	node, err := job.FindSuitableNode(tx)
 	if err != nil {
 		wrappedErr := errors.Wrap(err, "job.FindSuitableNode failed")
-		if s, ok := status.FromError(errors.Cause(err)); ok {
-			if s.Code() == codes.NotFound {
-				logrus.WithField("job", job).Info("no suitable Node could be found for a new Job")
+		if st, ok := status.FromError(errors.Cause(err)); ok {
+			if st.Code() == codes.NotFound {
+				s.logger.WithField("job", job).Info("no suitable Node could be found for a new Job")
 				wrappedErr = nil
 			}
 		}
@@ -50,9 +53,9 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 		}
 		return wrappedErr
 	}
-	schedulingEvents, err := job.ScheduleForNode(tx, node)
+	schedulingEvents, err := job.CreateTask(tx, node)
 	if err != nil {
-		wrappedErr := errors.Wrap(err, "job.ScheduleForNode failed")
+		wrappedErr := errors.Wrap(err, "job.CreateTask failed")
 		if err := utils.HandleDBError(tx.Rollback()); err != nil {
 			return errors.Wrapf(err, "failed to rollback transaction: %s", wrappedErr.Error())
 		}

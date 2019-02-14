@@ -6,7 +6,7 @@ import (
 )
 
 // TableNames is a list of all the registered table names that is used in tests to clean up database.
-var TableNames = [3]string{"nodes", "jobs", "tasks"}
+var TableNames = [3]string{"tasks", "jobs", "nodes"}
 
 // Model struct is a copy of gorm.Model, but with the ID field of uint64 instead of unit.
 type Model struct {

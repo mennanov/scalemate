@@ -64,18 +64,28 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 		GpuClass:    scheduler_proto.GPUClass_GPU_CLASS_ENTRY,
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
+		RunConfig: &scheduler_proto.Job_RunConfig{
+			Image: "image",
+		},
 	}
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
-	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created", "scheduler.task.created")
+	// Manually update the Job's status to PENDING.
+	job := &models.Job{}
+	s.Require().NoError(job.FromProto(jobProto))
+	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
+	s.Require().NoError(err)
+	// Send the event about the new Job's status.
+	s.Require().NoError(s.service.Producer.Send(jobUpdatedEvent))
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated", "scheduler.task.created")
 	<-taskReceivedByNode
 	// Verify that the Task the Node has received is for the requested Job.
 	s.Equal(jobProto.Id, taskForNode.JobId)
 }
 
-func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
+func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated() {
 	// Create an online Node suitable for the Job, but with exhausted resources.
-	nodeExhausted := &models.Node{
+	nodeOnlineExhausted := &models.Node{
 		Username:        "test_username",
 		Name:            "node_name1",
 		Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
@@ -94,7 +104,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
-	_, err := nodeExhausted.Create(s.service.DB)
+	_, err := nodeOnlineExhausted.Create(s.service.DB)
 	s.Require().NoError(err)
 
 	// Node that will connect afterwards.
@@ -132,21 +142,29 @@ func (s *ServerTestSuite) TestIterateTasksForNode_AfterJobCreated() {
 		GpuClass:    scheduler_proto.GPUClass_GPU_CLASS_ENTRY,
 		DiskLimit:   10000,
 		DiskClass:   scheduler_proto.DiskClass_DISK_CLASS_HDD,
+		RunConfig: &scheduler_proto.Job_RunConfig{
+			Image: "image",
+		},
 	}
 
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
 
-	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created")
-
+	// Manually update the Job's status to PENDING.
+	job := &models.Job{}
+	s.Require().NoError(job.FromProto(jobProto))
+	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
+	s.Require().NoError(err)
+	// Send the event about the new Job's status.
+	s.Require().NoError(s.service.Producer.Send(jobUpdatedEvent))
+	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
 	// Claims should contain a Node name.
 	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
 		Username: node.Username,
 		NodeName: node.Name,
 	})
-	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{}, )
+	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{})
 	s.Require().NoError(err)
-
 	taskForNode, err := client.Recv()
 	s.Require().NoError(err)
 	s.Equal(jobProto.Id, taskForNode.JobId)

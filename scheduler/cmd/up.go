@@ -1,6 +1,10 @@
 package cmd
 
 import (
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
@@ -30,7 +34,11 @@ var upCmd = &cobra.Command{
 		}
 		defer utils.Close(amqpConnection)
 
+		logger := logrus.StandardLogger()
+		utils.SetLogrusLevelFromEnv(logger)
+
 		schedulerServer, err := server.NewSchedulerServer(
+			server.WithLogger(logger),
 			server.WithDBConnection(db),
 			server.WithAMQPProducer(amqpConnection),
 			server.WithAMQPConsumers(amqpConnection),
@@ -42,7 +50,10 @@ var upCmd = &cobra.Command{
 		}
 		defer utils.Close(schedulerServer)
 
-		schedulerServer.Serve(grpcAddr)
+		shutdown := make(chan os.Signal)
+		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+		schedulerServer.Serve(grpcAddr, shutdown)
 	},
 }
 

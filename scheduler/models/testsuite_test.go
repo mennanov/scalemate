@@ -50,11 +50,6 @@ func (s *ModelsTestSuite) TearDownTest() {
 	}
 }
 
-// TODO: uncomment this when the deadlock problem is resolved.
-//func (s *ModelsTestSuite) TearDownSuite() {
-//	migrations.RollbackAllMigrations(s.db)
-//}
-
 func TestRunModelsSuite(t *testing.T) {
 	suite.Run(t, new(ModelsTestSuite))
 }

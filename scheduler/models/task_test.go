@@ -3,7 +3,6 @@ package models_test
 import (
 	"time"
 
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -16,8 +15,8 @@ import (
 func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
 	// Create dependent entities first.
 	job := &models.Job{
-		Username:    "username",
-		Status:      models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+		Username: "username",
+		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -29,55 +28,61 @@ func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
 	s.Require().NoError(err)
 
 	now := time.Now().Unix()
-	testCases := []*scheduler_proto.Task{
+	testCases := []struct {
+		taskProto *scheduler_proto.Task
+		mask      fieldmask_utils.FieldFilter
+	}{
 		{
-			Id:     1,
-			JobId:  job.ID,
-			NodeId: uint64(node.ID),
-			Status: scheduler_proto.Task_STATUS_RUNNING,
-			CreatedAt: &timestamp.Timestamp{
-				Seconds: now,
+			taskProto: &scheduler_proto.Task{
+				Id:     1,
+				JobId:  job.ID,
+				NodeId: uint64(node.ID),
+				Status: scheduler_proto.Task_STATUS_RUNNING,
+				CreatedAt: &timestamp.Timestamp{
+					Seconds: now,
+				},
+				UpdatedAt: &timestamp.Timestamp{
+					Seconds: now,
+				},
+				StartedAt: &timestamp.Timestamp{
+					Seconds: now,
+				},
+				FinishedAt: &timestamp.Timestamp{
+					Seconds: now,
+				},
 			},
-			UpdatedAt: &timestamp.Timestamp{
-				Seconds: now,
-			},
-			StartedAt: &timestamp.Timestamp{
-				Seconds: now,
-			},
-			FinishedAt: &timestamp.Timestamp{
-				Seconds: now,
-			},
+			mask: fieldmask_utils.Mask{},
 		},
 		{
-			Id:     2,
-			JobId:  job.ID,
-			NodeId: uint64(node.ID),
+			taskProto: &scheduler_proto.Task{
+				Id:     2,
+				JobId:  job.ID,
+				NodeId: uint64(node.ID),
+			},
+			mask: fieldmask_utils.MaskInverse{"CreatedAt": nil, "UpdatedAt": nil},
 		},
 	}
-	mask := fieldmask_utils.MaskFromString(
-		"job_id,node_id,status,created_at,updated_at,finished_at")
 	for _, testCase := range testCases {
 		task := &models.Task{}
-		err := task.FromProto(testCase)
+		err := task.FromProto(testCase.taskProto)
 		s.Require().NoError(err)
+		taskProto, err := task.ToProto(nil)
+		s.Require().NoError(err)
+		s.Equal(testCase.taskProto, taskProto)
+
 		// Create the task in DB.
 		_, err = task.Create(s.db)
 		s.Require().NoError(err)
 		// Retrieve the same task from DB.
-		taskFromDB := &models.Task{Model: models.Model{ID: task.ID}}
+		taskFromDB := &models.Task{}
+		s.db.First(taskFromDB, task.ID)
 		s.Require().NoError(taskFromDB.LoadFromDB(s.db))
 		taskFromDBProto, err := taskFromDB.ToProto(nil)
 		s.Require().NoError(err)
+		taskFromDBProtoFiltered := &scheduler_proto.Task{}
+		s.Require().NoError(fieldmask_utils.StructToStruct(testCase.mask, taskFromDBProto, taskFromDBProtoFiltered))
 
-		expected := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, taskFromDBProto, expected, generator.CamelCase, stringEye)
-		s.Require().NoError(err)
-
-		actual := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, taskFromDBProto, actual, generator.CamelCase, stringEye)
-		s.Require().NoError(err)
-
-		s.Equal(expected, actual)
+		s.Equal(testCase.taskProto, taskFromDBProtoFiltered)
 	}
 }
 

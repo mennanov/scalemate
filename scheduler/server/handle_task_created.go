@@ -24,6 +24,5 @@ func (s *SchedulerServer) HandleTaskCreated(eventProto *events_proto.Event) erro
 	if ch, ok := s.NewTasksByJobID[taskProto.JobId]; ok {
 		ch <- taskProto
 	}
-
 	return nil
 }

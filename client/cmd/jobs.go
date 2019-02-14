@@ -22,7 +22,9 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/spf13/cobra"
 
+	"github.com/mennanov/scalemate/client/accounts"
 	"github.com/mennanov/scalemate/client/scheduler"
+	"github.com/mennanov/scalemate/shared/client"
 )
 
 var jobsCreateCmdFlagValues = scheduler.JobsCreateCmdFlags{}
@@ -57,8 +59,8 @@ Once the Job is scheduled a corresponding Task entity is created.`,
 			command = args[1]
 		}
 		job, err := scheduler.CreateJobController(
-			nil, //client.NewAccountsClient(accounts.ServiceAddr),
-			nil, //client.NewSchedulerClient(scheduler.ServiceAddr),
+			client.NewAccountsClient(accounts.ServiceAddr),
+			client.NewSchedulerClient(scheduler.ServiceAddr),
 			image,
 			command,
 			&jobsCreateCmdFlagValues)

@@ -64,7 +64,7 @@ func (s *ServerTestSuite) TestListGpuModels() {
 		s.Equal(2, len(res.GpuModels))
 		mask := fieldmask_utils.MaskFromString("GpuModel,GpuClass,GpuCapacity,GpuAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"GpuModel":     "model1",
@@ -75,7 +75,7 @@ func (s *ServerTestSuite) TestListGpuModels() {
 		}, resMap)
 
 		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[1], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.GpuModels[1], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"GpuModel":     "model2",
@@ -95,7 +95,7 @@ func (s *ServerTestSuite) TestListGpuModels() {
 		s.Equal(1, len(res.GpuModels))
 		mask := fieldmask_utils.MaskFromString("GpuModel,GpuClass,GpuCapacity,GpuAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"GpuModel":     "model2",

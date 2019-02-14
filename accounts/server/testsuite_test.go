@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/accounts/migrations"
@@ -46,12 +47,15 @@ type ServerTestSuite struct {
 	db             *gorm.DB
 	amqpChannel    *amqp.Channel
 	amqpConnection *amqp.Connection
+	shutdown       chan os.Signal
 }
 
 func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 	var err error
+	s.shutdown = make(chan os.Signal)
+
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
 
@@ -62,6 +66,7 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	s.service, err = server.NewAccountsServer(
+		server.WithLogger(logrus.New()),
 		server.WithDBConnection(s.db),
 		server.WithAMQPConsumers(s.amqpConnection),
 		server.WithAMQPProducer(s.amqpConnection),
@@ -74,7 +79,7 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	// Prepare database.
-	s.Require().NoError(migrations.RunMigrations(s.service.DB))
+	s.Require().NoError(migrations.RunMigrations(s.db))
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable",
 		os.Getenv(server.DBEnvConf.Host), os.Getenv(server.DBEnvConf.Port), os.Getenv(server.DBEnvConf.User),
@@ -85,11 +90,12 @@ func (s *ServerTestSuite) SetupSuite() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create gRPC server: %+v", err))
 	}
+
 	go func() {
-		s.service.Serve(localAddr)
+		s.service.Serve(localAddr, s.shutdown)
 	}()
 
-	// Waiting for GRPC server to start serving.
+	// Waiting for gRPC server to start serving.
 	time.Sleep(time.Millisecond * 100)
 	s.client = accounts_proto.NewAccountsClient(newTestConn(localAddr))
 }
@@ -111,9 +117,9 @@ func (s *ServerTestSuite) TearDownTest() {
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
-	s.NoError(migrations.RollbackAllMigrations(s.service.DB))
-	utils.Close(s.amqpConnection)
-	utils.Close(s.db)
+	// Send os.Interrupt to the shutdown channel to gracefully stop the server.
+	s.NoError(migrations.RollbackAllMigrations(s.db))
+	s.shutdown <- os.Interrupt
 }
 
 func TestRunServerSuite(t *testing.T) {
@@ -169,13 +175,13 @@ func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
 		Banned:   false,
 	}
 	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
-	s.service.DB.Create(user)
+	s.db.Create(user)
 	return user
 }
 
 func (s *ServerTestSuite) createTestUser(user *models.User, password string) *models.User {
 	s.Require().NoError(user.SetPasswordHash(password, s.service.BcryptCost))
-	s.service.DB.Create(user)
+	s.db.Create(user)
 	return user
 }
 

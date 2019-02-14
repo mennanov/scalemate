@@ -26,8 +26,9 @@ func (s *ServerTestSuite) TestHandleNodeDisconnected_UpdatesCorrespondingTasks()
 	}
 	_, err = task.Create(s.service.DB)
 
+	now := time.Now()
 	nodeUpdatedEvent, err := node.Updates(s.service.DB, map[string]interface{}{
-		"disconnected_at": time.Now(),
+		"disconnected_at": &now,
 		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
 	s.Require().NoError(err)

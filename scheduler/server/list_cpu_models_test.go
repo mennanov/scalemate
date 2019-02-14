@@ -64,7 +64,7 @@ func (s *ServerTestSuite) TestListCpuModels() {
 		s.Equal(2, len(res.CpuModels))
 		mask := fieldmask_utils.MaskFromString("CpuModel,CpuClass,CpuCapacity,CpuAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"CpuModel":     "model1",
@@ -75,7 +75,7 @@ func (s *ServerTestSuite) TestListCpuModels() {
 		}, resMap)
 
 		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[1], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.CpuModels[1], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"CpuModel":     "model2",
@@ -95,7 +95,7 @@ func (s *ServerTestSuite) TestListCpuModels() {
 		s.Equal(1, len(res.CpuModels))
 		mask := fieldmask_utils.MaskFromString("CpuModel,CpuClass,CpuCapacity,CpuAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"CpuModel":     "model2",

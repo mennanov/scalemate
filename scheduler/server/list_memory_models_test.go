@@ -61,7 +61,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 		s.Equal(2, len(res.MemoryModels))
 		mask := fieldmask_utils.MaskFromString("MemoryModel,MemoryCapacity,MemoryAvailable,NodesCount")
 		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[0], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[0], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"MemoryModel":     "model1",
@@ -71,7 +71,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 		}, resMap)
 
 		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[1], resMap, stringEye, stringEye)
+		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[1], resMap)
 		s.Require().NoError(err)
 		s.Equal(map[string]interface{}{
 			"MemoryModel":     "model2",

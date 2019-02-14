@@ -3,7 +3,6 @@ package models_test
 import (
 	"time"
 
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -15,11 +14,11 @@ import (
 func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 	now := time.Now().Unix()
 	testCases := []struct {
-		job  *scheduler_proto.Job
-		mask string
+		jobProto *scheduler_proto.Job
+		mask     fieldmask_utils.FieldFilter
 	}{
 		{
-			job: &scheduler_proto.Job{
+			jobProto: &scheduler_proto.Job{
 				Id:          0,
 				Username:    "username",
 				Status:      scheduler_proto.Job_STATUS_CANCELLED,
@@ -53,36 +52,40 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 				NameLabels:     []string{"node1", "node2"},
 				OtherLabels:    []string{"Europe/Samara", "USA/SF"},
 			},
-			mask: "username,status,cpu_limit,cpu_class,memory_limit,gpu_limit,gpu_class,disk_limit," +
-				"disk_class,run_config,created_at,updated_at,restart_policy,cpu_labels,gpu_labels,disk_labels," +
-				"memory_labels,username_labels,name_labels,other_labels",
+			mask: fieldmask_utils.MaskInverse{"Id": nil},
 		},
 		{
-			job: &scheduler_proto.Job{
+			jobProto: &scheduler_proto.Job{
 				Username: "username",
 			},
-			mask: "username",
+			mask: fieldmask_utils.MaskFromString("Username"),
 		},
 	}
 
 	for _, testCase := range testCases {
-		mask := fieldmask_utils.MaskFromString(testCase.mask)
 		job := &models.Job{}
-		err := job.FromProto(testCase.job)
+		err := job.FromProto(testCase.jobProto)
 		s.Require().NoError(err)
-		// Create the job in DB.
+		jobProto, err := job.ToProto(nil)
+		s.Require().NoError(err)
+		s.Equal(testCase.jobProto, jobProto)
+
+		// Create the job in DB to verify that everything is persisted.
 		_, err = job.Create(s.db)
 		s.Require().NoError(err)
+
 		// Retrieve the same job from DB.
 		jobFromDB := &models.Job{}
 		s.db.First(jobFromDB, job.ID)
-		p2, err := jobFromDB.ToProto(nil)
+		jobFromDBProto, err := jobFromDB.ToProto(nil)
 		s.Require().NoError(err)
 
-		actual := &scheduler_proto.Job{}
-		err = fieldmask_utils.StructToStruct(mask, p2, actual, generator.CamelCase, stringEye)
+		// Proto message for the Job from DB differs from the original one in the test case as there are some values
+		// added to the Job when it's saved.
+		jobFromDBProtoFiltered := &scheduler_proto.Job{}
+		err = fieldmask_utils.StructToStruct(testCase.mask, jobFromDBProto, jobFromDBProtoFiltered)
 		s.Require().NoError(err)
-		s.Equal(testCase.job, actual)
+		s.Equal(testCase.jobProto, jobFromDBProtoFiltered)
 	}
 }
 
@@ -122,12 +125,12 @@ func (s *ModelsTestSuite) TestJob_ScheduleForNode() {
 		DiskAvailable:   10000,
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		ConnectedAt:     now,
+		ConnectedAt:     &now,
 	}
 	_, err = node.Create(s.db)
 	s.Require().NoError(err)
 
-	schedulingEvents, err := job.ScheduleForNode(s.db, node)
+	schedulingEvents, err := job.CreateTask(s.db, node)
 	s.Require().NoError(err)
 	s.Equal(3, len(schedulingEvents))
 	eventPayload, err := events.NewModelProtoFromEvent(schedulingEvents[0])
@@ -191,7 +194,7 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExistsSuccess() {
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskModel:       "251GB APPLE SSD SM0256F",
 			Labels:          []string{"special_promo_label", "sale20"},
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// Offline node.
 		{
@@ -245,7 +248,7 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByCpuClass() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -293,7 +296,7 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByGpuClass() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -341,7 +344,7 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByDiskClass() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -394,7 +397,7 @@ func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByLabels() {
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskModel:       "251GB APPLE SSD SM0256F",
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -443,7 +446,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// Offline node.
 		{
@@ -470,7 +473,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -521,7 +524,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// This node satisfies criteria and is the least loaded (CpuAvailable).
 		{
@@ -542,7 +545,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -593,7 +596,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// This node satisfies criteria and is the least loaded (CpuAvailable).
 		{
@@ -614,7 +617,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -665,7 +668,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// This node satisfies criteria and is the least loaded (CpuAvailable).
 		{
@@ -686,7 +689,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 			DiskAvailable:   15000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -737,7 +740,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 		// This node satisfies criteria and is the least loaded (CpuAvailable).
 		{
@@ -758,7 +761,7 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
+			ConnectedAt:     &now,
 		},
 	}
 	for _, node := range nodes {
@@ -788,6 +791,8 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 	s.Require().NoError(err)
 
 	now := time.Now()
+	earlier1Min := now.Add(-time.Minute)
+	earlier2Min := now.Add(-time.Minute * 2)
 
 	nodes := []*models.Node{
 		// This node satisfies criteria.
@@ -809,8 +814,8 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now,
-			ScheduledAt:     now,
+			ConnectedAt:     &now,
+			ScheduledAt:     &now,
 		},
 		// This node satisfies criteria and is the least loaded (CpuAvailable).
 		{
@@ -831,8 +836,8 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 			DiskAvailable:   10000,
 			DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     now.Add(-time.Minute * 2),
-			ScheduledAt:     now.Add(-time.Minute),
+			ConnectedAt:     &earlier2Min,
+			ScheduledAt:     &earlier1Min,
 		},
 	}
 	for _, node := range nodes {
@@ -881,6 +886,8 @@ func (s *ModelsTestSuite) TestJob_UpdateStatusForNodeFailedTasks() {
 }
 
 func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
+	now := time.Now()
+
 	node := &models.Node{
 		Username:        "node_owner",
 		Name:            "node1",
@@ -904,7 +911,7 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskModel:       "251GB APPLE SSD SM0256F",
 		Labels:          []string{"special_promo_label", "sale20"},
-		ConnectedAt:     time.Now(),
+		ConnectedAt:     &now,
 	}
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
@@ -951,8 +958,8 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 			DiskLimit:   2000,
 		},
 		{
-			Username:    "job4_username",
-			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
+			Username: "job4_username",
+			Status:   models.Enum(scheduler_proto.Job_STATUS_PENDING),
 			// CpuLimit is too high.
 			CpuLimit:    4,
 			MemoryLimit: 2000,
@@ -960,9 +967,9 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 			DiskLimit:   2000,
 		},
 		{
-			Username:    "job5_username",
-			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
-			CpuLimit:    3,
+			Username: "job5_username",
+			Status:   models.Enum(scheduler_proto.Job_STATUS_PENDING),
+			CpuLimit: 3,
 			// Memory limit is too high.
 			MemoryLimit: 8000,
 			GpuLimit:    2,

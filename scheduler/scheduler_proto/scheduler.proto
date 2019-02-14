@@ -27,7 +27,7 @@ service Scheduler {
     }
     // IterateTasks sends a stream of all the Tasks for the given Job.
     // A new Task is created when a Job is scheduled on a certain Node.
-    rpc IterateTasks (IterateTasksRequest) returns (stream Task){
+    rpc IterateTasks (IterateTasksRequest) returns (stream Task) {
     }
     // IterateTasksForNode should be used by Nodes to receive Tasks to run. A Node is considered online as long as this
     // RPC is in progress, otherwise it is considered offline.
@@ -78,24 +78,27 @@ message Job {
     string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
 
     enum Status {
-        // Default status value. Normally no Jobs should have this status.
-        STATUS_UNKNOWN = 0;
+        // Default status value.
+        STATUS_NEW = 0;
+        // The Job is declined (due to insufficient funds, etc.).
+        STATUS_DECLINED = 1;
         // When a new Job is created it has the status PENDING. Which means it is waiting to be scheduled.
-        STATUS_PENDING = 1;
+        STATUS_PENDING = 2;
         // The Job is scheduled (assigned) to a Node. After that the more granular info about the status should be
         // retrieved from a corresponding Task.
-        STATUS_SCHEDULED = 2;
+        STATUS_SCHEDULED = 3;
         // The Job has finished and does not need to be rescheduled.
-        STATUS_FINISHED = 3;
+        STATUS_FINISHED = 4;
         // The Job was manually cancelled by a user.
-        STATUS_CANCELLED = 4;
+        STATUS_CANCELLED = 5;
     }
     // Readonly.
     Status status = 14 [(shared.proto.validator.field) = {int_lt: 1}];
 
     message RunConfig {
         // Docker image name, e.g. "postgres:latest".
-        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
+        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1
+                         }];
         // Docker optional command with an arguments string, e.g. "bash -c 'echo hi'".
         string command = 2;
         // Exposed ports as a map <local port, remote container port>.
@@ -119,21 +122,22 @@ message Job {
         string entrypoint = 10;
     }
     // Docker specific parameters like image name, ports, volumes, etc.
-    RunConfig run_config = 3;
+    RunConfig run_config = 3 [(shared.proto.validator.field) = {msg_exists: true}];
 
     // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
-    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gt: 0}];
+    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gte: 0.01, float_epsilon: 0.01
+                        }];
     CPUClass cpu_class = 5;
 
     // Docker run Memory limit in Megabytes.
-    uint32 memory_limit = 6 [(shared.proto.validator.field) = {int_gt: 31}];
+    uint32 memory_limit = 6 [(shared.proto.validator.field) = {int_gt: 0}];
 
     // The number of GPU devices to be used. Limiting the number of cores in a single device is not supported.
-    uint32 gpu_limit = 7 [(shared.proto.validator.field) = {msg_exists: true}];
+    uint32 gpu_limit = 7;
     GPUClass gpu_class = 8;
 
     // Disk limit in Megabytes. This includes the image size, writable container layer and volumes.
-    uint32 disk_limit = 9 [(shared.proto.validator.field) = {int_gt: 31}];
+    uint32 disk_limit = 9 [(shared.proto.validator.field) = {int_gt: 0}];
     DiskClass disk_class = 10;
 
     // Readonly.
@@ -142,12 +146,11 @@ message Job {
     google.protobuf.Timestamp updated_at = 13;
 
     enum RestartPolicy {
-        RESTART_POLICY_UNKNOWN = 0;
-        RESTART_POLICY_NO = 1;
-        RESTART_POLICY_ON_FAILURE = 2;
-        RESTART_POLICY_UNLESS_STOPPED = 3;
-        RESTART_POLICY_RESCHEDULE_ON_FAILURE = 4;
-        RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE = 5;
+        RESTART_POLICY_NO = 0;
+        RESTART_POLICY_ON_FAILURE = 1;
+        RESTART_POLICY_UNLESS_STOPPED = 2;
+        RESTART_POLICY_RESCHEDULE_ON_FAILURE = 3;
+        RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE = 4;
     }
 
     RestartPolicy restart_policy = 15;
@@ -174,14 +177,12 @@ message Node {
     string name = 24 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
 
     enum Status {
-        // Default status value. Normally no Nodes should have this status.
-        STATUS_UNKNOWN = 0;
+        // Node is offline and is not able to run Jobs.
+        STATUS_OFFLINE = 0;
         // Indicates that the Node is online and ready to run Jobs.
         STATUS_ONLINE = 1;
         // Node is gracefully shutting down: it's waiting for all the Tasks to complete and is not accepting new Tasks.
         STATUS_SHUTTING_DOWN = 2;
-        // Node is offline and is not able to run Jobs.
-        STATUS_OFFLINE = 3;
     }
     Status status = 3;
 
@@ -245,7 +246,7 @@ message Task {
     uint64 node_id = 3;
 
     enum Status {
-        STATUS_UNKNOWN = 0;
+        STATUS_NEW = 0;
         // Downloading a Docker image and user context, running container, uploading context.
         STATUS_RUNNING = 1;
         // Container finished execution regardless of the result (container exit code: failure or success).

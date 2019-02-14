@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -14,13 +13,11 @@ import (
 
 func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
 	testCases := []struct {
-		mask      string
+		mask      fieldmask_utils.FieldFilter
 		nodeProto *scheduler_proto.Node
 	}{
 		{
-			mask: "username,status,cpu_capacity,cpu_available,cpu_class,cpu_class_min,memory_capacity," +
-				"memory_available,gpu_capacity,gpu_available,gpu_class,gpu_class_min,disk_capacity,disk_available," +
-				"disk_class,disk_class_min,connected_at,disconnected_at,scheduled_at,created_at,updated_at",
+			mask: fieldmask_utils.Mask{},
 			nodeProto: &scheduler_proto.Node{
 				Id:              1,
 				Username:        "username",
@@ -59,7 +56,7 @@ func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
 			},
 		},
 		{
-			mask: "id,username",
+			mask: fieldmask_utils.MaskInverse{"CreatedAt": nil, "UpdatedAt": nil},
 			nodeProto: &scheduler_proto.Node{
 				Id:       2,
 				Username: "username2",
@@ -71,25 +68,24 @@ func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
 		node := &models.Node{}
 		err := node.FromProto(testCase.nodeProto)
 		s.Require().NoError(err)
+		nodeProto, err := node.ToProto(nil)
+		s.Require().NoError(err)
+		s.Equal(testCase.nodeProto, nodeProto)
+
 		// Create the node in DB.
 		_, err = node.Create(s.db)
 		s.Require().NoError(err)
-		// Retrieve the same node from DB.
-		nodeFromDb := &models.Node{}
-		s.db.First(nodeFromDb, node.ID)
-		p2, err := nodeFromDb.ToProto(nil)
+
+		// Retrieve the same Node from DB.
+		nodeFromDB := &models.Node{}
+		s.db.First(nodeFromDB, node.ID)
+		nodeFromDBProto, err := nodeFromDB.ToProto(nil)
 		s.Require().NoError(err)
 
-		expected := make(map[string]interface{})
-		mask := fieldmask_utils.MaskFromString(testCase.mask)
-		err = fieldmask_utils.StructToMap(mask, testCase.nodeProto, expected, generator.CamelCase, stringEye)
-		s.Require().NoError(err)
+		nodeFromDBProtoFiltered := &scheduler_proto.Node{}
+		s.Require().NoError(fieldmask_utils.StructToStruct(testCase.mask, nodeFromDBProto, nodeFromDBProtoFiltered))
 
-		actual := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, p2, actual, generator.CamelCase, stringEye)
-		s.Require().NoError(err)
-
-		s.Equal(expected, actual)
+		s.Equal(testCase.nodeProto, nodeFromDBProtoFiltered)
 	}
 }
 
@@ -103,7 +99,7 @@ func (s *ModelsTestSuite) TestNode_AllocateJobResources() {
 		MemoryAvailable: 6000,
 		GpuAvailable:    4,
 		DiskAvailable:   10000,
-		ScheduledAt:     scheduledAtOld,
+		ScheduledAt:     &scheduledAtOld,
 	}
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
@@ -149,7 +145,7 @@ func (s *ModelsTestSuite) TestNode_AllocateJobResources_Fails() {
 		MemoryAvailable: 6000,
 		GpuAvailable:    4,
 		DiskAvailable:   10000,
-		ScheduledAt:     scheduledAtOld,
+		ScheduledAt:     &scheduledAtOld,
 	}
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)

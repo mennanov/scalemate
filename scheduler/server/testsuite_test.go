@@ -13,6 +13,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc"
@@ -38,8 +39,6 @@ func init() {
 	flag.Parse()
 }
 
-func stringEye(s string) string { return s }
-
 type ServerTestSuite struct {
 	suite.Suite
 	service         *server.SchedulerServer
@@ -48,11 +47,13 @@ type ServerTestSuite struct {
 	amqpConnection  *amqp.Connection
 	amqpChannel     *amqp.Channel
 	amqpRawConsumer <-chan amqp.Delivery
+	shutdown        chan os.Signal
 }
 
 func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50052"
+	s.shutdown = make(chan os.Signal)
 
 	var err error
 	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
@@ -61,7 +62,11 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
 
+	logger := logrus.StandardLogger()
+	utils.SetLogrusLevelFromEnv(logger)
+
 	service, err := server.NewSchedulerServer(
+		server.WithLogger(logger),
 		server.WithDBConnection(s.db),
 		server.WithAMQPProducer(s.amqpConnection),
 		server.WithAMQPConsumers(s.amqpConnection),
@@ -79,10 +84,10 @@ func (s *ServerTestSuite) SetupSuite() {
 	cleaner.SetEngine(pg)
 
 	go func() {
-		s.service.Serve(localAddr)
+		s.service.Serve(localAddr, s.shutdown)
 	}()
 
-	// Waiting for GRPC server to start serving.
+	// Waiting for gRPC server to start serving.
 	time.Sleep(time.Millisecond * 100)
 	s.client = scheduler_proto.NewSchedulerClient(newTestConn(localAddr))
 }
@@ -115,9 +120,38 @@ func (s *ServerTestSuite) TearDownTest() {
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
-	//migrations.RollbackAllMigrations(s.service.DB)
-	utils.Close(s.amqpConnection)
-	utils.Close(s.db)
+	// Send os.Interrupt to the shutdown channel to gracefully stop the server.
+	s.shutdown <- os.Interrupt
+}
+
+// newJob creates a minimal valid Job and applies the given options to it.
+func (s *ServerTestSuite) newJob(options ...func(*scheduler_proto.Job)) *scheduler_proto.Job {
+	job := &scheduler_proto.Job{
+		Username: s.service.ClaimsInjector.(*auth.FakeClaimsInjector).Claims.Username,
+		RunConfig: &scheduler_proto.Job_RunConfig{
+			Image: "image",
+		},
+		CpuLimit:    0.01,
+		MemoryLimit: 1,
+		DiskLimit:   1,
+	}
+	for _, option := range options {
+		option(job)
+	}
+
+	return job
+}
+
+// newRunConfig creates a minimal valid Job_RunConfig and applies the given options to it.
+func (s *ServerTestSuite) newRunConfig(options ...func(*scheduler_proto.Job_RunConfig)) *scheduler_proto.Job_RunConfig {
+	config := &scheduler_proto.Job_RunConfig{
+		Image: "image",
+	}
+	for _, option := range options {
+		option(config)
+	}
+
+	return config
 }
 
 func TestRunServerSuite(t *testing.T) {
@@ -170,7 +204,7 @@ func (s *ServerTestSuite) assertGRPCError(err error, code codes.Code) {
 	s.Require().Error(err)
 	if statusCode, ok := status.FromError(err); ok {
 		if !s.Equal(code, statusCode.Code()) {
-			fmt.Println("Error message: ", statusCode.Message())
+			s.T().Log("Error message: ", statusCode.Message())
 		}
 	} else {
 		s.Fail("Unknown type of returned error")

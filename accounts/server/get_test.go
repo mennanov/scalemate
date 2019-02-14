@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"google.golang.org/grpc/codes"
@@ -27,9 +26,9 @@ func (s *ServerTestSuite) TestGet() {
 		"Role":     accounts_proto.User_USER,
 		"Banned":   user.Banned,
 	}
-	mask := fieldmask_utils.MaskFromString("id,username,email,role,banned")
+	mask := fieldmask_utils.MaskFromString("Id,Username,Email,Role,Banned")
 	actual := make(map[string]interface{})
-	err = fieldmask_utils.StructToMap(mask, res, actual, generator.CamelCase, stringEye)
+	err = fieldmask_utils.StructToMap(mask, res, actual)
 	s.Require().NoError(err)
 	s.Equal(expected, actual)
 }

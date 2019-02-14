@@ -16,7 +16,6 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,8 +30,8 @@ import (
 // Whenever a user runs `scalemate run ...` a new Job is created in DB.
 type Job struct {
 	Model
-	Username    string `gorm:"type:varchar(32);index"`
-	Status      Enum   `gorm:"type:smallint;not null"`
+	Username string `gorm:"type:varchar(32);index"`
+	Status   Enum   `gorm:"type:smallint;not null"`
 
 	// CpuLimit https://docs.docker.com/config/containers/resource_constraints/#cpu
 	CpuLimit float32 `gorm:"type:real;not null"`
@@ -250,30 +249,33 @@ func (j *Job) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Job, er
 		p.RunConfig = nil
 	}
 
-	createdAt, err := ptypes.TimestampProto(j.CreatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !j.CreatedAt.IsZero() {
+		createdAt, err := ptypes.TimestampProto(j.CreatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.CreatedAt = createdAt
 	}
 
-	updatedAt, err := ptypes.TimestampProto(j.UpdatedAt)
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+	if !j.UpdatedAt.IsZero() {
+		updatedAt, err := ptypes.TimestampProto(j.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.UpdatedAt = updatedAt
 	}
-
-	p.CreatedAt = createdAt
-	p.UpdatedAt = updatedAt
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
 		// Always include Job ID regardless of the mask.
-		pFiltered := &scheduler_proto.Job{Id: j.ID}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
+		jobProtoFiltered := &scheduler_proto.Job{Id: j.ID}
+		if err := fieldmask_utils.StructToStruct(mask, p, jobProtoFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
-		return pFiltered, nil
+		return jobProtoFiltered, nil
 	}
 
 	return p, nil
@@ -399,8 +401,8 @@ func (j *Job) FindSuitableNode(db *gorm.DB) (*Node, error) {
 	return node, nil
 }
 
-// ScheduleForNode allocates resources on the given Node and creates a new Task for it.
-func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) ([]*events_proto.Event, error) {
+// CreateTask allocates resources on the given Node and creates a new Task for it.
+func (j *Job) CreateTask(db *gorm.DB, node *Node) ([]*events_proto.Event, error) {
 	if j.ID == 0 {
 		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't schedule unsaved Job"))
 	}
@@ -409,7 +411,7 @@ func (j *Job) ScheduleForNode(db *gorm.DB, node *Node) ([]*events_proto.Event, e
 	task := &Task{
 		NodeID: node.ID,
 		JobID:  j.ID,
-		Status: Enum(scheduler_proto.Task_STATUS_UNKNOWN),
+		Status: Enum(scheduler_proto.Task_STATUS_NEW),
 	}
 	event, err := task.Create(db)
 	if err != nil {
@@ -589,11 +591,7 @@ func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) (
 		return nil, errors.Wrap(err, "failed to update Jobs status to PENDING")
 	}
 
-	defer func() {
-		if err := rows.Close(); err != nil {
-			logrus.WithError(err).Error("rows.Close failed in jobs.UpdateStatusForNodeFailedTasks")
-		}
-	}()
+	defer rows.Close()
 
 	var updateEvents []*events_proto.Event
 	for rows.Next() {

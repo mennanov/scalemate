@@ -40,7 +40,7 @@ func (s *ServerTestSuite) TestListTasks() {
 
 	tasks := []*models.Task{
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_UNKNOWN),
+			Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
 			NodeID: node.ID,
 			JobID:  jobs[0].ID,
 		},
@@ -50,7 +50,7 @@ func (s *ServerTestSuite) TestListTasks() {
 			JobID:  jobs[1].ID,
 		},
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_UNKNOWN),
+			Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
 			NodeID: node.ID,
 			JobID:  jobs[2].ID,
 		},
@@ -104,7 +104,7 @@ func (s *ServerTestSuite) TestListTasks() {
 		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
-			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_UNKNOWN},
+			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_NEW},
 		}
 		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
@@ -117,7 +117,7 @@ func (s *ServerTestSuite) TestListTasks() {
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status: []scheduler_proto.Task_Status{
-				scheduler_proto.Task_STATUS_UNKNOWN,
+				scheduler_proto.Task_STATUS_NEW,
 				scheduler_proto.Task_STATUS_FINISHED,
 			},
 			JobId:    []uint64{jobs[0].ID},

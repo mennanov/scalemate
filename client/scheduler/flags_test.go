@@ -11,7 +11,7 @@ import (
 	"github.com/mennanov/scalemate/client/scheduler"
 )
 
-func TestToRunConfigProto_WithAllFlagsCorrect(t *testing.T) {
+func TestJobsCreateCmdFlags_ToJobProto_WithAllFlagsCorrect(t *testing.T) {
 	for cpuClass := range scheduler_proto.CPUClass_name {
 		for gpuClass := range scheduler_proto.GPUClass_name {
 			for diskClass := range scheduler_proto.DiskClass_name {
@@ -88,10 +88,24 @@ func TestToRunConfigProto_WithAllFlagsCorrect(t *testing.T) {
 	}
 }
 
-func TestToRunConfigProto_WithNoFlags(t *testing.T) {
+func TestJobsCreateCmdFlags_ToJobProto_WithNoFlags(t *testing.T) {
 	emptyFlags := &scheduler.JobsCreateCmdFlags{}
 	job, err := emptyFlags.ToJobProto()
 	require.NoError(t, err)
-	// Verify that all necessary fields are initialized.
-	require.NotNil(t, job.RunConfig)
+	require.NotNil(t, job)
+}
+
+func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
+	for _, flags := range []*scheduler.JobsCreateCmdFlags{
+		// Invalid ports.
+		{Ports: []string{":"}},
+		{Ports: []string{"a:10"}},
+		{Ports: []string{"10"}},
+		{Ports: []string{"10:"}},
+		// Invalid
+	} {
+		job, err := flags.ToJobProto()
+		assert.Error(t, err)
+		assert.Nil(t, job)
+	}
 }

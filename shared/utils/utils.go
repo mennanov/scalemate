@@ -123,18 +123,18 @@ func TLSServerCredentialsFromEnv(conf TLSEnvConf) credentials.TransportCredentia
 }
 
 // SetLogrusLevelFromEnv sets the log level for logrus from environment variables.
-func SetLogrusLevelFromEnv() {
+func SetLogrusLevelFromEnv(logger *logrus.Logger) {
 	lvl := os.Getenv("LOG_LEVEL")
 	switch lvl {
 	case "DEBUG":
-		logrus.SetLevel(logrus.DebugLevel)
+		logger.SetLevel(logrus.DebugLevel)
 	case "INFO":
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	case "WARN":
-		logrus.SetLevel(logrus.WarnLevel)
+		logger.SetLevel(logrus.WarnLevel)
 	case "ERROR":
-		logrus.SetLevel(logrus.ErrorLevel)
+		logger.SetLevel(logrus.ErrorLevel)
 	default:
-		logrus.SetLevel(logrus.InfoLevel)
+		logger.SetLevel(logrus.InfoLevel)
 	}
 }

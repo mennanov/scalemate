@@ -85,6 +85,9 @@ func (s SchedulerServer) IterateTasksForNode(
 
 		case <-ctx.Done():
 			return nil
+
+		case <-s.gracefulStop:
+			return status.Error(codes.Unavailable, "service is shutting down")
 		}
 	}
 }

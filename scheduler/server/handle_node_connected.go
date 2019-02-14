@@ -4,7 +4,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 
 	"github.com/mennanov/scalemate/scheduler/models"
 
@@ -36,7 +35,7 @@ func (s *SchedulerServer) HandleNodeConnected(eventProto *events_proto.Event) er
 		return errors.Wrap(err, "node.SchedulePendingJobs failed")
 	}
 	if len(schedulingEvents) == 0 {
-		logrus.Warn("no schedulingEvents")
+		s.logger.Debug("no Jobs have been scheduled to the recently connected Node")
 	}
 	if err := events.CommitAndPublish(tx, s.Producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")

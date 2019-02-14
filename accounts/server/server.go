@@ -4,10 +4,8 @@ import (
 	"context"
 	"net"
 	"os"
-	"os/signal"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -98,10 +96,19 @@ type AccountsServer struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	JWTSecretKey    []byte
+	logger          *logrus.Logger
+}
+
+// WithLogger creates an option that sets the logger.
+func WithLogger(logger *logrus.Logger) Option {
+	return func(s *AccountsServer) error {
+		s.logger = logger
+		return nil
+	}
 }
 
 // WithBCryptCostFromEnv sets the BcryptCost field value from environment variables.
-func WithBCryptCostFromEnv(conf AppEnvConf) AccountsServerOption {
+func WithBCryptCostFromEnv(conf AppEnvConf) Option {
 	return func(s *AccountsServer) error {
 		value, err := strconv.Atoi(os.Getenv(conf.BCryptCost))
 		if err != nil {
@@ -113,7 +120,7 @@ func WithBCryptCostFromEnv(conf AppEnvConf) AccountsServerOption {
 }
 
 // WithAccessTokenTTLFromEnv sets the AccessTokenTTL field value from environment variables.
-func WithAccessTokenTTLFromEnv(conf AppEnvConf) AccountsServerOption {
+func WithAccessTokenTTLFromEnv(conf AppEnvConf) Option {
 	return func(s *AccountsServer) error {
 		value, err := time.ParseDuration(os.Getenv(conf.AccessTokenTTL))
 		if err != nil {
@@ -125,7 +132,7 @@ func WithAccessTokenTTLFromEnv(conf AppEnvConf) AccountsServerOption {
 }
 
 // WithRefreshTokenTTLFromEnv creates an option that sets the RefreshTokenTTL field value from environment variables.
-func WithRefreshTokenTTLFromEnv(conf AppEnvConf) AccountsServerOption {
+func WithRefreshTokenTTLFromEnv(conf AppEnvConf) Option {
 	return func(s *AccountsServer) error {
 		value, err := time.ParseDuration(os.Getenv(conf.RefreshTokenTTL))
 		if err != nil {
@@ -146,7 +153,7 @@ func JWTSecretKeyFromEnv(conf AppEnvConf) ([]byte, error) {
 }
 
 // WithJWTSecretKey creates an option that sets the JWTSecretKey field value.
-func WithJWTSecretKey(jwtSecretKey []byte) AccountsServerOption {
+func WithJWTSecretKey(jwtSecretKey []byte) Option {
 	return func(s *AccountsServer) error {
 		s.JWTSecretKey = jwtSecretKey
 		return nil
@@ -155,7 +162,7 @@ func WithJWTSecretKey(jwtSecretKey []byte) AccountsServerOption {
 
 // WithClaimsInjector creates an option that sets the ClaimsInjector to auth.NewJWTClaimsInjector with the
 // provided jwtSecretKey.
-func WithClaimsInjector(jwtSecretKey []byte) AccountsServerOption {
+func WithClaimsInjector(jwtSecretKey []byte) Option {
 	return func(s *AccountsServer) error {
 		s.ClaimsInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
 		return nil
@@ -163,7 +170,7 @@ func WithClaimsInjector(jwtSecretKey []byte) AccountsServerOption {
 }
 
 // WithAMQPProducer creates an option that sets the Producer field value to AMQPProducer.
-func WithAMQPProducer(conn *amqp.Connection) AccountsServerOption {
+func WithAMQPProducer(conn *amqp.Connection) Option {
 	return func(s *AccountsServer) error {
 		if conn == nil {
 			return errors.New("amqp.Connection is nil")
@@ -178,7 +185,7 @@ func WithAMQPProducer(conn *amqp.Connection) AccountsServerOption {
 }
 
 // WithAMQPConsumers creates an option that sets the Consumers field value to AMQPConsumer(s).
-func WithAMQPConsumers(conn *amqp.Connection) AccountsServerOption {
+func WithAMQPConsumers(conn *amqp.Connection) Option {
 	return func(s *AccountsServer) error {
 		channel, err := conn.Channel()
 		defer utils.Close(channel)
@@ -210,7 +217,7 @@ func WithAMQPConsumers(conn *amqp.Connection) AccountsServerOption {
 }
 
 // WithDBConnection creates an option that sets the DB field to an existing DB connection.
-func WithDBConnection(db *gorm.DB) AccountsServerOption {
+func WithDBConnection(db *gorm.DB) Option {
 	return func(s *AccountsServer) error {
 		s.DB = db
 		return nil
@@ -220,11 +227,11 @@ func WithDBConnection(db *gorm.DB) AccountsServerOption {
 // Compile time interface check.
 var _ accounts_proto.AccountsServer = new(AccountsServer)
 
-// AccountsServerOption modifies the SchedulerServer.
-type AccountsServerOption func(server *AccountsServer) error
+// Option modifies the SchedulerServer.
+type Option func(server *AccountsServer) error
 
 // NewAccountsServer creates a new AccountsServer and applies the given options to it.
-func NewAccountsServer(options ...AccountsServerOption) (*AccountsServer, error) {
+func NewAccountsServer(options ...Option) (*AccountsServer, error) {
 	s := &AccountsServer{}
 
 	for _, option := range options {
@@ -248,19 +255,15 @@ func (s *AccountsServer) Close() error {
 
 // Serve creates a GRPC server and starts serving on a given address. This function is blocking and runs upon the server
 // termination.
-func (s *AccountsServer) Serve(grpcAddr string) {
-	logrusEntry := logrus.NewEntry(logrus.StandardLogger())
-	grpc_logrus.ReplaceGrpcLogger(logrusEntry)
-
-	opts := []grpc_ctxtags.Option{
-		grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.TagBasedRequestFieldExtractor("log_fields")),
-	}
+func (s *AccountsServer) Serve(grpcAddr string, shutdown chan os.Signal) {
+	entry := logrus.NewEntry(s.logger)
+	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
 		grpc.Creds(utils.TLSServerCredentialsFromEnv(TLSEnvConf)),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpc_ctxtags.UnaryServerInterceptor(opts...),
-			grpc_logrus.UnaryServerInterceptor(logrusEntry),
-			// grpc_logrus.PayloadUnaryServerInterceptor(logrusEntry),
+			grpc_ctxtags.UnaryServerInterceptor(),
+			grpc_logrus.UnaryServerInterceptor(entry),
+			middleware.LoggerRequestIDInterceptor("request.id"),
 			grpc_auth.UnaryServerInterceptor(AuthFunc),
 			grpc_validator.UnaryServerInterceptor(),
 			middleware.StackTraceErrorInterceptor(false, LoggedErrorCodes...),
@@ -270,9 +273,6 @@ func (s *AccountsServer) Serve(grpcAddr string) {
 
 	accounts_proto.RegisterAccountsServer(grpcServer, s)
 
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-
 	f := make(chan error, 1)
 
 	go func(f chan error) {
@@ -280,7 +280,7 @@ func (s *AccountsServer) Serve(grpcAddr string) {
 		if err != nil {
 			panic(err)
 		}
-		logrus.Infof("Serving on %s", lis.Addr().String())
+		s.logger.Infof("Serving on %s", lis.Addr().String())
 		if err := grpcServer.Serve(lis); err != nil {
 			f <- err
 		}
@@ -299,9 +299,11 @@ func (s *AccountsServer) Serve(grpcAddr string) {
 
 	select {
 	case <-shutdown:
+		s.logger.Info("Gracefully stopping gRPC server...")
 		grpcServer.GracefulStop()
+		s.logger.Info("gRPC stopped.")
 
 	case err := <-f:
-		logrus.Fatalf("GRPC server unexpectedly failed: %s", err)
+		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
 	}
 }

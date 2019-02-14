@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -27,6 +26,9 @@ func CreateJobController(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse flags")
 	}
+	if image == "" {
+		return nil, errors.New("image is an empty string")
+	}
 	job.RunConfig.Image = image
 	job.RunConfig.Command = command
 
@@ -41,7 +43,6 @@ func CreateJobController(
 		return nil, errors.Wrap(err, "failed to parse authentication tokens. Try re-login")
 	}
 	job.Username = claims.Username
-	fmt.Println("job:", job.String())
 
 	return schedulerClient.CreateJob(context.Background(), job, grpc.PerRPCCredentials(jwtCredentials))
 }

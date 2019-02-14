@@ -5,6 +5,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
+	logrus2 "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
@@ -19,7 +20,7 @@ var AMQPEnvConf = utils.AMQPEnvConf{
 }
 
 func init() {
-	utils.SetLogrusLevelFromEnv()
+	utils.SetLogrusLevelFromEnv(logrus2.StandardLogger())
 }
 
 func TestAMQPPublisher_SendAsync(t *testing.T) {

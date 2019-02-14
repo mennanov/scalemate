@@ -68,13 +68,13 @@ func (node *Node) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.Node
 	}
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
 		// Always include ID regardless of the field mask.
 		pFiltered := &accounts_proto.Node{Id: uint64(node.ID)}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered, generator.CamelCase, stringEye); err != nil {
+		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
 		return pFiltered, nil
