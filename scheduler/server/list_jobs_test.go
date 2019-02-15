@@ -17,7 +17,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		Username: "username1",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_PENDING),
 	}
-	_, err := job1.Create(s.service.DB)
+	_, err := job1.Create(s.db)
 	s.Require().NoError(err)
 	s.Require().NotNil(job1.ID)
 
@@ -25,20 +25,21 @@ func (s *ServerTestSuite) TestListJobs() {
 		Username: "username1",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
-	_, err = job2.Create(s.service.DB)
+	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
 	s.Require().NotNil(job2.ID)
 
 	job3 := &models.Job{
 		Username: "username2",
 	}
-	_, err = job3.Create(s.service.DB)
+	_, err = job3.Create(s.db)
 	s.Require().NoError(err)
 	s.Require().NotNil(job3.ID)
 
 	ctx := context.Background()
 	s.T().Run("returns owned Jobs", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+		defer restoreClaims()
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 		}
@@ -51,8 +52,9 @@ func (s *ServerTestSuite) TestListJobs() {
 	})
 
 	s.T().Run("returns all Jobs for admin", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(
+		restoreClaims := s.claimsInjector.SetClaims(
 			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
+		defer restoreClaims()
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 		}
@@ -64,7 +66,9 @@ func (s *ServerTestSuite) TestListJobs() {
 	})
 
 	s.T().Run("permission denied for other username", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job3.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job3.Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 		}
@@ -74,7 +78,9 @@ func (s *ServerTestSuite) TestListJobs() {
 	})
 
 	s.T().Run("returns Jobs for requested status", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 			Status:   []scheduler_proto.Job_Status{scheduler_proto.Job_STATUS_PENDING},
@@ -86,7 +92,9 @@ func (s *ServerTestSuite) TestListJobs() {
 	})
 
 	s.T().Run("returns Jobs for requested statuses and order", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 			Status: []scheduler_proto.Job_Status{
@@ -103,7 +111,9 @@ func (s *ServerTestSuite) TestListJobs() {
 	})
 
 	s.T().Run("returns Jobs with limit and offset", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 			Limit:    1,

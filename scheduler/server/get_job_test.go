@@ -16,7 +16,7 @@ func (s *ServerTestSuite) TestGetJob() {
 	job := &models.Job{
 		Username: "test_username",
 	}
-	_, err := job.Create(s.service.DB)
+	_, err := job.Create(s.db)
 	s.Require().NoError(err)
 	s.Require().NotNil(job.ID)
 
@@ -26,22 +26,27 @@ func (s *ServerTestSuite) TestGetJob() {
 	}
 
 	s.T().Run("successful for Job owner", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job.Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job.Username})
+		defer restoreClaims()
+
 		res, err := s.client.GetJob(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(job.ID, res.Id)
 	})
 
 	s.T().Run("successful for admin", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(
+		restoreClaims := s.claimsInjector.SetClaims(
 			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
+		defer restoreClaims()
+
 		res, err := s.client.GetJob(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(job.ID, res.Id)
 	})
 
 	s.T().Run("fails for other non-admin", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: "unknown"})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: "unknown"})
+		defer restoreClaims()
 
 		res, err := s.client.GetJob(ctx, req)
 		s.assertGRPCError(err, codes.PermissionDenied)

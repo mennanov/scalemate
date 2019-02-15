@@ -39,7 +39,7 @@ func (s SchedulerServer) IterateTasksForNode(
 
 	// Lookup the Node in DB.
 	node := &models.Node{}
-	if err := node.Get(s.DB, claims.Username, claims.NodeName); err != nil {
+	if err := node.Get(s.db, claims.Username, claims.NodeName); err != nil {
 		logger.WithFields(logrus.Fields{
 			"nodeUsername": claims.Username,
 			"nodeName":     claims.NodeName,
@@ -51,23 +51,23 @@ func (s SchedulerServer) IterateTasksForNode(
 		return status.Error(codes.FailedPrecondition, "this Node is already online (receiving Tasks)")
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	connectEvent, err := s.ConnectNode(tx, node)
 	if err != nil {
 		return errors.Wrap(err, "failed to ConnectNode")
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, connectEvent); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, connectEvent); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 
 	// Set the Node's status as offline when this RPC exits.
 	defer func() {
-		tx := s.DB.Begin()
+		tx := s.db.Begin()
 		disconnectEvent, err := s.DisconnectNode(tx, node)
 		if err != nil {
 			logger.WithError(err).Error("failed to DisconnectNode")
 		}
-		if err := events.CommitAndPublish(tx, s.Producer, disconnectEvent); err != nil {
+		if err := events.CommitAndPublish(tx, s.producer, disconnectEvent); err != nil {
 			logger.WithError(err).Error("events.CommitAndPublish failed")
 		}
 	}()

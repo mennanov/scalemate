@@ -12,7 +12,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job := &models.Job{
@@ -20,7 +20,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
-	_, err = job.Create(s.service.DB)
+	_, err = job.Create(s.db)
 	s.Require().NoError(err)
 
 	task := &models.Task{
@@ -28,10 +28,10 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 		NodeID: node.ID,
 		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
-	_, err = task.Create(s.service.DB)
+	_, err = task.Create(s.db)
 	s.Require().NoError(err)
 
-	taskUpdatedEvent, err := task.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
+	taskUpdatedEvent, err := task.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
@@ -39,7 +39,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
 
 	// Verify that the jobScheduled now has a status "FINISHED".
-	s.Require().NoError(job.LoadFromDB(s.service.DB))
+	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
 }
 
@@ -48,7 +48,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job := &models.Job{
@@ -56,7 +56,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE),
 	}
-	_, err = job.Create(s.service.DB)
+	_, err = job.Create(s.db)
 	s.Require().NoError(err)
 
 	task := &models.Task{
@@ -64,10 +64,10 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 		NodeID: node.ID,
 		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
-	_, err = task.Create(s.service.DB)
+	_, err = task.Create(s.db)
 	s.Require().NoError(err)
 
-	taskUpdatedEvent, err := task.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FAILED)
+	taskUpdatedEvent, err := task.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FAILED)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
@@ -75,6 +75,6 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
 
 	// Verify that the jobScheduled now has a status "PENDING".
-	s.Require().NoError(job.LoadFromDB(s.service.DB))
+	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_PENDING), job.Status)
 }

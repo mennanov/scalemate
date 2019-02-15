@@ -16,7 +16,7 @@ func (s SchedulerServer) ListMemoryModels(
 	_ *empty.Empty,
 ) (*scheduler_proto.ListMemoryModelsResponse, error) {
 
-	q := s.DB.Table("nodes").
+	q := s.db.Table("nodes").
 		Select("memory_model, SUM(memory_capacity) AS memory_capacity, " +
 			"SUM(memory_available) AS memory_available, COUNT(id) AS nodes_count").
 		Where("status = ?", models.Enum(scheduler_proto.Node_STATUS_ONLINE)).

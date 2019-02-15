@@ -28,11 +28,11 @@ func (s SchedulerServer) GetTask(
 	task := &models.Task{}
 	task.ID = r.TaskId
 
-	if err := task.LoadFromDB(s.DB); err != nil {
+	if err := task.LoadFromDB(s.db); err != nil {
 		return nil, err
 	}
 
-	if err := task.LoadJobFromDB(s.DB, "username"); err != nil {
+	if err := task.LoadJobFromDB(s.db, "username"); err != nil {
 		return nil, err
 	}
 

@@ -48,6 +48,9 @@ type ServerTestSuite struct {
 	amqpChannel     *amqp.Channel
 	amqpRawConsumer <-chan amqp.Delivery
 	shutdown        chan os.Signal
+	producer        events.Producer
+
+	claimsInjector *auth.FakeClaimsInjector
 }
 
 func (s *ServerTestSuite) SetupSuite() {
@@ -61,15 +64,24 @@ func (s *ServerTestSuite) SetupSuite() {
 
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
+	s.producer, err = events.NewAMQPProducer(s.amqpConnection, events.SchedulerAMQPExchangeName)
+	s.Require().NoError(err)
 
 	logger := logrus.StandardLogger()
 	utils.SetLogrusLevelFromEnv(logger)
 
+	s.claimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+		Username:  "test_username",
+		Role:      accounts_proto.User_USER,
+		TokenType: auth.TokenTypeAccess,
+	})
+
 	service, err := server.NewSchedulerServer(
 		server.WithLogger(logger),
 		server.WithDBConnection(s.db),
-		server.WithAMQPProducer(s.amqpConnection),
+		server.WithProducer(s.producer),
 		server.WithAMQPConsumers(s.amqpConnection),
+		server.WithClaimsInjector(s.claimsInjector),
 	)
 	s.Require().NoError(err)
 	s.service = service
@@ -97,12 +109,6 @@ func (s *ServerTestSuite) SetupTest() {
 	s.amqpChannel, err = s.amqpConnection.Channel()
 	s.Require().NoError(err)
 
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
-		Username:  "test_username",
-		Role:      accounts_proto.User_USER,
-		TokenType: auth.TokenTypeAccess,
-	})
-
 	s.amqpRawConsumer, err = events.NewAMQPRawConsumer(s.amqpChannel, events.SchedulerAMQPExchangeName, "", "#")
 	s.Require().NoError(err)
 
@@ -127,7 +133,7 @@ func (s *ServerTestSuite) TearDownSuite() {
 // newJob creates a minimal valid Job and applies the given options to it.
 func (s *ServerTestSuite) newJob(options ...func(*scheduler_proto.Job)) *scheduler_proto.Job {
 	job := &scheduler_proto.Job{
-		Username: s.service.ClaimsInjector.(*auth.FakeClaimsInjector).Claims.Username,
+		Username: s.claimsInjector.Claims.Username,
 		RunConfig: &scheduler_proto.Job_RunConfig{
 			Image: "image",
 		},

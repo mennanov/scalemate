@@ -11,11 +11,11 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job := &models.Job{}
-	_, err = job.Create(s.service.DB)
+	_, err = job.Create(s.db)
 	s.Require().NoError(err)
 
 	tasksForNode := make(chan *scheduler_proto.Task)
@@ -28,7 +28,7 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 		NodeID: node.ID,
 		JobID:  job.ID,
 	}
-	taskCreatedEvent, err := task.Create(s.service.DB)
+	taskCreatedEvent, err := task.Create(s.db)
 	s.Require().NoError(err)
 
 	tasksReceived := make(chan struct{})

@@ -125,6 +125,15 @@ func NewFakeClaimsContextInjector(claims *Claims) *FakeClaimsInjector {
 	return &FakeClaimsInjector{Claims: claims}
 }
 
+// SetClaims sets the claims and returns a function that restores the original claims.
+func (f *FakeClaimsInjector) SetClaims(claims *Claims) func() {
+	originalClaims := f.Claims
+	f.Claims = claims
+	return func() {
+		f.Claims = originalClaims
+	}
+}
+
 // InjectClaims injects the provided Claims to the given context.
 func (f *FakeClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
 	return context.WithValue(ctx, ContextKeyClaims, f.Claims), nil

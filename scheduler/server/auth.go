@@ -25,7 +25,7 @@ func (s SchedulerServer) AuthFuncOverride(ctx context.Context, fullMethodName st
 		"/scheduler.scheduler_proto.Scheduler/ListTasks",
 		"/scheduler.scheduler_proto.Scheduler/GetTask":
 
-		ctx, err = s.ClaimsInjector.InjectClaims(ctx)
+		ctx, err = s.claimsInjector.InjectClaims(ctx)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to parse JWT")
 		}

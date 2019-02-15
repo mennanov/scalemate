@@ -7,7 +7,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -22,7 +21,7 @@ func (s *ServerTestSuite) TestCreateJob_ValidMinimalRequest() {
 
 func (s *ServerTestSuite) TestCreateJob_ValidFullRequest() {
 	req := &scheduler_proto.Job{
-		Username: s.service.ClaimsInjector.(*auth.FakeClaimsInjector).Claims.Username,
+		Username: s.claimsInjector.Claims.Username,
 		RunConfig: &scheduler_proto.Job_RunConfig{
 			Image:                "image",
 			Command:              "command",

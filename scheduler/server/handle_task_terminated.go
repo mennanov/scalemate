@@ -28,12 +28,12 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		return nil
 	}
 	// Populate the task struct fields from DB.
-	if err := task.LoadFromDB(s.DB); err != nil {
+	if err := task.LoadFromDB(s.db); err != nil {
 		return errors.Wrap(err, "task.LoadFromDB failed")
 	}
 
 	// Load the corresponding Job to check if it needs to be rescheduled.
-	if err := task.LoadJobFromDB(s.DB); err != nil {
+	if err := task.LoadJobFromDB(s.db); err != nil {
 		return errors.Wrap(err, "task.LoadJobFromDB failed")
 	}
 
@@ -44,13 +44,13 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		newJobStatus = scheduler_proto.Job_STATUS_PENDING
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	jobStatusUpdatedEvent, err := task.Job.UpdateStatus(tx, newJobStatus)
 	if err != nil {
 		return errors.Wrap(err, "failed to update Job status")
 	}
 
-	if err := events.CommitAndPublish(tx, s.Producer, jobStatusUpdatedEvent); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

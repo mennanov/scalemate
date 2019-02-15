@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "auth.go",
         "create_job.go",
+        "env.go",
         "get_job.go",
         "get_task.go",
         "handle_job_pending.go",
@@ -21,6 +22,7 @@ go_library(
         "list_jobs.go",
         "list_memory_models.go",
         "list_tasks.go",
+        "options.go",
         "server.go",
     ],
     data = [

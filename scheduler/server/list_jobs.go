@@ -29,7 +29,7 @@ func (s SchedulerServer) ListJobs(
 	}
 
 	var jobs models.Jobs
-	totalCount, err := jobs.List(s.DB, r)
+	totalCount, err := jobs.List(s.db, r)
 	if err != nil {
 		return nil, err
 	}

@@ -18,21 +18,21 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job1 := &models.Job{
 		Username: "username_job",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
-	_, err = job1.Create(s.service.DB)
+	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
-	_, err = job2.Create(s.service.DB)
+	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
 
 	// Task that is expected to be returned.
@@ -40,7 +40,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 		NodeID: node.ID,
 		JobID:  job1.ID,
 	}
-	_, err = taskExistingJob1.Create(s.service.DB)
+	_, err = taskExistingJob1.Create(s.db)
 	s.Require().NoError(err)
 
 	// This Task should not be returned as it's for a different Job.
@@ -48,7 +48,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 		NodeID: node.ID,
 		JobID:  job2.ID,
 	}
-	_, err = taskExistingJob2.Create(s.service.DB)
+	_, err = taskExistingJob2.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -57,7 +57,9 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 		IncludeExisting: true,
 	}
 
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+	defer restoreClaims()
+
 	client, err := s.client.IterateTasks(ctx, req)
 	s.Require().NoError(err)
 	var receivedTasks []*scheduler_proto.Task
@@ -79,7 +81,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job1 := &models.Job{
@@ -87,31 +89,33 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
-	_, err = job1.Create(s.service.DB)
+	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
-	_, err = job2.Create(s.service.DB)
+	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
 
 	taskExistingJob1 := &models.Task{
 		NodeID: node.ID,
 		JobID:  job1.ID,
 	}
-	_, err = taskExistingJob1.Create(s.service.DB)
+	_, err = taskExistingJob1.Create(s.db)
 	s.Require().NoError(err)
 
 	taskExistingJob2 := &models.Task{
 		NodeID: node.ID,
 		JobID:  job2.ID,
 	}
-	_, err = taskExistingJob2.Create(s.service.DB)
+	_, err = taskExistingJob2.Create(s.db)
 	s.Require().NoError(err)
 
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+	defer restoreClaims()
+
 	ctx := context.Background()
 	req := &scheduler_proto.IterateTasksRequest{
 		JobId:           job1.ID,
@@ -132,16 +136,16 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 			NodeID: node.ID,
 			Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
 		}
-		taskCreatedEvent, err := taskNewJob1.Create(s.service.DB)
+		taskCreatedEvent, err := taskNewJob1.Create(s.db)
 		s.Require().NoError(err)
 
-		s.Require().NoError(s.service.Producer.Send(taskCreatedEvent))
+		s.Require().NoError(s.producer.Send(taskCreatedEvent))
 		// Wait for the message to be received.
 		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.created")
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
-		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
+		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
-		s.Require().NoError(s.service.Producer.Send(taskUpdatedEvent))
+		s.Require().NoError(s.producer.Send(taskUpdatedEvent))
 		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated", "scheduler.job.updated")
 		wg.Done()
 	}(wg)
@@ -170,7 +174,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		Username: "username",
 		Name:     "node_name",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	job1 := &models.Job{
@@ -178,14 +182,14 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
-	_, err = job1.Create(s.service.DB)
+	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
 		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
-	_, err = job2.Create(s.service.DB)
+	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
 
 	// Existing Task that is not expected to be returned.
@@ -193,7 +197,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		NodeID: node.ID,
 		JobID:  job1.ID,
 	}
-	_, err = taskExistingJob1.Create(s.service.DB)
+	_, err = taskExistingJob1.Create(s.db)
 	s.Require().NoError(err)
 
 	// Another existing Task for a different Job that is not expected to be returned.
@@ -201,10 +205,12 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		NodeID: node.ID,
 		JobID:  job2.ID,
 	}
-	_, err = taskExistingJob2.Create(s.service.DB)
+	_, err = taskExistingJob2.Create(s.db)
 	s.Require().NoError(err)
 
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: job1.Username})
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
+	defer restoreClaims()
+
 	ctx := context.Background()
 	req := &scheduler_proto.IterateTasksRequest{
 		JobId:           job1.ID,
@@ -224,18 +230,18 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 			NodeID: node.ID,
 			Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
 		}
-		taskCreatedEvent, err := taskNewJob1.Create(s.service.DB)
+		taskCreatedEvent, err := taskNewJob1.Create(s.db)
 		s.Require().NoError(err)
 		newTaskId = taskNewJob1.ID
 
-		s.Require().NoError(s.service.Producer.Send(taskCreatedEvent))
+		s.Require().NoError(s.producer.Send(taskCreatedEvent))
 		// Wait for the message to be received.
 		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.created")
 		// Give the service some time to process this event.
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
-		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.service.DB, scheduler_proto.Task_STATUS_FINISHED)
+		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
-		s.Require().NoError(s.service.Producer.Send(taskUpdatedEvent))
+		s.Require().NoError(s.producer.Send(taskUpdatedEvent))
 		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
 		wg.Done()
 	}(wg)

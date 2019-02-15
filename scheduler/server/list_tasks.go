@@ -28,7 +28,7 @@ func (s SchedulerServer) ListTasks(
 	}
 
 	var tasks models.Tasks
-	totalCount, err := tasks.List(s.DB, r)
+	totalCount, err := tasks.List(s.db, r)
 	if err != nil {
 		return nil, err
 	}

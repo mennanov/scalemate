@@ -30,11 +30,10 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 	if err := job.FromProto(jobProto); err != nil {
 		return errors.Wrap(err, "job.FromProto failed")
 	}
-	if err := job.LoadFromDB(s.DB); err != nil {
+	if err := job.LoadFromDB(s.db); err != nil {
 		return errors.Wrap(err, "job.LoadFromDB failed")
 	}
-
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	node, err := job.FindSuitableNode(tx)
 	if err != nil {
 		wrappedErr := errors.Wrap(err, "job.FindSuitableNode failed")
@@ -61,7 +60,7 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 		}
 		return wrappedErr
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, schedulingEvents...); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

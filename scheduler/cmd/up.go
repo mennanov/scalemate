@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -37,15 +38,27 @@ var upCmd = &cobra.Command{
 		logger := logrus.StandardLogger()
 		utils.SetLogrusLevelFromEnv(logger)
 
+		producer, err := events.NewAMQPProducer(amqpConnection, events.SchedulerAMQPExchangeName)
+		if err != nil {
+			logger.WithError(err).Error("events.NewAMQPProducer failed")
+			return
+		}
+
+		claimsInjector, err := server.JWTClaimsInjectorFromEnv(server.SchedulerEnvConf)
+		if err != nil {
+			logger.WithError(err).Error("server.JWTClaimsInjectorFromEnv failed")
+			return
+		}
+
 		schedulerServer, err := server.NewSchedulerServer(
 			server.WithLogger(logger),
 			server.WithDBConnection(db),
-			server.WithAMQPProducer(amqpConnection),
+			server.WithProducer(producer),
 			server.WithAMQPConsumers(amqpConnection),
-			server.WithClaimsInjector(server.SchedulerEnvConf),
+			server.WithClaimsInjector(claimsInjector),
 		)
 		if err != nil {
-			logrus.WithError(err).Error("server.NewSchedulerServer failed")
+			logger.WithError(err).Error("server.NewSchedulerServer failed")
 			return
 		}
 		defer utils.Close(schedulerServer)

@@ -14,7 +14,6 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
-	"github.com/streadway/amqp"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/shared/events_proto"
@@ -54,13 +53,13 @@ var LoggedErrorCodes = []codes.Code{
 type SchedulerServer struct {
 	// Logrus entry to be used for all the logging.
 	logger *logrus.Logger
-	DB     *gorm.DB
+	db     *gorm.DB
 	// Authentication claims context injector.
-	ClaimsInjector auth.ClaimsInjector
+	claimsInjector auth.ClaimsInjector
 	// Events producer.
-	Producer events.Producer
+	producer events.Producer
 	// Events consumers.
-	Consumers []events.Consumer
+	consumers []events.Consumer
 	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
 	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
 	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
@@ -75,178 +74,6 @@ type SchedulerServer struct {
 
 // Compile time interface check.
 var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
-
-// WithLogger creates an option that sets the logger.
-func WithLogger(logger *logrus.Logger) Option {
-	return func(s *SchedulerServer) error {
-		s.logger = logger
-		return nil
-	}
-}
-
-// WithDBConnection creates an option that sets the DB field to an existing DB connection.
-func WithDBConnection(db *gorm.DB) Option {
-	return func(s *SchedulerServer) error {
-		s.DB = db
-		return nil
-	}
-}
-
-// WithClaimsInjector creates an option that sets ClaimsInjector field to a new auth.NewJWTClaimsInjector with JWT
-// secret key from env.
-func WithClaimsInjector(conf AppEnvConf) Option {
-	return func(s *SchedulerServer) error {
-		value := os.Getenv(conf.JWTSecretKey)
-		if value == "" {
-			return errors.New("JWT secret key is empty")
-		}
-		s.ClaimsInjector = auth.NewJWTClaimsInjector([]byte(value))
-		return nil
-	}
-}
-
-// WithAMQPProducer creates an option that sets the Producer field value to AMQPProducer.
-func WithAMQPProducer(conn *amqp.Connection) Option {
-	return func(s *SchedulerServer) error {
-		if conn == nil {
-			return errors.New("amqp.Connection is nil")
-		}
-		producer, err := events.NewAMQPProducer(conn, events.SchedulerAMQPExchangeName)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPProducer failed")
-		}
-		s.Producer = producer
-		return nil
-	}
-}
-
-// WithAMQPConsumers creates an option that sets the Consumers field value to AMQPConsumer(s).
-func WithAMQPConsumers(conn *amqp.Connection) Option {
-	return func(s *SchedulerServer) error {
-		channel, err := conn.Channel()
-		defer utils.Close(channel)
-
-		if err != nil {
-			return errors.Wrap(err, "failed to open a new AMQP channel")
-		}
-		// Declare all required exchanges.
-		if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
-			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
-		}
-
-		jobStatusUpdatedToPendingConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"scheduler_job_pending",
-			"scheduler.job.updated.#.status.#",
-			s.HandleJobPending)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobStatusUpdatedToPendingConsumer")
-		}
-
-		jobTerminatedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"",
-			"scheduler.job.updated.#.status.#",
-			s.HandleJobTerminated)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for jobTerminatedConsumer")
-		}
-
-		nodeConnectedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"scheduler_node_connected",
-			"scheduler.node.updated.#.connected_at.#",
-			s.HandleNodeConnected)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
-		}
-
-		nodeDisconnectedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"scheduler_node_disconnected",
-			"scheduler.node.updated.#.disconnected_at.#",
-			s.HandleNodeDisconnected)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeDisconnectedConsumer")
-		}
-
-		taskCreatedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"",
-			"scheduler.task.created",
-			s.HandleTaskCreated)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskCreatedConsumer")
-		}
-
-		taskTerminatedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"scheduler_task_terminated",
-			"scheduler.task.updated.#.status.#",
-			s.HandleTaskTerminated)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for taskTerminatedConsumer")
-		}
-
-		s.Consumers = []events.Consumer{
-			jobStatusUpdatedToPendingConsumer,
-			jobTerminatedConsumer,
-			nodeConnectedConsumer,
-			nodeDisconnectedConsumer,
-			taskCreatedConsumer,
-			taskTerminatedConsumer,
-		}
-
-		return nil
-	}
-}
-
-// AMQPEnvConf maps to the name of the env variable with the AMQP address to connect to.
-var AMQPEnvConf = utils.AMQPEnvConf{
-	Addr: "SHARED_AMQP_ADDR",
-}
-
-// TLSEnvConf maps TLS env variables.
-var TLSEnvConf = utils.TLSEnvConf{
-	CertFile: "SCHEDULER_TLS_CERT_FILE",
-	KeyFile:  "SCHEDULER_TLS_KEY_FILE",
-}
-
-// DBEnvConf maps to the name of the env variable with the Postgres address to connect to.
-var DBEnvConf = utils.DBEnvConf{
-	Host:     "SCHEDULER_DB_HOST",
-	Port:     "SCHEDULER_DB_PORT",
-	User:     "SCHEDULER_DB_USER",
-	Name:     "SCHEDULER_DB_NAME",
-	Password: "SCHEDULER_DB_PASSWORD",
-}
-
-// AppEnvConf represents other application settings env variable mapping.
-type AppEnvConf struct {
-	BCryptCost      string
-	AccessTokenTTL  string
-	RefreshTokenTTL string
-	JWTSecretKey    string
-	TLSCert         string
-	TLSKey          string
-}
-
-// SchedulerEnvConf maps env variables for the Scheduler service.
-var SchedulerEnvConf = AppEnvConf{
-	BCryptCost:      "SCHEDULER_BCRYPT_COST",
-	AccessTokenTTL:  "SCHEDULER_ACCESS_TOKEN_TTL",
-	RefreshTokenTTL: "SCHEDULER_REFRESH_TOKEN_TTL",
-	JWTSecretKey:    "SCHEDULER_JWT_SECRET_KEY",
-}
-
-// Option modifies the SchedulerServer.
-type Option func(server *SchedulerServer) error
 
 // NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
 func NewSchedulerServer(options ...Option) (*SchedulerServer, error) {
@@ -266,13 +93,13 @@ func NewSchedulerServer(options ...Option) (*SchedulerServer, error) {
 
 // Close closes the server resources.
 func (s *SchedulerServer) Close() error {
-	for _, consumer := range s.Consumers {
+	for _, consumer := range s.consumers {
 		if err := consumer.Close(); err != nil {
 			return errors.Wrap(err, "consumer.Close failed")
 		}
 	}
 
-	return errors.Wrap(s.Producer.Close(), "SchedulerServer.Producer.Close failed")
+	return errors.Wrap(s.producer.Close(), "SchedulerServer.producer.Close failed")
 }
 
 var (
@@ -364,7 +191,7 @@ func (s *SchedulerServer) Serve(grpcAddr string, shutdown chan os.Signal) {
 		wg.Wait()
 	}()
 
-	for _, consumer := range s.Consumers {
+	for _, consumer := range s.consumers {
 		go consumer.Consume(consumersCtx, wg)
 	}
 

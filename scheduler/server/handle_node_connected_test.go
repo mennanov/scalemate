@@ -25,7 +25,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	// All these Jobs are expected to fit into the Node above.
@@ -52,7 +52,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 
 	var jobIds []uint64
 	for _, job := range jobs {
-		_, err := job.Create(s.service.DB)
+		_, err := job.Create(s.db)
 		s.Require().NoError(err)
 		jobIds = append(jobIds, job.ID)
 	}
@@ -67,7 +67,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	s.Require().NoError(s.service.HandleNodeConnected(eventProto))
 
 	// Reload Node from DB.
-	s.Require().NoError(node.LoadFromDB(s.service.DB))
+	s.Require().NoError(node.LoadFromDB(s.db))
 	// Jobs are expected to acquire all Node's resources.
 	s.Equal(float32(0), node.CpuAvailable)
 	s.Equal(uint32(0), node.DiskAvailable)
@@ -75,7 +75,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	s.Equal(uint32(0), node.MemoryAvailable)
 	// Verify that Jobs now have a status "SCHEDULED".
 	for _, job := range jobs {
-		s.Require().NoError(job.LoadFromDB(s.service.DB))
+		s.Require().NoError(job.LoadFromDB(s.db))
 		s.Equal(models.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
 	}
 }

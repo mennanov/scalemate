@@ -15,7 +15,7 @@ func (s SchedulerServer) ListDiskModels(
 	r *scheduler_proto.ListDiskModelsRequest,
 ) (*scheduler_proto.ListDiskModelsResponse, error) {
 
-	q := s.DB.Table("nodes").
+	q := s.db.Table("nodes").
 		Select("disk_model, disk_class, SUM(disk_capacity) AS disk_capacity, SUM(disk_available) AS disk_available, " +
 			"COUNT(id) AS nodes_count").
 		Where("status = ?", models.Enum(scheduler_proto.Node_STATUS_ONLINE)).

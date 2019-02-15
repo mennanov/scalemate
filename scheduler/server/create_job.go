@@ -20,7 +20,6 @@ import (
 // CreateJob creates a new Job.
 func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) (*scheduler_proto.Job, error) {
 	logger := ctxlogrus.Extract(ctx)
-	logger.Debug("THIS IS A LOGGED MESSAGE FROM CreateJob")
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
@@ -71,12 +70,12 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 		return nil, errors.Wrap(err, "job.FromProto failed")
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	event, err := job.Create(tx)
 	if err != nil {
 		return nil, errors.Wrap(err, "job.Create failed")
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 	jobProto, err := job.ToProto(nil)

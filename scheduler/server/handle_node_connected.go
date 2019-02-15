@@ -25,11 +25,11 @@ func (s *SchedulerServer) HandleNodeConnected(eventProto *events_proto.Event) er
 		return errors.Wrap(err, "node.FromProto failed")
 	}
 	// Populate the node struct fields from DB.
-	if err := node.LoadFromDB(s.DB); err != nil {
+	if err := node.LoadFromDB(s.db); err != nil {
 		return errors.Wrap(err, "node.LoadFromDB failed")
 	}
 
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	schedulingEvents, err := node.SchedulePendingJobs(tx)
 	if err != nil {
 		return errors.Wrap(err, "node.SchedulePendingJobs failed")
@@ -37,7 +37,7 @@ func (s *SchedulerServer) HandleNodeConnected(eventProto *events_proto.Event) er
 	if len(schedulingEvents) == 0 {
 		s.logger.Debug("no Jobs have been scheduled to the recently connected Node")
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, schedulingEvents...); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

@@ -51,7 +51,7 @@ func (s *ServerTestSuite) TestListDiskModels() {
 	}
 
 	for _, node := range nodes {
-		_, err := node.Create(s.service.DB)
+		_, err := node.Create(s.db)
 		s.Require().NoError(err)
 	}
 

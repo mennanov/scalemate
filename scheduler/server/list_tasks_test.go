@@ -16,7 +16,7 @@ func (s *ServerTestSuite) TestListTasks() {
 	node := &models.Node{
 		Username: "node_username",
 	}
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	jobs := []*models.Job{
@@ -34,7 +34,7 @@ func (s *ServerTestSuite) TestListTasks() {
 	}
 
 	for _, job := range jobs {
-		_, err := job.Create(s.service.DB)
+		_, err := job.Create(s.db)
 		s.Require().NoError(err)
 	}
 
@@ -57,14 +57,16 @@ func (s *ServerTestSuite) TestListTasks() {
 	}
 
 	for _, task := range tasks {
-		_, err := task.Create(s.service.DB)
+		_, err := task.Create(s.db)
 		s.Require().NoError(err)
 	}
 
 	ctx := context.Background()
 
 	s.T().Run("returns owned Tasks", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: jobs[0].Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 		}
@@ -77,8 +79,10 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns all Tasks for admin", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(
+		restoreClaims := s.claimsInjector.SetClaims(
 			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[1].Username,
 		}
@@ -91,7 +95,9 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("permission denied for other username", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[2].Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: jobs[2].Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 		}
@@ -101,7 +107,9 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns Tasks for requested status", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: jobs[0].Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_NEW},
@@ -113,7 +121,9 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns Tasks for requested statuses job_id order", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: jobs[0].Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status: []scheduler_proto.Task_Status{
@@ -131,7 +141,9 @@ func (s *ServerTestSuite) TestListTasks() {
 	})
 
 	s.T().Run("returns Tasks with limit and offset", func(t *testing.T) {
-		s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{Username: jobs[0].Username})
+		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: jobs[0].Username})
+		defer restoreClaims()
+
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Limit:    1,

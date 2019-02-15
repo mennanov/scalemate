@@ -25,7 +25,7 @@ func (s SchedulerServer) IterateTasks(
 	}
 	job := &models.Job{}
 	job.ID = req.JobId
-	if err := job.LoadFromDB(s.DB); err != nil {
+	if err := job.LoadFromDB(s.db); err != nil {
 		return err
 	}
 
@@ -40,7 +40,7 @@ func (s SchedulerServer) IterateTasks(
 
 	if req.IncludeExisting {
 		// Stream existing Tasks first.
-		if err := job.LoadTasksFromDB(s.DB); err == nil {
+		if err := job.LoadTasksFromDB(s.db); err == nil {
 			for _, task := range job.Tasks {
 				taskProto, err := task.ToProto(nil)
 				if err != nil {

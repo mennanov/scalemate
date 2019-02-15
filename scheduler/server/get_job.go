@@ -25,7 +25,7 @@ func (s SchedulerServer) GetJob(ctx context.Context, r *scheduler_proto.GetJobRe
 	job := &models.Job{}
 	job.ID = r.JobId
 
-	if err := job.LoadFromDB(s.DB); err != nil {
+	if err := job.LoadFromDB(s.db); err != nil {
 		return nil, err
 	}
 

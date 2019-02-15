@@ -48,7 +48,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 	}
 
 	for _, node := range nodes {
-		_, err := node.Create(s.service.DB)
+		_, err := node.Create(s.db)
 		s.Require().NoError(err)
 	}
 

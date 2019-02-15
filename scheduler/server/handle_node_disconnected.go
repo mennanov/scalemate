@@ -21,12 +21,12 @@ func (s *SchedulerServer) HandleNodeDisconnected(eventProto *events_proto.Event)
 	}
 
 	var tasks models.Tasks
-	tx := s.DB.Begin()
+	tx := s.db.Begin()
 	tasksEvents, err := tasks.UpdateStatusForDisconnectedNode(tx, nodeProto.Id)
 	if err != nil {
 		return errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed")
 	}
-	if err := events.CommitAndPublish(tx, s.Producer, tasksEvents...); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, tasksEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

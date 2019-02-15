@@ -32,14 +32,16 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 
-	_, err := node.Create(s.service.DB)
+	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	// Claims should contain a Node name.
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{
 		Username: node.Username,
 		NodeName: node.Name,
 	})
+	defer restoreClaims()
+
 	ctx := context.Background()
 	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{})
 	s.Require().NoError(err)
@@ -76,7 +78,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
 	s.Require().NoError(err)
 	// Send the event about the new Job's status.
-	s.Require().NoError(s.service.Producer.Send(jobUpdatedEvent))
+	s.Require().NoError(s.producer.Send(jobUpdatedEvent))
 	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated", "scheduler.task.created")
 	<-taskReceivedByNode
 	// Verify that the Task the Node has received is for the requested Job.
@@ -104,7 +106,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated()
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
-	_, err := nodeOnlineExhausted.Create(s.service.DB)
+	_, err := nodeOnlineExhausted.Create(s.db)
 	s.Require().NoError(err)
 
 	// Node that will connect afterwards.
@@ -127,7 +129,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated()
 		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
-	_, err = node.Create(s.service.DB)
+	_, err = node.Create(s.db)
 	s.Require().NoError(err)
 
 	ctx := context.Background()
@@ -156,13 +158,15 @@ func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated()
 	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
 	s.Require().NoError(err)
 	// Send the event about the new Job's status.
-	s.Require().NoError(s.service.Producer.Send(jobUpdatedEvent))
+	s.Require().NoError(s.producer.Send(jobUpdatedEvent))
 	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
 	// Claims should contain a Node name.
-	s.service.ClaimsInjector = auth.NewFakeClaimsContextInjector(&auth.Claims{
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{
 		Username: node.Username,
 		NodeName: node.Name,
 	})
+	defer restoreClaims()
+
 	client, err := s.client.IterateTasksForNode(ctx, &empty.Empty{})
 	s.Require().NoError(err)
 	taskForNode, err := client.Recv()
