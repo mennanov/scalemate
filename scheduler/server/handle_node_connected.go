@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 
 	"github.com/mennanov/scalemate/shared/events"
 )
@@ -32,7 +33,7 @@ func (s *SchedulerServer) HandleNodeConnected(eventProto *events_proto.Event) er
 	tx := s.db.Begin()
 	schedulingEvents, err := node.SchedulePendingJobs(tx)
 	if err != nil {
-		return errors.Wrap(err, "node.SchedulePendingJobs failed")
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "node.SchedulePendingJobs failed"))
 	}
 	if len(schedulingEvents) == 0 {
 		s.logger.Debug("no Jobs have been scheduled to the recently connected Node")

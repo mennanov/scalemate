@@ -36,7 +36,7 @@ func (s *ServerTestSuite) TestGetTask() {
 	s.Require().NotNil(task.ID)
 
 	ctx := context.Background()
-	req := &scheduler_proto.GetTaskRequest{
+	req := &scheduler_proto.TaskLookupRequest{
 		TaskId: task.ID,
 	}
 

@@ -48,10 +48,7 @@ func CommitAndPublish(tx *gorm.DB, publisher Producer, events ...*events_proto.E
 	if len(events) > 0 {
 		if err := publisher.Send(events...); err != nil {
 			// Failed to confirm sent events: rollback the transaction.
-			if txErr := utils.HandleDBError(tx.Rollback()); txErr != nil {
-				return errors.Wrapf(txErr, "failed to rollback transaction in CommitAndPublish: %s", err.Error())
-			}
-			return errors.Wrap(err, "failed to send events with confirmation")
+			return utils.RollbackTransaction(tx, errors.Wrap(err, "publisher.Send failed"))
 		}
 	}
 	return nil

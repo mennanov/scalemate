@@ -14,7 +14,7 @@ func (s *ServerTestSuite) TestHandleJobTerminated_CorrespondingChannelIsClosed()
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{}
+	job := &models.Job{Status: models.Enum(scheduler_proto.Job_STATUS_SCHEDULED)}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,6 +13,7 @@ import (
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // ChangePassword changes a password for the currently authenticated user.
@@ -46,7 +48,7 @@ func (s AccountsServer) ChangePassword(
 	tx := s.db.Begin()
 	event, err := user.ChangePassword(tx, r.GetPassword(), s.bCryptCost)
 	if err != nil {
-		return nil, err
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.ChangePassword failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, err

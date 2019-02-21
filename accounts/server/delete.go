@@ -9,6 +9,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Delete deletes the user from DB. In the current gorm implementation it simply marks the user as deleted but does not
@@ -22,7 +23,7 @@ func (s AccountsServer) Delete(ctx context.Context, r *accounts_proto.UserLookup
 	tx := s.db.Begin()
 	event, err := user.Delete(tx)
 	if err != nil {
-		return nil, err
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.Delete failed"))
 	}
 
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {

@@ -43,22 +43,11 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 				wrappedErr = nil
 			}
 		}
-
-		if err := utils.HandleDBError(tx.Rollback()); err != nil {
-			if wrappedErr != nil {
-				return errors.Wrapf(err, "failed to rollback transaction: %s", wrappedErr.Error())
-			}
-			return errors.Wrap(err, "failed to rollback transaction")
-		}
-		return wrappedErr
+		return utils.RollbackTransaction(tx, wrappedErr)
 	}
 	schedulingEvents, err := job.CreateTask(tx, node)
 	if err != nil {
-		wrappedErr := errors.Wrap(err, "job.CreateTask failed")
-		if err := utils.HandleDBError(tx.Rollback()); err != nil {
-			return errors.Wrapf(err, "failed to rollback transaction: %s", wrappedErr.Error())
-		}
-		return wrappedErr
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "job.CreateTask failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")

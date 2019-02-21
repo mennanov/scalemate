@@ -189,8 +189,8 @@ func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, 
 		p.CreatedAt = createdAt
 	}
 
-	if !n.UpdatedAt.IsZero() {
-		updatedAt, err := ptypes.TimestampProto(n.UpdatedAt)
+	if n.UpdatedAt != nil {
+		updatedAt, err := ptypes.TimestampProto(*n.UpdatedAt)
 		if err != nil {
 			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
@@ -278,7 +278,7 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.UpdatedAt = updatedAt
+		n.UpdatedAt = &updatedAt
 	}
 	return nil
 }

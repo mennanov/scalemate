@@ -12,6 +12,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // IterateTasksForNode marks the Node as ONLINE and starts sending new Tasks for it to run.
@@ -54,7 +55,7 @@ func (s SchedulerServer) IterateTasksForNode(
 	tx := s.db.Begin()
 	connectEvent, err := s.ConnectNode(tx, node)
 	if err != nil {
-		return errors.Wrap(err, "failed to ConnectNode")
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to ConnectNode"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, connectEvent); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
@@ -65,7 +66,8 @@ func (s SchedulerServer) IterateTasksForNode(
 		tx := s.db.Begin()
 		disconnectEvent, err := s.DisconnectNode(tx, node)
 		if err != nil {
-			logger.WithError(err).Error("failed to DisconnectNode")
+			logger.WithError(utils.RollbackTransaction(tx, err)).Error("failed to DisconnectNode")
+			return
 		}
 		if err := events.CommitAndPublish(tx, s.producer, disconnectEvent); err != nil {
 			logger.WithError(err).Error("events.CommitAndPublish failed")

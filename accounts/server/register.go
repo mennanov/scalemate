@@ -9,6 +9,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Register registers a new user with a "USER" role.
@@ -27,7 +28,7 @@ func (s AccountsServer) Register(ctx context.Context, r *accounts_proto.Register
 	tx := s.db.Begin()
 	event, err := user.Create(tx)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a new user")
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "failed to create a new user"))
 	}
 
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {

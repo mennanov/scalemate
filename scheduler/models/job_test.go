@@ -89,7 +89,7 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 	}
 }
 
-func (s *ModelsTestSuite) TestJob_ScheduleForNode() {
+func (s *ModelsTestSuite) TestJob_CreateTask() {
 	job := &models.Job{
 		Username:      "username",
 		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -1009,6 +1009,61 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 	s.Equal(map[string]struct{}{"job1_username": {}, "job2_username": {}, "job3_username": {}}, pendingJobsUsernames)
 }
 
-func stringEye(s string) string {
-	return s
+func (s *ModelsTestSuite) TestJob_LoadTasksFromDB() {
+	node := &models.Node{}
+	_, err := node.Create(s.db)
+	s.Require().NoError(err)
+
+	job := &models.Job{}
+	_, err = job.Create(s.db)
+	s.Require().NoError(err)
+
+	tasks := []*models.Task{
+		{
+			NodeID: node.ID,
+			JobID:  job.ID,
+		},
+		{
+			NodeID: node.ID,
+			JobID:  job.ID,
+		},
+	}
+
+	for _, task := range tasks {
+		_, err = task.Create(s.db)
+		s.Require().NoError(err)
+	}
+
+	s.Equal(0, len(job.Tasks))
+	s.Require().NoError(job.LoadTasksFromDB(s.db))
+	s.Equal(len(tasks), len(job.Tasks))
+	// Verify that the method is idempotent.
+	s.Require().NoError(job.LoadTasksFromDB(s.db))
+	s.Equal(len(tasks), len(job.Tasks))
+}
+
+func (s *ModelsTestSuite) TestJob_UpdateStatus() {
+	for statusFrom, statusesTo := range models.JobStatusTransitions {
+		for _, statusTo := range statusesTo {
+			job := &models.Job{Status: models.Enum(statusFrom)}
+			_, err := job.Create(s.db)
+			s.Require().NoError(err)
+			s.Nil(job.UpdatedAt)
+
+			_, err = job.UpdateStatus(s.db, statusTo)
+			s.Require().NoError(err)
+			s.NotNil(job.UpdatedAt)
+			s.Equal(job.Status, models.Enum(statusTo))
+			// Verify that the status is actually persisted in DB.
+			s.Require().NoError(job.LoadFromDB(s.db))
+			s.Equal(job.Status, models.Enum(statusTo))
+		}
+	}
+}
+
+func (s *ModelsTestSuite) TestJob_StatusTransitions() {
+	for status, name := range scheduler_proto.Job_Status_name {
+		_, ok := models.JobStatusTransitions[scheduler_proto.Job_Status(status)]
+		s.True(ok, "%s not found in models.JobStatusTransitions", name)
+	}
 }

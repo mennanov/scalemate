@@ -17,7 +17,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 
 	job := &models.Job{
 		Username:      "job1",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
 	_, err = job.Create(s.db)
@@ -53,7 +53,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 
 	job := &models.Job{
 		Username:      "job1",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_PENDING),
+		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE),
 	}
 	_, err = job.Create(s.db)

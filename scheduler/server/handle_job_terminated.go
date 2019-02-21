@@ -24,7 +24,7 @@ func (s *SchedulerServer) HandleJobTerminated(eventProto *events_proto.Event) er
 		return errors.Wrap(err, "job.FromProto failed")
 	}
 	// Verify that the Job has terminated.
-	if !job.HasTerminated() {
+	if !job.IsTerminated() {
 		return nil
 	}
 

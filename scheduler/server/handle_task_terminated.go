@@ -7,6 +7,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // HandleTaskTerminated updates the status of the corresponding Job and schedules pending Jobs on that Node.
@@ -23,7 +24,7 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 	if err := task.FromProto(taskProto); err != nil {
 		return errors.Wrap(err, "task.FromProto failed")
 	}
-	if !task.HasTerminated() {
+	if !task.IsTerminated() {
 		// Disregard the Task that is not terminated (no actions are needed in this case).
 		return nil
 	}
@@ -47,7 +48,7 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 	tx := s.db.Begin()
 	jobStatusUpdatedEvent, err := task.Job.UpdateStatus(tx, newJobStatus)
 	if err != nil {
-		return errors.Wrap(err, "failed to update Job status")
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Job status"))
 	}
 
 	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent); err != nil {

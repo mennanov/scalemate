@@ -6,6 +6,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // HandleSchedulerNodeCreatedEvent handles Node created event from Scheduler service.
@@ -21,7 +22,7 @@ func (s AccountsServer) HandleSchedulerNodeCreatedEvent(eventProto *events_proto
 	tx := s.db.Begin()
 	event, err := node.Create(tx)
 	if err != nil {
-		return errors.Wrap(err, "node.Create failed")
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "node.Create failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")

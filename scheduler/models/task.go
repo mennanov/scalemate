@@ -71,8 +71,8 @@ func (t *Task) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Task, 
 		p.CreatedAt = createdAt
 	}
 
-	if !t.UpdatedAt.IsZero() {
-		updatedAt, err := ptypes.TimestampProto(t.UpdatedAt)
+	if t.UpdatedAt != nil {
+		updatedAt, err := ptypes.TimestampProto(*t.UpdatedAt)
 		if err != nil {
 			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
@@ -130,7 +130,7 @@ func (t *Task) FromProto(p *scheduler_proto.Task) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		t.UpdatedAt = updatedAt
+		t.UpdatedAt = &updatedAt
 	}
 
 	if p.StartedAt != nil {
@@ -174,21 +174,6 @@ func (t *Task) LoadJobFromDB(db *gorm.DB, fields ...string) error {
 	return t.Job.LoadFromDB(db, fields...)
 }
 
-// TaskStatusTransitions defines possible Task status transitions.
-var TaskStatusTransitions = map[scheduler_proto.Task_Status][]scheduler_proto.Task_Status{
-	scheduler_proto.Task_STATUS_NEW: {
-		scheduler_proto.Task_STATUS_RUNNING,
-	},
-	scheduler_proto.Task_STATUS_RUNNING: {
-		scheduler_proto.Task_STATUS_FAILED,
-		scheduler_proto.Task_STATUS_FINISHED,
-		scheduler_proto.Task_STATUS_NODE_FAILED,
-	},
-	scheduler_proto.Task_STATUS_FINISHED:    {},
-	scheduler_proto.Task_STATUS_FAILED:      {},
-	scheduler_proto.Task_STATUS_NODE_FAILED: {},
-}
-
 // Updates performs an UPDATE SQL query for the Task fields given in the `updates` argument and returns a corresponding
 // event.
 func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
@@ -211,14 +196,33 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	return event, nil
 }
 
+// TaskStatusTransitions defines possible Task status transitions.
+var TaskStatusTransitions = map[scheduler_proto.Task_Status][]scheduler_proto.Task_Status{
+	scheduler_proto.Task_STATUS_NEW: {
+		scheduler_proto.Task_STATUS_RUNNING,
+		scheduler_proto.Task_STATUS_CANCELLED,
+	},
+	scheduler_proto.Task_STATUS_RUNNING: {
+		scheduler_proto.Task_STATUS_FAILED,
+		scheduler_proto.Task_STATUS_FINISHED,
+		scheduler_proto.Task_STATUS_NODE_FAILED,
+		scheduler_proto.Task_STATUS_CANCELLED,
+	},
+	scheduler_proto.Task_STATUS_FINISHED:    {},
+	scheduler_proto.Task_STATUS_FAILED:      {},
+	scheduler_proto.Task_STATUS_NODE_FAILED: {},
+	scheduler_proto.Task_STATUS_CANCELLED: {},
+}
+
 // UpdateStatus updates the Task's status. It returns an update event or an error if the newStatus can not be set.
 func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) (*events_proto.Event, error) {
 	taskStatusProto := scheduler_proto.Task_Status(t.Status)
 	for _, s := range TaskStatusTransitions[taskStatusProto] {
 		if s == newStatus {
+			now := time.Now()
 			return t.Updates(db, map[string]interface{}{
 				"status":     Enum(newStatus),
-				"updated_at": time.Now(),
+				"updated_at": &now,
 			})
 		}
 	}
@@ -226,12 +230,12 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 		taskStatusProto.String(), newStatus.String())
 }
 
-// HasTerminated returns true if the Task has terminated (not running regardless the reason).
-func (t *Task) HasTerminated() bool {
+// IsTerminated returns true if the Task has terminated (not running regardless the reason).
+func (t *Task) IsTerminated() bool {
 	return t.Status != Enum(scheduler_proto.Task_STATUS_NEW) && t.Status != Enum(scheduler_proto.Task_STATUS_RUNNING)
 }
 
-// Tasks represent a collection of Tasks with methods working with a collection of Tasks rather than just 1 instance.
+// Tasks represent a collection of Tasks with methods working with a collection of Tasks.
 type Tasks []Task
 
 // List gets Tasks from DB filtering by the provided request.
@@ -289,7 +293,7 @@ func (tasks *Tasks) List(db *gorm.DB, request *scheduler_proto.ListTasksRequest)
 	query = query.Limit(limit)
 
 	// Perform a SELECT query.
-	if err := utils.HandleDBError(query.Find(&tasks)); err != nil {
+	if err := utils.HandleDBError(query.Find(tasks)); err != nil {
 		return 0, err
 	}
 	return count, nil

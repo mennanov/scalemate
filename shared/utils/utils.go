@@ -93,6 +93,15 @@ func HandleDBError(db *gorm.DB) error {
 	return errors.WithStack(status.Error(codes.Internal, db.Error.Error()))
 }
 
+// RollbackTransaction rolls back the given transaction. It returns the given precedingError if the rollback is
+// successful, otherwise returns a wrapped precedingError.
+func RollbackTransaction(tx *gorm.DB, precedingError error) error {
+	if txErr := HandleDBError(tx.Rollback()); txErr != nil {
+		return errors.Wrapf(precedingError, "failed to rollback transaction: %s", txErr.Error())
+	}
+	return precedingError
+}
+
 // TLSServerCredentialsFromEnv creates gRPC server TLS credentials from environment variables.
 func TLSServerCredentialsFromEnv(conf TLSEnvConf) credentials.TransportCredentials {
 	certFile := os.Getenv(conf.CertFile)

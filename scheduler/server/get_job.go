@@ -15,7 +15,10 @@ import (
 )
 
 // GetJob gets the Job by its ID. Job can be accessed by its owner (or admin) only.
-func (s SchedulerServer) GetJob(ctx context.Context, r *scheduler_proto.GetJobRequest) (*scheduler_proto.Job, error) {
+func (s SchedulerServer) GetJob(
+	ctx context.Context,
+	r *scheduler_proto.JobLookupRequest,
+) (*scheduler_proto.Job, error) {
 	logger := ctxlogrus.Extract(ctx)
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
 	if !ok {

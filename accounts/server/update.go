@@ -10,6 +10,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Update updates the user'srv details. Can be executed by admins only.
@@ -26,7 +27,7 @@ func (s AccountsServer) Update(ctx context.Context, r *accounts_proto.UpdateUser
 	tx := s.db.Begin()
 	event, err := user.Update(tx, r.User, r.UpdateMask)
 	if err != nil {
-		return nil, err
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.Update failed"))
 	}
 
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {

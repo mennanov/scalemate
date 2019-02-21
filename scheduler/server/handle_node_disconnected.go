@@ -7,6 +7,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // HandleNodeDisconnected updates statuses of the corresponding Tasks.
@@ -24,7 +25,7 @@ func (s *SchedulerServer) HandleNodeDisconnected(eventProto *events_proto.Event)
 	tx := s.db.Begin()
 	tasksEvents, err := tasks.UpdateStatusForDisconnectedNode(tx, nodeProto.Id)
 	if err != nil {
-		return errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed")
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, tasksEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")

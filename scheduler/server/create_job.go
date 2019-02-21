@@ -15,6 +15,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // CreateJob creates a new Job.
@@ -73,7 +74,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 	tx := s.db.Begin()
 	event, err := job.Create(tx)
 	if err != nil {
-		return nil, errors.Wrap(err, "job.Create failed")
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "job.Create failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")

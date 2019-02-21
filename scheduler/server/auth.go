@@ -19,11 +19,13 @@ func (s SchedulerServer) AuthFuncOverride(ctx context.Context, fullMethodName st
 	case "/scheduler.scheduler_proto.Scheduler/RunJob",
 		"/scheduler.scheduler_proto.Scheduler/CreateJob",
 		"/scheduler.scheduler_proto.Scheduler/GetJob",
+		"/scheduler.scheduler_proto.Scheduler/CancelJob",
 		"/scheduler.scheduler_proto.Scheduler/ListJobs",
 		"/scheduler.scheduler_proto.Scheduler/IterateTasks",
 		"/scheduler.scheduler_proto.Scheduler/IterateTasksForNode",
 		"/scheduler.scheduler_proto.Scheduler/ListTasks",
-		"/scheduler.scheduler_proto.Scheduler/GetTask":
+		"/scheduler.scheduler_proto.Scheduler/GetTask",
+		"/scheduler.scheduler_proto.Scheduler/CancelTask":
 
 		ctx, err = s.claimsInjector.InjectClaims(ctx)
 		if err != nil {

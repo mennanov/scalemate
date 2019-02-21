@@ -4,6 +4,8 @@ go_library(
     name = "go_default_library",
     srcs = [
         "auth.go",
+        "cancel_job.go",
+        "cancel_task.go",
         "create_job.go",
         "env.go",
         "get_job.go",
@@ -61,6 +63,7 @@ go_library(
 go_test(
     name = "go_default_test",
     srcs = [
+        "cancel_job_test.go",
         "create_job_test.go",
         "get_job_test.go",
         "get_task_test.go",

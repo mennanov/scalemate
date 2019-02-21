@@ -53,7 +53,7 @@ func (s SchedulerServer) IterateTasks(
 		}
 	}
 
-	if job.HasTerminated() {
+	if job.IsTerminated() {
 		// Job has terminated. No new Tasks are possible.
 		return nil
 	}

@@ -13,14 +13,17 @@ service Scheduler {
     rpc CreateJob (Job) returns (Job) {
     }
     // GetJob gets a User owned Job.
-    rpc GetJob (GetJobRequest) returns (Job) {
+    rpc GetJob (JobLookupRequest) returns (Job) {
     }
     // ListJobs lists User owned Jobs.
     rpc ListJobs (ListJobsRequest) returns (ListJobsResponse) {
     }
+    // CancelJob cancels an already created Job. The corresponding running Tasks will also be cancelled.
+    rpc CancelJob (JobLookupRequest) returns (Job) {
+    }
 
     // GetTask gets a User owned Task.
-    rpc GetTask (GetTaskRequest) returns (Task) {
+    rpc GetTask (TaskLookupRequest) returns (Task) {
     }
     // ListTasks lists User owned Tasks.
     rpc ListTasks (ListTasksRequest) returns (ListTasksResponse) {
@@ -32,6 +35,9 @@ service Scheduler {
     // IterateTasksForNode should be used by Nodes to receive Tasks to run. A Node is considered online as long as this
     // RPC is in progress, otherwise it is considered offline.
     rpc IterateTasksForNode (google.protobuf.Empty) returns (stream Task) {
+    }
+    // CancelTask cancels a running Task. It also notifies the corresponding Node to stop the Task.
+    rpc CancelTask (TaskLookupRequest) returns (Task){
     }
 
     // ListCpuModels lists aggregated CPU models for the currently online Nodes.
@@ -97,8 +103,7 @@ message Job {
 
     message RunConfig {
         // Docker image name, e.g. "postgres:latest".
-        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1
-                         }];
+        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
         // Docker optional command with an arguments string, e.g. "bash -c 'echo hi'".
         string command = 2;
         // Exposed ports as a map <local port, remote container port>.
@@ -125,8 +130,7 @@ message Job {
     RunConfig run_config = 3 [(shared.proto.validator.field) = {msg_exists: true}];
 
     // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
-    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gte: 0.01, float_epsilon: 0.01
-                        }];
+    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gte: 0.01, float_epsilon: 0.01}];
     CPUClass cpu_class = 5;
 
     // Docker run Memory limit in Megabytes.
@@ -255,6 +259,8 @@ message Task {
         STATUS_FAILED = 3;
         // Task failed because the Node failed: connection failed, power outage, etc.
         STATUS_NODE_FAILED = 4;
+        // Task is cancelled manually by the user.
+        STATUS_CANCELLED = 5;
     }
     Status status = 4;
 
@@ -268,7 +274,7 @@ message Task {
     google.protobuf.Timestamp finished_at = 8;
 }
 
-message GetJobRequest {
+message JobLookupRequest {
     uint64 job_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
 }
 
@@ -296,7 +302,7 @@ message ListJobsResponse {
     uint32 total_count = 2;
 }
 
-message GetTaskRequest {
+message TaskLookupRequest {
     uint64 task_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
 }
 

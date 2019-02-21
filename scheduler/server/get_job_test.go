@@ -21,7 +21,7 @@ func (s *ServerTestSuite) TestGetJob() {
 	s.Require().NotNil(job.ID)
 
 	ctx := context.Background()
-	req := &scheduler_proto.GetJobRequest{
+	req := &scheduler_proto.JobLookupRequest{
 		JobId: job.ID,
 	}
 

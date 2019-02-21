@@ -154,11 +154,6 @@ func (j *Job) whereNodeLabels(q *gorm.DB) *gorm.DB {
 	return q
 }
 
-// stringEye is a string identity function used to create field masks.
-func stringEye(s string) string {
-	return s
-}
-
 // FromProto populates the Job from the given `scheduler_proto.Job`.
 func (j *Job) FromProto(p *scheduler_proto.Job) error {
 	j.ID = p.GetId()
@@ -193,7 +188,7 @@ func (j *Job) FromProto(p *scheduler_proto.Job) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		j.UpdatedAt = updatedAt
+		j.UpdatedAt = &updatedAt
 	}
 
 	if p.GetRunConfig() != nil {
@@ -257,8 +252,8 @@ func (j *Job) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Job, er
 		p.CreatedAt = createdAt
 	}
 
-	if !j.UpdatedAt.IsZero() {
-		updatedAt, err := ptypes.TimestampProto(j.UpdatedAt)
+	if j.UpdatedAt != nil {
+		updatedAt, err := ptypes.TimestampProto(*j.UpdatedAt)
 		if err != nil {
 			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
@@ -309,13 +304,54 @@ func (j *Job) LoadFromDB(db *gorm.DB, fields ...string) error {
 	return utils.HandleDBError(query.First(j, j.ID))
 }
 
+// JobStatusTransitions defined possible Job status transitions.
+var JobStatusTransitions = map[scheduler_proto.Job_Status][]scheduler_proto.Job_Status{
+	scheduler_proto.Job_STATUS_NEW: {
+		scheduler_proto.Job_STATUS_PENDING,
+		scheduler_proto.Job_STATUS_DECLINED,
+		scheduler_proto.Job_STATUS_CANCELLED,
+	},
+	scheduler_proto.Job_STATUS_DECLINED: {},
+	scheduler_proto.Job_STATUS_PENDING: {
+		scheduler_proto.Job_STATUS_SCHEDULED,
+		scheduler_proto.Job_STATUS_CANCELLED,
+	},
+	scheduler_proto.Job_STATUS_SCHEDULED: {
+		scheduler_proto.Job_STATUS_PENDING, // In case a Job needs to be rescheduled when the Task fails.
+		scheduler_proto.Job_STATUS_FINISHED,
+		scheduler_proto.Job_STATUS_CANCELLED,
+	},
+	scheduler_proto.Job_STATUS_FINISHED:  {},
+	scheduler_proto.Job_STATUS_CANCELLED: {},
+}
+
 // UpdateStatus updates the Job's status.
-func (j *Job) UpdateStatus(db *gorm.DB, status scheduler_proto.Job_Status) (*events_proto.Event, error) {
-	j.Status = Enum(status)
-	if err := utils.HandleDBError(db.Model(j).Update("status", Enum(status))); err != nil {
-		return nil, errors.Wrap(err, "failed to update Job status")
+func (j *Job) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Job_Status) (*events_proto.Event, error) {
+	// Validate the status transition.
+	jobStatusProto := scheduler_proto.Job_Status(j.Status)
+	for _, s := range JobStatusTransitions[jobStatusProto] {
+		if s == newStatus {
+			now := time.Now()
+			return j.Updates(db, map[string]interface{}{
+				"status":     Enum(newStatus),
+				"updated_at": &now,
+			})
+		}
 	}
-	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
+	return nil, status.Errorf(codes.FailedPrecondition, "job with status %s can't be updated to %s",
+		jobStatusProto.String(), newStatus.String())
+}
+
+// Updates performs an UPDATE SQL query for the Job fields given in the `updates` argument and returns a corresponding
+// event.
+func (j *Job) Updates(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
+	if j.ID == 0 {
+		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Job"))
+	}
+	if err := utils.HandleDBError(db.Model(j).Updates(updates)); err != nil {
+		return nil, err
+	}
+	fieldMask := &field_mask.FieldMask{Paths: mapKeys(updates)}
 	jobProto, err := j.ToProto(fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
@@ -440,18 +476,14 @@ func (j *Job) LoadTasksFromDB(db *gorm.DB, fields ...string) error {
 	if j.ID == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "not saved Job can not have Tasks"))
 	}
-	var tasks Tasks
-	if err := utils.HandleDBError(db.Model(&Task{}).Where("job_id = ?", j.ID).Find(&tasks)); err != nil {
+	if err := utils.HandleDBError(db.Model(&Task{}).Where("job_id = ?", j.ID).Find(&j.Tasks)); err != nil {
 		return errors.Wrap(err, "failed to select related Tasks for Job")
-	}
-	for _, task := range tasks {
-		j.Tasks = append(j.Tasks, &task)
 	}
 	return nil
 }
 
-// HasTerminated returns true if Job is in the final status (terminated) and never going to be scheduled again.
-func (j *Job) HasTerminated() bool {
+// IsTerminated returns true if Job is in the final status (terminated) and never going to be scheduled again.
+func (j *Job) IsTerminated() bool {
 	return j.Status == Enum(scheduler_proto.Job_STATUS_FINISHED) ||
 		j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
 }
@@ -529,7 +561,7 @@ func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (u
 	query = query.Limit(limit)
 
 	// Perform a SELECT query.
-	if err := utils.HandleDBError(query.Find(&jobs)); err != nil {
+	if err := utils.HandleDBError(query.Find(jobs)); err != nil {
 		return 0, err
 	}
 	return count, nil

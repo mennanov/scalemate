@@ -172,3 +172,10 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	s.Require().NoError(taskRunningOnNode2.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Task_STATUS_RUNNING), taskRunningOnNode2.Status)
 }
+
+func (s *ModelsTestSuite) TestTask_StatusTransitions() {
+	for status, name := range scheduler_proto.Task_Status_name {
+		_, ok := models.TaskStatusTransitions[scheduler_proto.Task_Status(status)]
+		s.True(ok, "%s not found in models.TaskStatusTransitions", name)
+	}
+}

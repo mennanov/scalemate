@@ -8,6 +8,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Create creates a new user. Can be executed by admins only.
@@ -24,7 +25,7 @@ func (s AccountsServer) Create(ctx context.Context, r *accounts_proto.CreateUser
 	tx := s.db.Begin()
 	event, err := user.Create(tx)
 	if err != nil {
-		return nil, err
+		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.Create failed"))
 	}
 
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {

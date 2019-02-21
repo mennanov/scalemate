@@ -60,6 +60,7 @@ type SchedulerServer struct {
 	producer events.Producer
 	// Events consumers.
 	consumers []events.Consumer
+	// TODO: make fields NewTasksByNodeID and NewTasksByJobID unexported.
 	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
 	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
 	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
