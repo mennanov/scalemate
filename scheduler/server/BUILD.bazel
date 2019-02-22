@@ -64,6 +64,7 @@ go_test(
     name = "go_default_test",
     srcs = [
         "cancel_job_test.go",
+        "cancel_task_test.go",
         "create_job_test.go",
         "get_job_test.go",
         "get_task_test.go",

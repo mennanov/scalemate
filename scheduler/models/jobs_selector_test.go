@@ -2,7 +2,6 @@ package models
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -150,24 +149,4 @@ func Test_SelectJobs(t *testing.T) {
 			assert.Equal(t, testCase.jobsExpected, actualJobs.BitsSet)
 		}
 	}
-}
-
-func Test_SelectJobsPerformance(t *testing.T) {
-	// Stress test: input size is 10 times bigger than the expected.
-	n := JobsScheduledForNodeQueryLimit * 10
-	jobs := make([]Job, 0, n)
-	var c float32
-	for i := 0; i < n; i++ {
-		if i%2 == 0 {
-			c = 0.5
-		} else {
-			c = 1
-		}
-		jobs = append(jobs, Job{CpuLimit: c})
-	}
-	res := AvailableResources{CpuAvailable: float32(n / 2)}
-	start := time.Now()
-	actualJobs := SelectJobs(jobs, res)
-	assert.True(t, time.Since(start) < time.Second*3)
-	assert.Equal(t, uint64(float32(n)*0.75), actualJobs.BitsSet)
 }

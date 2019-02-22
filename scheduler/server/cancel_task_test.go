@@ -12,7 +12,7 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-func (s *ServerTestSuite) TestCancelJob() {
+func (s *ServerTestSuite) TestCancelTask() {
 	node := &models.Node{
 		Username: "node_username",
 		Name:     "node_name",
@@ -22,7 +22,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 
 	for _, testCase := range []struct {
 		job               *models.Job
-		tasks             []*models.Task
+		task              *models.Task
 		claims            *auth.Claims
 		expectedErrorCode codes.Code
 	}{
@@ -31,16 +31,8 @@ func (s *ServerTestSuite) TestCancelJob() {
 				Username: "test_username",
 				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
-			tasks: []*models.Task{
-				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
-				},
-				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_FINISHED),
-				},
-				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_FAILED),
-				},
+			task: &models.Task{
+				Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
 			},
 			claims:            &auth.Claims{Username: "test_username"},
 			expectedErrorCode: 0,
@@ -48,7 +40,10 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_CANCELLED),
+				Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+			},
+			task: &models.Task{
+				Status: models.Enum(scheduler_proto.Task_STATUS_CANCELLED),
 			},
 			claims:            &auth.Claims{Username: "test_username"},
 			expectedErrorCode: codes.FailedPrecondition,
@@ -57,6 +52,9 @@ func (s *ServerTestSuite) TestCancelJob() {
 			job: &models.Job{
 				Username: "test_username",
 				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+			},
+			task: &models.Task{
+				Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
 			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: 0,
@@ -66,6 +64,9 @@ func (s *ServerTestSuite) TestCancelJob() {
 				Username: "test_username",
 				Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
+			task: &models.Task{
+				Status: models.Enum(scheduler_proto.Task_STATUS_CANCELLED),
+			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: codes.FailedPrecondition,
 		},
@@ -74,6 +75,9 @@ func (s *ServerTestSuite) TestCancelJob() {
 				Username: "test_username",
 				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
+			task: &models.Task{
+				Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+			},
 			claims:            &auth.Claims{Username: "different_username"},
 			expectedErrorCode: codes.PermissionDenied,
 		},
@@ -81,40 +85,24 @@ func (s *ServerTestSuite) TestCancelJob() {
 		_, err := testCase.job.Create(s.db)
 		s.Require().NoError(err)
 
-		for _, task := range testCase.tasks {
-			task.JobID = testCase.job.ID
-			task.NodeID = node.ID
-			_, err := task.Create(s.db)
-			s.Require().NoError(err)
-		}
+		testCase.task.JobID = testCase.job.ID
+		testCase.task.NodeID = node.ID
+		_, err = testCase.task.Create(s.db)
+		s.Require().NoError(err)
 
 		restoreClaims := s.claimsInjector.SetClaims(testCase.claims)
 
 		ctx := context.Background()
-		jobProto, err := s.client.CancelJob(ctx, &scheduler_proto.JobLookupRequest{JobId: testCase.job.ID})
+		taskProto, err := s.client.CancelTask(ctx, &scheduler_proto.TaskLookupRequest{TaskId: testCase.task.ID})
 		restoreClaims()
 
 		if testCase.expectedErrorCode != 0 {
 			s.assertGRPCError(err, testCase.expectedErrorCode)
-			s.Nil(jobProto)
+			s.Nil(taskProto)
 			continue
 		}
 		s.NoError(err)
-		s.Equal(scheduler_proto.Job_STATUS_CANCELLED, jobProto.GetStatus())
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
-
-		for _, task := range testCase.tasks {
-			if task.IsTerminated() {
-				originalStatus := task.Status
-				s.Require().NoError(task.LoadFromDB(s.db))
-				// Verify that it's status has not changed.
-				s.Equal(originalStatus, task.Status, task.String())
-			} else {
-				s.Require().NoError(task.LoadFromDB(s.db))
-				// Verify that the Task is cancelled.
-				s.Equal(models.Enum(scheduler_proto.Task_STATUS_CANCELLED), task.Status)
-				utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated")
-			}
-		}
+		s.Equal(scheduler_proto.Task_STATUS_CANCELLED, taskProto.GetStatus())
+		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated")
 	}
 }

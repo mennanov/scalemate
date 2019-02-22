@@ -488,12 +488,12 @@ func (j *Job) IsTerminated() bool {
 		j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
 }
 
-// NeedsReschedulingOnTaskFailure returns true if the Job should be rescheduled according to the RestartPolicy.
-func (j *Job) NeedsReschedulingOnTaskFailure(task *Task) bool {
+// NeedsRescheduling returns true if the Job should be rescheduled according to the RestartPolicy.
+func (j *Job) NeedsRescheduling(taskStatus scheduler_proto.Task_Status) bool {
 	return j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE) &&
-		task.Status == Enum(scheduler_proto.Task_STATUS_FAILED) ||
+		taskStatus == scheduler_proto.Task_STATUS_FAILED ||
 		j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE) &&
-			task.Status == Enum(scheduler_proto.Task_STATUS_NODE_FAILED)
+			taskStatus == scheduler_proto.Task_STATUS_NODE_FAILED
 }
 
 // mapKeys returns a slice of map string keys.

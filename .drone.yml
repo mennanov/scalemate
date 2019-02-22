@@ -7,7 +7,7 @@ pipeline:
   test:
     image: l.gcr.io/google/bazel:latest
     commands:
-      - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test //...:all --test_output=errors --test_verbose_timeout_warnings
+      - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test --jobs=4 //...:all --test_output=errors --test_verbose_timeout_warnings
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /tmp/bazel-drone-output:/tmp/bazel-drone-output

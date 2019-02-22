@@ -40,7 +40,7 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 
 	newJobStatus := scheduler_proto.Job_STATUS_FINISHED
 	// Check if the Job needs to be rescheduled on Task failure.
-	if task.Job.NeedsReschedulingOnTaskFailure(task) {
+	if task.Job.NeedsRescheduling(scheduler_proto.Task_Status(task.Status)) {
 		// Make the Job available for scheduling.
 		newJobStatus = scheduler_proto.Job_STATUS_PENDING
 	}
