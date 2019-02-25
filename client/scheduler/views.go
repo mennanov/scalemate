@@ -12,7 +12,7 @@ import (
 	"github.com/mennanov/scalemate/shared/client"
 )
 
-// CreateJobView handles ChangePasswordController results representation.
+// CreateJobView handles CreateJobController results representation.
 func CreateJobView(logger *logrus.Logger, jsonOut io.Writer, job *scheduler_proto.Job, err error) {
 	if err != nil {
 		client.ErrorView(logger, &client.GRPCErrorMessages{
@@ -29,6 +29,30 @@ func CreateJobView(logger *logrus.Logger, jsonOut io.Writer, job *scheduler_prot
 		return
 	}
 	logger.Info("Job has been created.")
+	m := &jsonpb.Marshaler{
+		Indent: "  ",
+	}
+	if err := m.Marshal(jsonOut, job); err != nil {
+		logger.WithError(err).Error("failed to marshal Job proto to JSON")
+	}
+}
+
+// GetJobView handles GetJobController results representation.
+func GetJobView(logger *logrus.Logger, jsonOut io.Writer, job *scheduler_proto.Job, err error) {
+	if err != nil {
+		client.ErrorView(logger, &client.GRPCErrorMessages{
+			InvalidArgument: func(s *status.Status) string {
+				return fmt.Sprintf("invalid parameters: %s", s.Message())
+			},
+			PermissionDenied: func(s *status.Status) string {
+				return fmt.Sprintf("permission denied: %s", s.Message())
+			},
+			Unauthenticated: func(s *status.Status) string {
+				return fmt.Sprintf("unauthenticated: %s", s.Message())
+			},
+		}, err)
+		return
+	}
 	m := &jsonpb.Marshaler{
 		Indent: "  ",
 	}

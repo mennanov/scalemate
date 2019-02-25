@@ -53,7 +53,7 @@ var registerCmd = &cobra.Command{
 
 		accounts.RegisterView(logger,
 			accounts.RegisterController(
-				client.NewAccountsClient(accounts.ServiceAddr), registerUsername, registerEmail, registerPassword))
+				client.NewAccountsClient(accountsServiceAddr), registerUsername, registerEmail, registerPassword))
 	},
 }
 

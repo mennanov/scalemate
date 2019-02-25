@@ -24,15 +24,16 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh/terminal"
-
-	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/mennanov/scalemate/client/scheduler"
 )
 
 var (
 	cfgFile  string
 	logLevel uint32
 	logger   *logrus.Logger
+	// accountsServiceAddr is a network address of the Accounts service.
+	accountsServiceAddr string
+	// schedulerServiceAddr is a network address of the Scheduler service.
+	schedulerServiceAddr string
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -71,13 +72,13 @@ func init() {
 		Uint32Var(&logLevel, "logLevel", uint32(logrus.InfoLevel), "verbosity level")
 
 	rootCmd.PersistentFlags().
-		StringVar(&accounts.ServiceAddr, "accounts_addr", "localhost:8000",
+		StringVar(&accountsServiceAddr, "accounts_addr", "localhost:8000",
 			"Scalemate.io Accounts service tcp address")
 	viper.BindPFlag("accounts_addr", rootCmd.PersistentFlags().Lookup("accounts_addr"))
 	viper.SetDefault("accounts_addr", "localhost:8000")
 
 	rootCmd.PersistentFlags().
-		StringVar(&scheduler.ServiceAddr, "scheduler_addr", "localhost:8001",
+		StringVar(&schedulerServiceAddr, "scheduler_addr", "localhost:8001",
 			"Scalemate.io Scheduler service tcp address")
 	viper.BindPFlag("scheduler_addr", rootCmd.PersistentFlags().Lookup("scheduler_addr"))
 	viper.SetDefault("scheduler_addr", "localhost:8001")

@@ -44,7 +44,7 @@ var loginCmd = &cobra.Command{
 			}
 		}
 		_, err := accounts.LoginController(
-			client.NewAccountsClient(accounts.ServiceAddr), loginUsername, loginPassword)
+			client.NewAccountsClient(accountsServiceAddr), loginUsername, loginPassword)
 		accounts.LoginView(logger, err)
 	},
 }

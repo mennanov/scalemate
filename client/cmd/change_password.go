@@ -46,7 +46,7 @@ var changePasswordCmd = &cobra.Command{
 			}
 		}
 		accounts.ChangePasswordView(logger,
-			accounts.ChangePasswordController(client.NewAccountsClient(accounts.ServiceAddr), changePasswordPassword))
+			accounts.ChangePasswordController(client.NewAccountsClient(accountsServiceAddr), changePasswordPassword))
 	},
 }
 

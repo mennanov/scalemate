@@ -17,12 +17,12 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/spf13/cobra"
 
-	"github.com/mennanov/scalemate/client/accounts"
 	"github.com/mennanov/scalemate/client/scheduler"
 	"github.com/mennanov/scalemate/shared/client"
 )
@@ -43,33 +43,9 @@ func enumOptions(enum map[int32]string) string {
 	return strings.Join(options, ", ")
 }
 
-// jobsCreateCmd represents the job creation command
-var jobsCreateCmd = &cobra.Command{
-	Use:   "create",
-	Short: "Create a new Job",
-	Long: `Create a new Job entity which will be scheduled immediately.
-Once the Job is scheduled a corresponding Task entity is created.`,
-	Args: cobra.RangeArgs(1, 2),
-	Example: `Run postgres, make it available on localhost:5432 and download it's data to a local folder ./pg_data:
-> scalemate jobs create postgres:latest -p 5432:5432 -v ./pg_data:/var/lib/postgresql -d ./pg_data:./pg_data`,
-	Run: func(cmd *cobra.Command, args []string) {
-		image := args[0]
-		var command string
-		if len(args) == 2 {
-			command = args[1]
-		}
-		job, err := scheduler.CreateJobController(
-			client.NewAccountsClient(accounts.ServiceAddr),
-			client.NewSchedulerClient(scheduler.ServiceAddr),
-			image,
-			command,
-			&jobsCreateCmdFlagValues)
-		scheduler.CreateJobView(logger, os.Stdout, job, err)
-	},
-}
-
 func init() {
 	jobsCmd.AddCommand(jobsCreateCmd)
+	jobsCmd.AddCommand(jobsGetCmd)
 
 	rootCmd.AddCommand(jobsCmd)
 
@@ -138,4 +114,50 @@ func init() {
 	jobsCreateCmd.Flags().BoolVar(&jobsCreateCmdFlagValues.IsDaemon, "daemon", false,
 		"Run a container immediately: don't wait for an established p2p connection")
 
+}
+
+// jobsCreateCmd represents the job creation command
+var jobsCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new Job",
+	Long: `Create a new Job entity which will be scheduled immediately.
+Once the Job is scheduled a corresponding Task entity is created.`,
+	Args: cobra.RangeArgs(1, 2),
+	Example: `Run postgres, make it available on localhost:5432 and download it's data to a local folder ./pg_data:
+> scalemate jobs create postgres:latest -p 5432:5432 -v ./pg_data:/var/lib/postgresql -d ./pg_data:./pg_data`,
+	Run: func(cmd *cobra.Command, args []string) {
+		image := args[0]
+		var command string
+		if len(args) == 2 {
+			command = args[1]
+		}
+		job, err := scheduler.CreateJobController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			image,
+			command,
+			&jobsCreateCmdFlagValues)
+		scheduler.CreateJobView(logger, os.Stdout, job, err)
+	},
+}
+
+// jobsGetCmd represents the job creation command
+var jobsGetCmd = &cobra.Command{
+	Use:     "get",
+	Short:   "Get an existing Job",
+	Long:    `Get an existing Job by its ID.`,
+	Args:    cobra.ExactArgs(1),
+	Example: `> scalemate jobs get 42`,
+	Run: func(cmd *cobra.Command, args []string) {
+		jobID, err := strconv.Atoi(args[0])
+		if err != nil || jobID <= 0 {
+			fmt.Printf("invalid Job ID: %s\n", args[0])
+			return
+		}
+		job, err := scheduler.GetJobController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			uint64(jobID))
+		scheduler.GetJobView(logger, os.Stdout, job, err)
+	},
 }

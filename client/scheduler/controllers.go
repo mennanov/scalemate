@@ -11,8 +11,10 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-// ServiceAddr is a network address of the Scheduler service.
-var ServiceAddr string
+var (
+	loadTokensFailedErrMsg       = "failed to load authentication tokens. Are you logged in?"
+	newClaimsFromStringFailedMsg = "failed to parse authentication tokens. Try re-login"
+)
 
 // CreateJobController creates a new Job entity by calling Scheduler.CreateJob method.
 func CreateJobController(
@@ -34,15 +36,33 @@ func CreateJobController(
 
 	tokens, err := auth.LoadTokens()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to load authentication tokens. Are you logged in?")
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
 	}
 	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
 
 	claims, err := auth.NewClaimsFromString(tokens.AccessToken)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to parse authentication tokens. Try re-login")
+		return nil, errors.Wrap(err, newClaimsFromStringFailedMsg)
 	}
 	job.Username = claims.Username
 
 	return schedulerClient.CreateJob(context.Background(), job, grpc.PerRPCCredentials(jwtCredentials))
+}
+
+// GetJobController gets an existing Job by its ID.
+func GetJobController(
+	accountsClient accounts_proto.AccountsClient,
+	schedulerClient scheduler_proto.SchedulerClient,
+	jobID uint64,
+) (*scheduler_proto.Job, error) {
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
+	}
+	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	return schedulerClient.GetJob(
+		context.Background(),
+		&scheduler_proto.JobLookupRequest{JobId: jobID},
+		grpc.PerRPCCredentials(jwtCredentials))
 }

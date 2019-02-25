@@ -10,9 +10,6 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-// ServiceAddr is a network address of the Accounts service.
-var ServiceAddr string
-
 var (
 	// ErrEmptyUsername is used when a username is expected, but it is empty.
 	ErrEmptyUsername = errors.New("username can not be empty")
