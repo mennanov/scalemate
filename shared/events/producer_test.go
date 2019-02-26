@@ -99,7 +99,7 @@ func TestAMQPPublisher_Send(t *testing.T) {
 
 	err = publisher.Send(eventsToSend...)
 	require.NoError(t, err)
-	expectedRoutingKeys := make([]string, 2)
+	expectedRoutingKeys := make([]string, len(eventsToSend))
 	for i, event := range eventsToSend {
 		rk, err := events.RoutingKeyFromEvent(event)
 		assert.NoError(t, err)

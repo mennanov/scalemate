@@ -27,7 +27,10 @@ import (
 	"github.com/mennanov/scalemate/shared/client"
 )
 
-var jobsCreateCmdFlagValues = scheduler.JobsCreateCmdFlags{}
+var (
+	jobsCreateCmdFlagValues = scheduler.JobsCreateCmdFlags{}
+	jobsListCmdFlagValues   = scheduler.JobsListCmdFlags{}
+)
 
 // jobsCmd represents the jobs command
 var jobsCmd = &cobra.Command{
@@ -46,10 +49,11 @@ func enumOptions(enum map[int32]string) string {
 func init() {
 	jobsCmd.AddCommand(jobsCreateCmd)
 	jobsCmd.AddCommand(jobsGetCmd)
+	jobsCmd.AddCommand(jobsListCmd)
 
 	rootCmd.AddCommand(jobsCmd)
 
-	// `scalemate jobs create` command flags definitions below.
+	// jobsCreateCmd flags.
 	jobsCreateCmd.Flags().StringArrayVarP(&jobsCreateCmdFlagValues.Volumes, "volume", "v", []string{},
 		"Docker Volumes in a format 'host path relative to the working dir:container path', e.g. "+
 			"'./pg_data:/var/lib/postgres/data'")
@@ -114,9 +118,15 @@ func init() {
 	jobsCreateCmd.Flags().BoolVar(&jobsCreateCmdFlagValues.IsDaemon, "daemon", false,
 		"Run a container immediately: don't wait for an established p2p connection")
 
+	// jobsListCmd flags.
+	jobsListCmd.Flags().IntSliceVarP(&jobsListCmdFlagValues.Status, "status", "s", nil,
+		fmt.Sprintf("Job statuses, options: %s", enumOptions(scheduler_proto.Job_Status_name)))
+	jobsListCmd.Flags().Int32VarP(&jobsListCmdFlagValues.Ordering, "order", "o", 0,
+		fmt.Sprintf("Ordering, options: %s", enumOptions(scheduler_proto.ListJobsRequest_Ordering_name)))
+	jobsListCmd.Flags().Uint32VarP(&jobsListCmdFlagValues.Limit, "limit", "l", 10, "Jobs limit")
+	jobsListCmd.Flags().Uint32Var(&jobsListCmdFlagValues.Offset, "offset", 0, "Jobs offset")
 }
 
-// jobsCreateCmd represents the job creation command
 var jobsCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new Job",
@@ -141,7 +151,6 @@ Once the Job is scheduled a corresponding Task entity is created.`,
 	},
 }
 
-// jobsGetCmd represents the job creation command
 var jobsGetCmd = &cobra.Command{
 	Use:     "get",
 	Short:   "Get an existing Job",
@@ -159,5 +168,20 @@ var jobsGetCmd = &cobra.Command{
 			client.NewSchedulerClient(schedulerServiceAddr),
 			uint64(jobID))
 		scheduler.GetJobView(logger, os.Stdout, job, err)
+	},
+}
+
+var jobsListCmd = &cobra.Command{
+	Use:     "list",
+	Short:   "List existing Jobs",
+	Long:    `List existing Jobs for the currently authenticated user that satisfy the criteria.`,
+	Example: `> scalemate jobs list -s 1 -o 2 -l 50`,
+	Run: func(cmd *cobra.Command, args []string) {
+		response, err := scheduler.ListJobsController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			&jobsListCmdFlagValues,
+		)
+		scheduler.ListJobsView(logger, os.Stdout, response, err)
 	},
 }

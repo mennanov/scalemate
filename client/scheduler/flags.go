@@ -128,3 +128,28 @@ func (f *JobsCreateCmdFlags) ToJobProto() (*scheduler_proto.Job, error) {
 	}
 	return job, nil
 }
+
+// JobsListCmdFlags represents a set of flags for the `scalemate jobs list` command.
+type JobsListCmdFlags struct {
+	Status   []int
+	Ordering int32
+	Limit    uint32
+	Offset   uint32
+}
+
+// ToListJobsRequestProto creates a new scheduler_proto.ListJobsRequest from the flags.
+func (f *JobsListCmdFlags) ToListJobsRequestProto() *scheduler_proto.ListJobsRequest {
+	request := &scheduler_proto.ListJobsRequest{
+		Ordering: scheduler_proto.ListJobsRequest_Ordering(f.Ordering),
+		Limit:    f.Limit,
+		Offset:   f.Offset,
+	}
+	if len(f.Status) != 0 {
+		request.Status = make([]scheduler_proto.Job_Status, len(f.Status))
+		for i, s := range f.Status {
+			request.Status[i] = scheduler_proto.Job_Status(s)
+		}
+	}
+
+	return request
+}

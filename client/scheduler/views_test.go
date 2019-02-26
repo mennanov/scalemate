@@ -2,6 +2,7 @@ package scheduler_test
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 
@@ -125,5 +126,48 @@ func TestGetJobView(t *testing.T) {
 		jsonDecodedJob := &scheduler_proto.Job{}
 		require.NoError(t, jsonpb.Unmarshal(output, jsonDecodedJob))
 		assert.Equal(t, job, jsonDecodedJob)
+	})
+}
+
+func TestListJobsView(t *testing.T) {
+	t.Run("WithError", func(t *testing.T) {
+		for _, err := range []error{
+			status.Error(codes.Unauthenticated, "unknown JWT claims type"),
+			status.Error(codes.PermissionDenied, "wrong username"),
+			status.Error(codes.InvalidArgument, "validation error"),
+			status.Error(codes.Internal, "internal error"),
+			errors.New("unknown error"),
+		} {
+			logger, hook := test.NewNullLogger()
+
+			output := new(bytes.Buffer)
+			scheduler.ListJobsView(logger, output, nil, err)
+			// Verify that the error is logged with an appropriate level.
+			assert.Equal(t, 1, len(hook.Entries))
+			assert.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
+			// Check that the output is empty.
+			assert.Equal(t, 0, output.Len())
+		}
+	})
+
+	t.Run("JobJSONEncoded", func(t *testing.T) {
+		now, err := ptypes.TimestampProto(time.Now())
+		require.NoError(t, err)
+		job := createTestingJob(now, now)
+		response := &scheduler_proto.ListJobsResponse{
+			Jobs:       []*scheduler_proto.Job{job},
+			TotalCount: 1,
+		}
+		logger, hook := test.NewNullLogger()
+
+		output := new(bytes.Buffer)
+		scheduler.ListJobsView(logger, output, response, err)
+		// Verify that there are no logged entries.
+		assert.Equal(t, 0, len(hook.Entries))
+		// Check that the output is a valid JSON.
+		jsonDecodedResponse := &scheduler_proto.ListJobsResponse{}
+		fmt.Println(output)
+		require.NoError(t, jsonpb.Unmarshal(output, jsonDecodedResponse))
+		assert.Equal(t, response, jsonDecodedResponse)
 	})
 }

@@ -66,3 +66,27 @@ func GetJobController(
 		&scheduler_proto.JobLookupRequest{JobId: jobID},
 		grpc.PerRPCCredentials(jwtCredentials))
 }
+
+// ListJobsController lists the Jobs that satisfy the criteria for the currently authenticated user.
+func ListJobsController(
+	accountsClient accounts_proto.AccountsClient,
+	schedulerClient scheduler_proto.SchedulerClient,
+	flags *JobsListCmdFlags,
+) (*scheduler_proto.ListJobsResponse, error) {
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
+	}
+	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	claims, err := auth.NewClaimsFromString(tokens.AccessToken)
+	if err != nil {
+		return nil, errors.Wrap(err, newClaimsFromStringFailedMsg)
+	}
+	request := flags.ToListJobsRequestProto()
+
+	// Set the Username value to the currently authenticated username.
+	request.Username = claims.Username
+
+	return schedulerClient.ListJobs(context.Background(), request, grpc.PerRPCCredentials(jwtCredentials))
+}

@@ -139,7 +139,7 @@ func TestCreateJobController(t *testing.T) {
 }
 
 func TestGetJobController(t *testing.T) {
-	t.Run("WithFlags", func(t *testing.T) {
+	t.Run("JobSuccessfullyReturned", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -190,5 +190,94 @@ func TestGetJobController(t *testing.T) {
 		job, err := scheduler.GetJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
 		require.Error(t, err)
 		assert.Nil(t, job)
+	})
+}
+
+func TestListJobsController(t *testing.T) {
+	t.Run("WithNoFlags", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		flags := &scheduler.JobsListCmdFlags{}
+		username := "test_username"
+		listJobsRequestExpected := &scheduler_proto.ListJobsRequest{Username: username}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
+			Return(&scheduler_proto.ListJobsResponse{TotalCount: 0}, nil)
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		defer deleteTokens()
+
+		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient, flags)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+
+	t.Run("WithAllFlags", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		flags := &scheduler.JobsListCmdFlags{
+			Status:   []int{int(scheduler_proto.Job_STATUS_FINISHED)},
+			Ordering: int32(scheduler_proto.ListJobsRequest_CREATED_AT_ASC),
+			Limit:    150,
+			Offset:   50,
+		}
+		username := "test_username"
+		listJobsRequestExpected := &scheduler_proto.ListJobsRequest{
+			Username: username,
+			Status:   []scheduler_proto.Job_Status{scheduler_proto.Job_STATUS_FINISHED},
+			Ordering: scheduler_proto.ListJobsRequest_CREATED_AT_ASC,
+			Limit:    150,
+			Offset:   50,
+		}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
+			Return(&scheduler_proto.ListJobsResponse{TotalCount: 0}, nil)
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		defer deleteTokens()
+
+		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient, flags)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+
+	t.Run("NotLoggedIn", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+
+		_, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient, nil)
+		assert.Error(t, err)
+	})
+
+	t.Run("PermissionDenied", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+		username := "test_user"
+
+		listJobsRequestExpected := &scheduler_proto.ListJobsRequest{Username: username}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
+			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		defer deleteTokens()
+
+		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient,
+			&scheduler.JobsListCmdFlags{})
+		require.Error(t, err)
+		assert.Nil(t, response)
 	})
 }

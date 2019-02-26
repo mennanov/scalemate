@@ -1002,7 +1002,7 @@ func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {
 	var pendingJobs models.Jobs
 	err = pendingJobs.FindPendingForNode(s.db, node)
 	s.Require().NoError(err)
-	pendingJobsUsernames := make(map[string]struct{}, 0)
+	pendingJobsUsernames := make(map[string]struct{})
 	for _, job := range pendingJobs {
 		pendingJobsUsernames[job.Username] = struct{}{}
 	}
