@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -125,4 +126,30 @@ func GetTaskController(
 		context.Background(),
 		&scheduler_proto.TaskLookupRequest{TaskId: taskID},
 		grpc.PerRPCCredentials(jwtCredentials))
+}
+
+// ListTasksController lists the Tasks that satisfy the criteria for the currently authenticated user.
+func ListTasksController(
+	accountsClient accounts_proto.AccountsClient,
+	schedulerClient scheduler_proto.SchedulerClient,
+	jobIDs []uint64,
+	flags *TasksListCmdFlags,
+) (*scheduler_proto.ListTasksResponse, error) {
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
+	}
+	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	claims, err := auth.NewClaimsFromString(tokens.AccessToken)
+	if err != nil {
+		return nil, errors.Wrap(err, newClaimsFromStringFailedMsg)
+	}
+	request := flags.ToListTasksRequestProto()
+	request.JobId = jobIDs
+
+	// Set the Username value to the currently authenticated username.
+	request.Username = claims.Username
+	fmt.Println("request:", request)
+	return schedulerClient.ListTasks(context.Background(), request, grpc.PerRPCCredentials(jwtCredentials))
 }

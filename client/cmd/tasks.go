@@ -5,10 +5,15 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/spf13/cobra"
 
 	"github.com/mennanov/scalemate/client/scheduler"
 	"github.com/mennanov/scalemate/shared/client"
+)
+
+var (
+	tasksListCmdFlagValues = scheduler.TasksListCmdFlags{}
 )
 
 // tasksCmd represents the tasks command
@@ -21,6 +26,14 @@ func init() {
 	tasksCmd.AddCommand(tasksGetCmd)
 
 	rootCmd.AddCommand(tasksCmd)
+
+	// tasksListCmd flags.
+	tasksListCmd.Flags().IntSliceVarP(&tasksListCmdFlagValues.Status, "status", "s", nil,
+		fmt.Sprintf("Task statuses, options: %s", enumOptions(scheduler_proto.Task_Status_name)))
+	tasksListCmd.Flags().Int32VarP(&tasksListCmdFlagValues.Ordering, "order", "o", 0,
+		fmt.Sprintf("Ordering, options: %s", enumOptions(scheduler_proto.ListTasksRequest_Ordering_name)))
+	tasksListCmd.Flags().Uint32VarP(&tasksListCmdFlagValues.Limit, "limit", "l", 10, "Tasks limit")
+	tasksListCmd.Flags().Uint32Var(&tasksListCmdFlagValues.Offset, "offset", 0, "Tasks offset")
 }
 
 var tasksGetCmd = &cobra.Command{
@@ -40,5 +53,32 @@ var tasksGetCmd = &cobra.Command{
 			client.NewSchedulerClient(schedulerServiceAddr),
 			uint64(taskID))
 		scheduler.JSONPbView(logger, os.Stdout, task, err)
+	},
+}
+
+var tasksListCmd = &cobra.Command{
+	Use:     "list",
+	Short:   "List existing Tasks",
+	Long:    `List existing Tasks for the currently authenticated user that satisfy the criteria.`,
+	Example: `> scalemate tasks list 42 56 -s 1 -o 2 -l 50`,
+	Args:    cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		jobIDs := make([]uint64, len(args))
+		for i, a := range args {
+			jobID, err := strconv.Atoi(a)
+			if err != nil || jobID <= 0 {
+				fmt.Printf("invalid Job ID: %s\n", a)
+				return
+			}
+			jobIDs[i] = uint64(jobID)
+		}
+
+		response, err := scheduler.ListTasksController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			jobIDs,
+			&tasksListCmdFlagValues,
+		)
+		scheduler.JSONPbView(logger, os.Stdout, response, err)
 	},
 }

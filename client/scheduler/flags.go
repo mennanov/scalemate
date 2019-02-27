@@ -153,3 +153,28 @@ func (f *JobsListCmdFlags) ToListJobsRequestProto() *scheduler_proto.ListJobsReq
 
 	return request
 }
+
+// TasksListCmdFlags represents a set of flags for the `scalemate tasks list` command.
+type TasksListCmdFlags struct {
+	Status   []int
+	Ordering int32
+	Limit    uint32
+	Offset   uint32
+}
+
+// ToListTasksRequestProto creates a new scheduler_proto.ListTasksRequest from the flags.
+func (f *TasksListCmdFlags) ToListTasksRequestProto() *scheduler_proto.ListTasksRequest {
+	request := &scheduler_proto.ListTasksRequest{
+		Ordering: scheduler_proto.ListTasksRequest_Ordering(f.Ordering),
+		Limit:    f.Limit,
+		Offset:   f.Offset,
+	}
+	if len(f.Status) != 0 {
+		request.Status = make([]scheduler_proto.Task_Status, len(f.Status))
+		for i, s := range f.Status {
+			request.Status[i] = scheduler_proto.Task_Status(s)
+		}
+	}
+
+	return request
+}

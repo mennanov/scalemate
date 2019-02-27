@@ -102,10 +102,92 @@ func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
 		{Ports: []string{"a:10"}},
 		{Ports: []string{"10"}},
 		{Ports: []string{"10:"}},
-		// Invalid
+		// TODO: add more test cases for other fields.
 	} {
 		job, err := flags.ToJobProto()
 		assert.Error(t, err)
 		assert.Nil(t, job)
+	}
+}
+
+func TestJobsListCmdFlags_ToListJobsRequestProto(t *testing.T) {
+	for _, testCase := range []struct {
+		flags         *scheduler.JobsListCmdFlags
+		expectedProto *scheduler_proto.ListJobsRequest
+	}{
+		{
+			flags: &scheduler.JobsListCmdFlags{
+				Status: []int{
+					int(scheduler_proto.Job_STATUS_FINISHED),
+					int(scheduler_proto.Job_STATUS_NEW),
+				},
+				Ordering: int32(scheduler_proto.ListJobsRequest_UPDATED_AT_ASC),
+				Limit:    100,
+				Offset:   200,
+			},
+			expectedProto: &scheduler_proto.ListJobsRequest{
+				Username: "",
+				Status: []scheduler_proto.Job_Status{
+					scheduler_proto.Job_STATUS_FINISHED,
+					scheduler_proto.Job_STATUS_NEW,
+				},
+				Ordering: scheduler_proto.ListJobsRequest_UPDATED_AT_ASC,
+				Limit:    100,
+				Offset:   200,
+			},
+		},
+		{
+			flags: &scheduler.JobsListCmdFlags{},
+			expectedProto: &scheduler_proto.ListJobsRequest{
+				Username: "",
+				Status:   nil,
+				Ordering: scheduler_proto.ListJobsRequest_CREATED_AT_DESC,
+				Limit:    0,
+				Offset:   0,
+			},
+		},
+	} {
+		assert.Equal(t, testCase.expectedProto, testCase.flags.ToListJobsRequestProto())
+	}
+}
+
+func TestTasksListCmdFlags_ToListTasksRequestProto(t *testing.T) {
+	for _, testCase := range []struct {
+		flags         *scheduler.TasksListCmdFlags
+		expectedProto *scheduler_proto.ListTasksRequest
+	}{
+		{
+			flags: &scheduler.TasksListCmdFlags{
+				Status: []int{
+					int(scheduler_proto.Task_STATUS_CANCELLED),
+					int(scheduler_proto.Task_STATUS_RUNNING),
+				},
+				Ordering: int32(scheduler_proto.ListTasksRequest_UPDATED_AT_ASC),
+				Limit:    100,
+				Offset:   200,
+			},
+			expectedProto: &scheduler_proto.ListTasksRequest{
+				Username: "",
+				Status: []scheduler_proto.Task_Status{
+					scheduler_proto.Task_STATUS_CANCELLED,
+					scheduler_proto.Task_STATUS_RUNNING,
+				},
+				Ordering: scheduler_proto.ListTasksRequest_UPDATED_AT_ASC,
+				Limit:    100,
+				Offset:   200,
+			},
+		},
+		{
+			flags: &scheduler.TasksListCmdFlags{},
+			expectedProto: &scheduler_proto.ListTasksRequest{
+				Username: "",
+				Status:   nil,
+				Ordering: scheduler_proto.ListTasksRequest_CREATED_AT_DESC,
+				Limit:    0,
+				Offset:   0,
+			},
+		},
+	} {
+		assert.Equal(t, testCase.expectedProto, testCase.flags.ToListTasksRequestProto())
 	}
 }
