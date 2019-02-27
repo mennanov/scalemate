@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/spf13/cobra"
@@ -36,14 +35,6 @@ var (
 var jobsCmd = &cobra.Command{
 	Use:   "jobs",
 	Short: "Create, list and get jobs",
-}
-
-func enumOptions(enum map[int32]string) string {
-	var options []string
-	for key, value := range enum {
-		options = append(options, fmt.Sprintf("%d - %s", key, value))
-	}
-	return strings.Join(options, ", ")
 }
 
 func init() {

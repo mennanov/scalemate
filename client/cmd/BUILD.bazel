@@ -9,6 +9,7 @@ go_library(
         "logout.go",
         "register.go",
         "root.go",
+        "tasks.go",
     ],
     importpath = "github.com/mennanov/scalemate/client/cmd",
     visibility = ["//visibility:public"],
