@@ -50,6 +50,7 @@ func init() {
 	jobsCmd.AddCommand(jobsCreateCmd)
 	jobsCmd.AddCommand(jobsGetCmd)
 	jobsCmd.AddCommand(jobsListCmd)
+	jobsCmd.AddCommand(jobsCancelCmd)
 
 	rootCmd.AddCommand(jobsCmd)
 
@@ -147,7 +148,7 @@ Once the Job is scheduled a corresponding Task entity is created.`,
 			image,
 			command,
 			&jobsCreateCmdFlagValues)
-		scheduler.CreateJobView(logger, os.Stdout, job, err)
+		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
 }
 
@@ -167,7 +168,7 @@ var jobsGetCmd = &cobra.Command{
 			client.NewAccountsClient(accountsServiceAddr),
 			client.NewSchedulerClient(schedulerServiceAddr),
 			uint64(jobID))
-		scheduler.GetJobView(logger, os.Stdout, job, err)
+		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
 }
 
@@ -182,6 +183,26 @@ var jobsListCmd = &cobra.Command{
 			client.NewSchedulerClient(schedulerServiceAddr),
 			&jobsListCmdFlagValues,
 		)
-		scheduler.ListJobsView(logger, os.Stdout, response, err)
+		scheduler.JSONPbView(logger, os.Stdout, response, err)
+	},
+}
+
+var jobsCancelCmd = &cobra.Command{
+	Use:     "cancel",
+	Short:   "Cancel an existing Job",
+	Long:    `Cancel an existing Job by its ID.`,
+	Args:    cobra.ExactArgs(1),
+	Example: `> scalemate jobs cancel 42`,
+	Run: func(cmd *cobra.Command, args []string) {
+		jobID, err := strconv.Atoi(args[0])
+		if err != nil || jobID <= 0 {
+			fmt.Printf("invalid Job ID: %s\n", args[0])
+			return
+		}
+		job, err := scheduler.CancelJobController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			uint64(jobID))
+		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
 }

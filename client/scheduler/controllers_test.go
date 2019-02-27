@@ -176,7 +176,6 @@ func TestGetJobController(t *testing.T) {
 
 		ctx := context.Background()
 
-		username := "username"
 		jobId := uint64(42)
 		jobLookupRequestExpected := &scheduler_proto.JobLookupRequest{JobId: jobId}
 
@@ -184,7 +183,7 @@ func TestGetJobController(t *testing.T) {
 		schedulerClient.EXPECT().GetJob(ctx, jobLookupRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
 		defer deleteTokens()
 
 		job, err := scheduler.GetJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
@@ -279,5 +278,59 @@ func TestListJobsController(t *testing.T) {
 			&scheduler.JobsListCmdFlags{})
 		require.Error(t, err)
 		assert.Nil(t, response)
+	})
+}
+
+func TestCancelJobController(t *testing.T) {
+	t.Run("JobSuccessfullyCancelled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		jobId := uint64(42)
+		jobLookupRequestExpected := &scheduler_proto.JobLookupRequest{JobId: jobId}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().CancelJob(ctx, jobLookupRequestExpected, gomock.Any()).
+			Return(&scheduler_proto.Job{Id: jobId}, nil)
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		defer deleteTokens()
+
+		job, err := scheduler.CancelJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
+		require.NoError(t, err)
+		assert.NotNil(t, job)
+	})
+
+	t.Run("NotLoggedIn", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+
+		_, err := scheduler.CancelJobController(NewMockAccountsClient(ctrl), schedulerClient, uint64(42))
+		assert.Error(t, err)
+	})
+
+	t.Run("PermissionDenied", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		jobId := uint64(42)
+		jobLookupRequestExpected := &scheduler_proto.JobLookupRequest{JobId: jobId}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().CancelJob(ctx, jobLookupRequestExpected, gomock.Any()).
+			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		defer deleteTokens()
+
+		job, err := scheduler.CancelJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
+		require.Error(t, err)
+		assert.Nil(t, job)
 	})
 }

@@ -90,3 +90,21 @@ func ListJobsController(
 
 	return schedulerClient.ListJobs(context.Background(), request, grpc.PerRPCCredentials(jwtCredentials))
 }
+
+// CancelJobController cancels an existing Job by its ID.
+func CancelJobController(
+	accountsClient accounts_proto.AccountsClient,
+	schedulerClient scheduler_proto.SchedulerClient,
+	jobID uint64,
+) (*scheduler_proto.Job, error) {
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
+	}
+	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	return schedulerClient.CancelJob(
+		context.Background(),
+		&scheduler_proto.JobLookupRequest{JobId: jobID},
+		grpc.PerRPCCredentials(jwtCredentials))
+}
