@@ -24,6 +24,8 @@ var tasksCmd = &cobra.Command{
 
 func init() {
 	tasksCmd.AddCommand(tasksGetCmd)
+	tasksCmd.AddCommand(tasksListCmd)
+	tasksCmd.AddCommand(tasksCancelCmd)
 
 	rootCmd.AddCommand(tasksCmd)
 
@@ -80,5 +82,25 @@ var tasksListCmd = &cobra.Command{
 			&tasksListCmdFlagValues,
 		)
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
+	},
+}
+
+var tasksCancelCmd = &cobra.Command{
+	Use:     "cancel",
+	Short:   "Cancel an existing Task",
+	Long:    `Cancel an existing Task by its ID.`,
+	Args:    cobra.ExactArgs(1),
+	Example: `> scalemate tasks cancel 42`,
+	Run: func(cmd *cobra.Command, args []string) {
+		taskID, err := strconv.Atoi(args[0])
+		if err != nil || taskID <= 0 {
+			fmt.Printf("invalid Task ID: %s\n", args[0])
+			return
+		}
+		task, err := scheduler.CancelTaskController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			uint64(taskID))
+		scheduler.JSONPbView(logger, os.Stdout, task, err)
 	},
 }
