@@ -8,9 +8,12 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
 )
@@ -82,3 +85,16 @@ func CreateAndSaveTestingTokens(t *testing.T, username string) func() {
 		require.NoError(t, auth.DeleteTokens())
 	}
 }
+
+// GetAllErrors returns errors with all possible error codes and an additional unknown error.
+func GetAllErrors() []error {
+	errs := make([]error, 18)
+	for i := 0; i <= 16; i++ {
+		// Start with non zero errors.
+		errs[i] = status.Error(codes.Code(i+1), "Error message")
+	}
+	// Add an unknown error.
+	errs[17] = errors.New("Unknown error")
+	return errs
+}
+

@@ -105,11 +105,11 @@ func (f *JobsCreateCmdFlags) ToJobProto() (*scheduler_proto.Job, error) {
 				return nil, errors.Errorf("invalid port format: %s", portDef)
 			}
 			localPort, err := strconv.Atoi(parts[0])
-			if err != nil {
+			if err != nil || localPort <= 0 {
 				return nil, errors.Errorf("invalid local port format: %s", parts[0])
 			}
 			remotePort, err := strconv.Atoi(parts[1])
-			if err != nil {
+			if err != nil || remotePort <= 0 {
 				return nil, errors.Errorf("invalid remote port format: %s", parts[1])
 			}
 			job.RunConfig.Ports[uint32(localPort)] = uint32(remotePort)

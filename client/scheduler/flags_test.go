@@ -103,9 +103,26 @@ func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
 		{Ports: []string{"10"}},
 		{Ports: []string{"10:"}},
 		// TODO: add more test cases for other fields.
+		// Invalid volumes.
+		{Volumes: []string{"invalid/path/format"}},
+		{Volumes: []string{""}},
+		{UploadPaths: []string{"invalid/path/format"}},
+		{UploadPaths: []string{""}},
+		{DownloadPaths: []string{"invalid/path/format"}},
+		{DownloadPaths: []string{""}},
+		{Ports: []string{"80"}},
+		{Ports: []string{"80:-200"}},
+		{Ports: []string{"-200:-200"}},
+		{Ports: []string{"-200:80"}},
+		{Ports: []string{"NaN:80"}},
+		{Ports: []string{"80:NaN"}},
+		{Ports: []string{""}},
+		{EnvVars: []string{"=value"}},
+		{EnvVars: []string{"foo"}},
+		{EnvVars: []string{""}},
 	} {
 		job, err := flags.ToJobProto()
-		assert.Error(t, err)
+		assert.Error(t, err, "failed for flags: %s", flags)
 		assert.Nil(t, job)
 	}
 }

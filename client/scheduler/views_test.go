@@ -9,15 +9,13 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/client/scheduler"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func createTestingJob(createdAt, updatedAt *timestamp.Timestamp) *scheduler_proto.Job {
@@ -53,13 +51,7 @@ func createTestingJob(createdAt, updatedAt *timestamp.Timestamp) *scheduler_prot
 
 func TestJsonPbView(t *testing.T) {
 	t.Run("WithError", func(t *testing.T) {
-		for _, err := range []error{
-			status.Error(codes.Unauthenticated, "unknown JWT claims type"),
-			status.Error(codes.PermissionDenied, "wrong username"),
-			status.Error(codes.InvalidArgument, "validation error"),
-			status.Error(codes.Internal, "internal error"),
-			errors.New("unknown error"),
-		} {
+		for _, err := range utils.GetAllErrors() {
 			logger, hook := test.NewNullLogger()
 
 			output := new(bytes.Buffer)
@@ -86,5 +78,14 @@ func TestJsonPbView(t *testing.T) {
 		jsonDecodedJob := &scheduler_proto.Job{}
 		require.NoError(t, jsonpb.Unmarshal(output, jsonDecodedJob))
 		assert.Equal(t, job, jsonDecodedJob)
+	})
+
+	t.Run("MarshalFails", func(t *testing.T) {
+		logger, hook := test.NewNullLogger()
+		output := new(bytes.Buffer)
+		scheduler.JSONPbView(logger, output, nil, nil)
+		// Verify that the error is logged with an appropriate level.
+		require.Equal(t, 1, len(hook.Entries))
+		assert.Equal(t, logrus.ErrorLevel, hook.LastEntry().Level)
 	})
 }

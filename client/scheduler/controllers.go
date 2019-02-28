@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -150,7 +149,6 @@ func ListTasksController(
 
 	// Set the Username value to the currently authenticated username.
 	request.Username = claims.Username
-	fmt.Println("request:", request)
 	return schedulerClient.ListTasks(context.Background(), request, grpc.PerRPCCredentials(jwtCredentials))
 }
 
