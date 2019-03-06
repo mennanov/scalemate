@@ -169,3 +169,22 @@ func CancelTaskController(
 		&scheduler_proto.TaskLookupRequest{TaskId: taskID},
 		grpc.PerRPCCredentials(jwtCredentials))
 }
+
+// IterateTasksController receives a stream of Tasks for the given Job ID.
+func IterateTasksController(
+	accountsClient accounts_proto.AccountsClient,
+	schedulerClient scheduler_proto.SchedulerClient,
+	jobID uint64,
+	includeExisting bool,
+) (scheduler_proto.Scheduler_IterateTasksClient, error) {
+	tokens, err := auth.LoadTokens()
+	if err != nil {
+		return nil, errors.Wrap(err, loadTokensFailedErrMsg)
+	}
+	jwtCredentials := auth.NewJWTCredentials(accountsClient, tokens, auth.SaveTokens)
+
+	return schedulerClient.IterateTasks(
+		context.Background(),
+		&scheduler_proto.IterateTasksRequest{JobId: jobID, IncludeExisting: includeExisting},
+		grpc.PerRPCCredentials(jwtCredentials))
+}

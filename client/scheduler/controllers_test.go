@@ -2,6 +2,7 @@ package scheduler_test
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/client/scheduler"
@@ -530,6 +532,100 @@ func TestCancelTaskController(t *testing.T) {
 		defer deleteTokens()
 
 		task, err := scheduler.CancelTaskController(NewMockAccountsClient(ctrl), schedulerClient, taskID)
+		require.Error(t, err)
+		assert.Nil(t, task)
+	})
+}
+
+type schedulerIterateTasksFakeClient struct {
+	index int
+	tasks []*scheduler_proto.Task
+}
+
+func (c *schedulerIterateTasksFakeClient) Recv() (*scheduler_proto.Task, error) {
+	if c.index < len(c.tasks) {
+		c.index++
+		return c.tasks[c.index-1], nil
+	}
+	return nil, io.EOF
+}
+
+func (c *schedulerIterateTasksFakeClient) Header() (metadata.MD, error) {
+	return nil, nil
+}
+
+func (c *schedulerIterateTasksFakeClient) Trailer() metadata.MD {
+	return nil
+}
+
+func (c *schedulerIterateTasksFakeClient) CloseSend() error {
+	return nil
+}
+
+func (c *schedulerIterateTasksFakeClient) Context() context.Context {
+	return nil
+}
+
+func (c *schedulerIterateTasksFakeClient) SendMsg(m interface{}) error {
+	return nil
+}
+
+func (c *schedulerIterateTasksFakeClient) RecvMsg(m interface{}) error {
+	return nil
+}
+
+// Compile time interface check.
+var _ scheduler_proto.Scheduler_IterateTasksClient = new(schedulerIterateTasksFakeClient)
+
+func TestIterateTasksController(t *testing.T) {
+	t.Run("TasksSuccessfullyReceived", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		jobID := uint64(42)
+		iterateTasksRequest := &scheduler_proto.IterateTasksRequest{JobId: jobID}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().IterateTasks(ctx, iterateTasksRequest, gomock.Any()).
+			Return(new(schedulerIterateTasksFakeClient), nil)
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		defer deleteTokens()
+
+		client, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobID, false)
+		require.NoError(t, err)
+		assert.NotNil(t, client)
+	})
+
+	t.Run("NotLoggedIn", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+
+		_, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, uint64(42), true)
+		assert.Error(t, err)
+	})
+
+	t.Run("PermissionDenied", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		jobID := uint64(42)
+		iterateTasksRequest := &scheduler_proto.IterateTasksRequest{JobId: jobID}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().IterateTasks(ctx, iterateTasksRequest, gomock.Any()).
+			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
+
+		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
+		defer deleteTokens()
+
+		task, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobID, false)
 		require.Error(t, err)
 		assert.Nil(t, task)
 	})

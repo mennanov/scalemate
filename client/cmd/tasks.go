@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -13,7 +14,8 @@ import (
 )
 
 var (
-	tasksListCmdFlagValues = scheduler.TasksListCmdFlags{}
+	tasksListCmdFlagValues         = scheduler.TasksListCmdFlags{}
+	tasksIterateCmdIncludeExisting bool
 )
 
 // tasksCmd represents the tasks command
@@ -26,6 +28,7 @@ func init() {
 	tasksCmd.AddCommand(tasksGetCmd)
 	tasksCmd.AddCommand(tasksListCmd)
 	tasksCmd.AddCommand(tasksCancelCmd)
+	tasksCmd.AddCommand(tasksIterateCmd)
 
 	rootCmd.AddCommand(tasksCmd)
 
@@ -36,6 +39,8 @@ func init() {
 		fmt.Sprintf("Ordering, options: %s", enumOptions(scheduler_proto.ListTasksRequest_Ordering_name)))
 	tasksListCmd.Flags().Uint32VarP(&tasksListCmdFlagValues.Limit, "limit", "l", 10, "Tasks limit")
 	tasksListCmd.Flags().Uint32Var(&tasksListCmdFlagValues.Offset, "offset", 0, "Tasks offset")
+	tasksListCmd.Flags().BoolVarP(&tasksIterateCmdIncludeExisting, "existing", "e", false,
+		"Include already existing Tasks")
 }
 
 var tasksGetCmd = &cobra.Command{
@@ -102,5 +107,35 @@ var tasksCancelCmd = &cobra.Command{
 			client.NewSchedulerClient(schedulerServiceAddr),
 			uint64(taskID))
 		scheduler.JSONPbView(logger, os.Stdout, task, err)
+	},
+}
+
+var tasksIterateCmd = &cobra.Command{
+	Use:     "iter",
+	Short:   "Iterate over Tasks",
+	Long:    `Iterate over existing and new Tasks by Job ID. The Tasks are received upon creation.`,
+	Args:    cobra.ExactArgs(1),
+	Example: `> scalemate tasks iter 42`,
+	Run: func(cmd *cobra.Command, args []string) {
+		jobID, err := strconv.Atoi(args[0])
+		if err != nil || jobID <= 0 {
+			fmt.Printf("invalid Job ID: %s\n", args[0])
+			return
+		}
+		client, err := scheduler.IterateTasksController(
+			client.NewAccountsClient(accountsServiceAddr),
+			client.NewSchedulerClient(schedulerServiceAddr),
+			uint64(jobID),
+			tasksIterateCmdIncludeExisting)
+
+		// TODO: figure out how to handle ctrl+c. Do we need to intercept signals?
+		for {
+			task, err := client.Recv()
+			if err == io.EOF {
+				// The stream is closed.
+				break
+			}
+			scheduler.JSONPbView(logger, os.Stdout, task, err)
+		}
 	},
 }
