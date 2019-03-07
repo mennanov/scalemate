@@ -9,6 +9,13 @@ import "google/protobuf/timestamp.proto";
 import "shared/proto/validator.proto";
 
 service Scheduler {
+    // GetNode gets the Node details.
+    rpc GetNode(NodeLookupRequest) returns (Node){
+    }
+    // ListNodes lists Nodes that satisfy the given criteria.
+    rpc ListNodes(ListNodesRequest) returns (ListNodesResponse){
+    }
+
     // CreateJob creates a new Job.
     rpc CreateJob (Job) returns (Job) {
     }
@@ -195,11 +202,11 @@ message Node {
     // The number of CPUs available for scheduling.
     float cpu_available = 5 [(shared.proto.validator.field) = {float_gte: 0}];
     CPUClass cpu_class = 6 [(shared.proto.validator.field) = {msg_exists: true}];
-    // The lowest requested Task's CPUClass that can be scheduled on that Node.
+    // The lowest requested Job's CPUClass that can be scheduled on that Node.
     CPUClass cpu_class_min = 7 [(shared.proto.validator.field) = {msg_exists: true}];
     string cpu_model = 20 [(shared.proto.validator.field) = {msg_exists: true}];
 
-    // Node's RAM capacity in Megabytes available for Tasks scheduling.
+    // Node's RAM capacity in Megabytes available for Jobs scheduling.
     uint32 memory_capacity = 8 [(shared.proto.validator.field) = {int_gt: 0}];
     // Node's RAM in Megabytes available for scheduling.
     uint32 memory_available = 9 [(shared.proto.validator.field) = {int_gt: 0}];
@@ -210,16 +217,16 @@ message Node {
     // The number of GPU devices available for scheduling.
     uint32 gpu_available = 11;
     GPUClass gpu_class = 12 [(shared.proto.validator.field) = {msg_exists: true}];
-    // The lowest requested Task's GPUClass that can be scheduled on that Node.
+    // The lowest requested Job's GPUClass that can be scheduled on that Node.
     GPUClass gpu_class_min = 13 [(shared.proto.validator.field) = {msg_exists: true}];
     string gpu_model = 26 [(shared.proto.validator.field) = {msg_exists: true}];
 
-    // Node's disk capacity in Megabytes available for Tasks scheduling.
+    // Node's disk capacity in Megabytes available for Jobs scheduling.
     uint32 disk_capacity = 14;
-    // Node's disk in Megabytes available for Tasks scheduling.
+    // Node's disk in Megabytes available for Jobs scheduling.
     uint32 disk_available = 15;
     DiskClass disk_class = 16 [(shared.proto.validator.field) = {msg_exists: true}];
-    // The lowest requested Task's DiskClass that can be scheduled on that Node.
+    // The lowest requested Jobs's DiskClass that can be scheduled on that Node.
     DiskClass disk_class_min = 17 [(shared.proto.validator.field) = {msg_exists: true}];
     string disk_model = 27 [(shared.proto.validator.field) = {msg_exists: true}];
 
@@ -241,6 +248,61 @@ message Node {
     // Time this Node was initially registered.
     google.protobuf.Timestamp created_at = 22;
     google.protobuf.Timestamp updated_at = 23;
+}
+
+message NodeLookupRequest {
+    uint64 node_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+}
+
+message ListNodesRequest {
+    string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})?$"}];
+    repeated Node.Status status = 2;
+
+    enum Ordering {
+        CONNECTED_AT_DESC = 0;
+        CONNECTED_AT_ASC = 1;
+        DISCONNECTED_AT_DESC = 2;
+        DISCONNECTED_AT_ASC = 3;
+        SCHEDULED_AT_DESC = 4;
+        SCHEDULED_AT_ASC = 5;
+    }
+    // CONNECTED_AT_DESC is used by default.
+    Ordering ordering = 3;
+
+    // Limit of 50 is used by default.
+    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 1000}];
+    uint32 offset = 5;
+
+    // Matches Nodes with cpu_available >= given value.
+    float cpu_available = 6 [(shared.proto.validator.field) = {float_gte: 0}];
+    // Matches Nodes with cpu_class_min <= given value <= cpu_class.
+    CPUClass cpu_class = 7;
+
+    // Matches Nodes with memory_available >= given value.
+    uint32 memory_available = 8 [(shared.proto.validator.field) = {int_gt: 0}];
+
+    // Matches Nodes with gpu_available >= given value.
+    uint32 gpu_available = 9;
+    // Matches Nodes with gpu_class_min <= given value <= gpu_class.
+    GPUClass gpu_class = 10;
+
+    // Matches Nodes with disk_available >= given value.
+    uint32 disk_available = 11;
+    // Matches Nodes with disk_class_min <= given value <= disk_class.
+    DiskClass disk_class = 12;
+
+    // Matches Nodes with similar labels (non-empty intersection).
+    repeated string labels = 13;
+    // Matches Nodes with tasks_finished >= given value.
+    uint64 tasks_finished = 14;
+    // Matches Nodes with tasks_failed <= given value.
+    uint64 tasks_failed = 15;
+}
+
+message ListNodesResponse {
+    repeated Node nodes = 1;
+    // Total count of Nodes that match the corresponding ListNodesRequest without limit or offset applied.
+    uint32 total_count = 2;
 }
 
 // Task represents a scheduled (running) Job on a Node.
@@ -307,6 +369,7 @@ message TaskLookupRequest {
 }
 
 message ListTasksRequest {
+    // Username must be equal to the currently logged-in user's username (for non-admin users).
     string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})$"}];
     repeated uint64 job_id = 2;
     repeated Task.Status status = 3;

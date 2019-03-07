@@ -58,6 +58,9 @@ type Node struct {
 	// User defined labels.
 	Labels pq.StringArray `gorm:"type:text[]"`
 
+	TasksFinished uint64 `gorm:"not null;"`
+	TasksFailed   uint64 `gorm:"not null;"`
+
 	ConnectedAt    *time.Time
 	DisconnectedAt *time.Time
 	ScheduledAt    *time.Time
@@ -156,6 +159,8 @@ func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, 
 	p.DiskClass = scheduler_proto.DiskClass(n.DiskClass)
 	p.DiskClassMin = scheduler_proto.DiskClass(n.DiskClassMin)
 	p.DiskModel = n.DiskModel
+	p.TasksFinished = n.TasksFinished
+	p.TasksFailed = n.TasksFailed
 
 	if n.ConnectedAt != nil {
 		connectedAt, err := ptypes.TimestampProto(*n.ConnectedAt)
@@ -240,6 +245,8 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 	n.DiskClass = Enum(p.GetDiskClass())
 	n.DiskClassMin = Enum(p.GetDiskClassMin())
 	n.DiskModel = p.GetDiskModel()
+	n.TasksFinished = p.GetTasksFinished()
+	n.TasksFailed = p.GetTasksFailed()
 
 	if p.CreatedAt != nil {
 		connectedAt, err := ptypes.Timestamp(p.ConnectedAt)
@@ -329,7 +336,7 @@ func (n *Node) Get(db *gorm.DB, username, nodeName string) error {
 // LoadFromDB performs a lookup by ID and populates the struct.
 func (n *Node) LoadFromDB(db *gorm.DB, fields ...string) error {
 	if n.ID == 0 {
-		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't lookup Node with no ID"))
+		return errors.WithStack(status.Error(codes.InvalidArgument, "can't lookup Node with no ID"))
 	}
 	query := db
 	if len(fields) > 0 {
@@ -406,4 +413,109 @@ func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
 		allEvents = append(allEvents, schedulerEvents...)
 	}
 	return allEvents, nil
+}
+
+// Nodes represents a collection of Nodes.
+type Nodes []Node
+
+// List selects Jobs from DB by the given filtering request and populates the receiver.
+// Returns the total number of Jobs that satisfy the criteria and an error.
+func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest) (uint32, error) {
+	query := db.Model(&Node{})
+	ordering := request.GetOrdering()
+
+	var orderBySQL string
+	switch ordering {
+	case scheduler_proto.ListNodesRequest_CONNECTED_AT_DESC:
+		orderBySQL = "connected_at DESC"
+	case scheduler_proto.ListNodesRequest_CONNECTED_AT_ASC:
+		orderBySQL = "created_at"
+	case scheduler_proto.ListNodesRequest_DISCONNECTED_AT_DESC:
+		orderBySQL = "disconnected_at DESC"
+	case scheduler_proto.ListNodesRequest_DISCONNECTED_AT_ASC:
+		orderBySQL = "disconnected_at"
+	case scheduler_proto.ListNodesRequest_SCHEDULED_AT_DESC:
+		orderBySQL = "scheduled_at DESC"
+	case scheduler_proto.ListNodesRequest_SCHEDULED_AT_ASC:
+		orderBySQL = "scheduled_at"
+	}
+	query = query.Order(orderBySQL)
+
+	// Filter by username.
+	if request.Username != "" {
+		query = query.Where("username = ?", request.Username)
+	}
+
+	// Filter by status.
+	if len(request.Status) > 0 {
+		enumStatus := make([]Enum, len(request.Status))
+		for i, s := range request.Status {
+			enumStatus[i] = Enum(s)
+		}
+		query = query.Where("status IN (?)", enumStatus)
+	}
+
+	if request.CpuAvailable > 0 {
+		query = query.Where("cpu_available >= ?", request.CpuAvailable)
+	}
+	if request.CpuClass != scheduler_proto.CPUClass_CPU_CLASS_UNKNOWN {
+		enum := Enum(request.CpuClass)
+		query = query.Where("cpu_class_min <= ? AND cpu_class >= ?", enum, enum)
+	}
+
+	if request.MemoryAvailable > 0 {
+		query = query.Where("memory_available >= ?", request.MemoryAvailable)
+	}
+
+	if request.GpuAvailable > 0 {
+		query = query.Where("gpu_available >= ?", request.GpuAvailable)
+	}
+	if request.GpuClass != scheduler_proto.GPUClass_GPU_CLASS_UNKNOWN {
+		enum := Enum(request.GpuClass)
+		query = query.Where("gpu_class_min <= ? AND gpu_class >= ?", enum, enum)
+	}
+
+	if request.DiskAvailable > 0 {
+		query = query.Where("disk_available >= ?", request.DiskAvailable)
+	}
+	if request.DiskClass != scheduler_proto.DiskClass_DISK_CLASS_UNKNOWN {
+		enum := Enum(request.DiskClass)
+		query = query.Where("disk_class_min <= ? AND disk_class >= ?", enum, enum)
+	}
+
+	if len(request.Labels) > 0 {
+		query = query.Where("ARRAY[?] && labels", request.Labels)
+	}
+
+	if request.TasksFinished > 0 {
+		query = query.Where("tasks_finished >= ?", request.TasksFinished)
+	}
+
+	if request.TasksFailed > 0 {
+		query = query.Where("tasks_failed <= ?", request.TasksFailed)
+	}
+
+	// Perform a COUNT query with no limit and offset applied.
+	var count uint32
+	if err := utils.HandleDBError(query.Count(&count)); err != nil {
+		return 0, err
+	}
+
+	// Apply offset.
+	query = query.Offset(request.GetOffset())
+
+	// Apply limit.
+	var limit uint32
+	if request.GetLimit() != 0 {
+		limit = request.GetLimit()
+	} else {
+		limit = 50
+	}
+	query = query.Limit(limit)
+
+	// Perform a SELECT query.
+	if err := utils.HandleDBError(query.Find(nodes)); err != nil {
+		return 0, err
+	}
+	return count, nil
 }
