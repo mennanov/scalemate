@@ -22,9 +22,8 @@ import (
 )
 
 const (
-	// JobsScheduledForNodeQueryLimit is the number of Jobs to be selected from DB when Jobs are selected to be
-	// scheduled on a Node.
-	JobsScheduledForNodeQueryLimit = 100
+	// ListNodesMaxLimit is a maximum allowed limit in the SQL query that lists Nodes.
+	ListNodesMaxLimit = 300
 )
 
 // Node represents a physical machine that runs Tasks (scheduled Jobs).
@@ -441,11 +440,6 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 	}
 	query = query.Order(orderBySQL)
 
-	// Filter by username.
-	if request.Username != "" {
-		query = query.Where("username = ?", request.Username)
-	}
-
 	// Filter by status.
 	if len(request.Status) > 0 {
 		enumStatus := make([]Enum, len(request.Status))
@@ -483,8 +477,32 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 		query = query.Where("disk_class_min <= ? AND disk_class >= ?", enum, enum)
 	}
 
-	if len(request.Labels) > 0 {
-		query = query.Where("ARRAY[?] && labels", request.Labels)
+	if len(request.UsernameLabels) > 0 {
+		query = query.Where("username IN (?)", request.UsernameLabels)
+	}
+
+	if len(request.NameLabels) > 0 {
+		query = query.Where("name IN (?)", request.NameLabels)
+	}
+
+	if len(request.CpuLabels) > 0 {
+		query = query.Where("cpu_model IN (?)", request.CpuLabels)
+	}
+
+	if len(request.GpuLabels) > 0 {
+		query = query.Where("gpu_model IN (?)", request.GpuLabels)
+	}
+
+	if len(request.DiskLabels) > 0 {
+		query = query.Where("disk_model IN (?)", request.DiskLabels)
+	}
+
+	if len(request.MemoryLabels) > 0 {
+		query = query.Where("memory_model IN (?)", request.MemoryLabels)
+	}
+
+	if len(request.OtherLabels) > 0 {
+		query = query.Where("ARRAY[?] && labels", request.OtherLabels)
 	}
 
 	if request.TasksFinished > 0 {
@@ -506,10 +524,10 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 
 	// Apply limit.
 	var limit uint32
-	if request.GetLimit() != 0 {
-		limit = request.GetLimit()
+	if request.Limit <= ListNodesMaxLimit {
+		limit = request.Limit
 	} else {
-		limit = 50
+		limit = ListNodesMaxLimit
 	}
 	query = query.Limit(limit)
 

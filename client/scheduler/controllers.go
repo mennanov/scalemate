@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -22,9 +23,9 @@ func CreateJobController(
 	schedulerClient scheduler_proto.SchedulerClient,
 	image string,
 	command string,
-	flags *JobsCreateCmdFlags,
+	flags *CreateJobCmdFlags,
 ) (*scheduler_proto.Job, error) {
-	job, err := flags.ToJobProto()
+	job, err := flags.ToProto()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to parse flags")
 	}
@@ -71,7 +72,7 @@ func GetJobController(
 func ListJobsController(
 	accountsClient accounts_proto.AccountsClient,
 	schedulerClient scheduler_proto.SchedulerClient,
-	flags *JobsListCmdFlags,
+	flags *ListJobsCmdFlags,
 ) (*scheduler_proto.ListJobsResponse, error) {
 	tokens, err := auth.LoadTokens()
 	if err != nil {
@@ -83,7 +84,7 @@ func ListJobsController(
 	if err != nil {
 		return nil, errors.Wrap(err, newClaimsFromStringFailedMsg)
 	}
-	request := flags.ToListJobsRequestProto()
+	request := flags.ToProto()
 
 	// Set the Username value to the currently authenticated username.
 	request.Username = claims.Username
@@ -132,7 +133,7 @@ func ListTasksController(
 	accountsClient accounts_proto.AccountsClient,
 	schedulerClient scheduler_proto.SchedulerClient,
 	jobIDs []uint64,
-	flags *TasksListCmdFlags,
+	flags *ListTasksCmdFlags,
 ) (*scheduler_proto.ListTasksResponse, error) {
 	tokens, err := auth.LoadTokens()
 	if err != nil {
@@ -144,7 +145,7 @@ func ListTasksController(
 	if err != nil {
 		return nil, errors.Wrap(err, newClaimsFromStringFailedMsg)
 	}
-	request := flags.ToListTasksRequestProto()
+	request := flags.ToProto()
 	request.JobId = jobIDs
 
 	// Set the Username value to the currently authenticated username.
@@ -187,4 +188,24 @@ func IterateTasksController(
 		context.Background(),
 		&scheduler_proto.IterateTasksRequest{JobId: jobID, IncludeExisting: includeExisting},
 		grpc.PerRPCCredentials(jwtCredentials))
+}
+
+// GetNodeController gets an existing Node by its ID.
+func GetNodeController(
+	schedulerClient scheduler_proto.SchedulerClient,
+	nodeID uint64,
+) (*scheduler_proto.Node, error) {
+	return schedulerClient.GetNode(
+		context.Background(),
+		&scheduler_proto.NodeLookupRequest{NodeId: nodeID})
+}
+
+// ListNodesController lists the Nodes that satisfy the criteria.
+func ListNodesController(
+	schedulerClient scheduler_proto.SchedulerClient,
+	flags *ListNodesCmdFlags,
+) (*scheduler_proto.ListNodesResponse, error) {
+	r := flags.ToProto()
+	fmt.Println("request: ", r)
+	return schedulerClient.ListNodes(context.Background(), r)
 }

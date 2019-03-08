@@ -69,6 +69,7 @@ func (s *ServerTestSuite) TestListTasks() {
 
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
+			Limit:    10,
 		}
 
 		res, err := s.client.ListTasks(ctx, req)
@@ -85,6 +86,7 @@ func (s *ServerTestSuite) TestListTasks() {
 
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[1].Username,
+			Limit:    10,
 		}
 
 		res, err := s.client.ListTasks(ctx, req)
@@ -100,6 +102,7 @@ func (s *ServerTestSuite) TestListTasks() {
 
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
+			Limit:    10,
 		}
 		res, err := s.client.ListTasks(ctx, req)
 		s.assertGRPCError(err, codes.PermissionDenied)
@@ -113,6 +116,7 @@ func (s *ServerTestSuite) TestListTasks() {
 		req := &scheduler_proto.ListTasksRequest{
 			Username: jobs[0].Username,
 			Status:   []scheduler_proto.Task_Status{scheduler_proto.Task_STATUS_NEW},
+			Limit:    10,
 		}
 		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)
@@ -132,6 +136,7 @@ func (s *ServerTestSuite) TestListTasks() {
 			},
 			JobId:    []uint64{jobs[0].ID},
 			Ordering: scheduler_proto.ListTasksRequest_CREATED_AT_ASC,
+			Limit:    10,
 		}
 		res, err := s.client.ListTasks(ctx, req)
 		s.Require().NoError(err)

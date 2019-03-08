@@ -166,7 +166,7 @@ message Job {
 
     RestartPolicy restart_policy = 15;
 
-    // Scheduling constraint labels. Multiple labels with the same prefix are "OR"ed.
+    // Scheduling constraint labels. Multiple label values are "OR"ed.
     // Only the full string match is currently supported.
     repeated string cpu_labels = 16;
     repeated string gpu_labels = 17;
@@ -177,7 +177,7 @@ message Job {
     repeated string other_labels = 22;
 
     // Indicates that the Job is a daemon. If so, then a Node to which a corresponding Task was scheduled will not wait
-    // for an established p2p connection with client and will run a container immediately.
+    // for an established p2p connection with the client and will run a container immediately.
     bool is_daemon = 23;
 }
 
@@ -255,8 +255,7 @@ message NodeLookupRequest {
 }
 
 message ListNodesRequest {
-    string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})?$"}];
-    repeated Node.Status status = 2;
+    repeated Node.Status status = 1;
 
     enum Ordering {
         CONNECTED_AT_DESC = 0;
@@ -267,36 +266,42 @@ message ListNodesRequest {
         SCHEDULED_AT_ASC = 5;
     }
     // CONNECTED_AT_DESC is used by default.
-    Ordering ordering = 3;
+    Ordering ordering = 2;
 
     // Limit of 50 is used by default.
-    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 1000}];
-    uint32 offset = 5;
+    uint32 limit = 3 [(shared.proto.validator.field) = {int_lt: 301}];
+    uint32 offset = 4;
 
     // Matches Nodes with cpu_available >= given value.
-    float cpu_available = 6 [(shared.proto.validator.field) = {float_gte: 0}];
+    float cpu_available = 5 [(shared.proto.validator.field) = {float_gte: 0}];
     // Matches Nodes with cpu_class_min <= given value <= cpu_class.
-    CPUClass cpu_class = 7;
+    CPUClass cpu_class = 6;
 
     // Matches Nodes with memory_available >= given value.
-    uint32 memory_available = 8 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 memory_available = 7 [(shared.proto.validator.field) = {int_gt: 0}];
 
     // Matches Nodes with gpu_available >= given value.
-    uint32 gpu_available = 9;
+    uint32 gpu_available = 8;
     // Matches Nodes with gpu_class_min <= given value <= gpu_class.
-    GPUClass gpu_class = 10;
+    GPUClass gpu_class = 9;
 
     // Matches Nodes with disk_available >= given value.
-    uint32 disk_available = 11;
+    uint32 disk_available = 10;
     // Matches Nodes with disk_class_min <= given value <= disk_class.
-    DiskClass disk_class = 12;
+    DiskClass disk_class = 11;
 
-    // Matches Nodes with similar labels (non-empty intersection).
-    repeated string labels = 13;
+    // Matches Nodes with these labels (non-empty intersection).
+    repeated string cpu_labels = 12;
+    repeated string gpu_labels = 13;
+    repeated string disk_labels = 14;
+    repeated string memory_labels = 15;
+    repeated string username_labels = 16;
+    repeated string name_labels = 17;
+    repeated string other_labels = 18;
     // Matches Nodes with tasks_finished >= given value.
-    uint64 tasks_finished = 14;
+    uint64 tasks_finished = 19;
     // Matches Nodes with tasks_failed <= given value.
-    uint64 tasks_failed = 15;
+    uint64 tasks_failed = 20;
 }
 
 message ListNodesResponse {
@@ -354,7 +359,7 @@ message ListJobsRequest {
     Ordering ordering = 3;
 
     // Limit of 50 is used by default.
-    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 1000}];
+    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 301}];
     uint32 offset = 5;
 }
 
@@ -383,8 +388,8 @@ message ListTasksRequest {
     // CREATED_AT_DESC is used by default.
     Ordering ordering = 4;
 
-    // Limit of 50 is used by default.
-    uint32 limit = 5 [(shared.proto.validator.field) = {int_lt: 1000}];
+    // Limit of 300 is used by default.
+    uint32 limit = 5 [(shared.proto.validator.field) = {int_lt: 301}];
     uint32 offset = 6;
 }
 

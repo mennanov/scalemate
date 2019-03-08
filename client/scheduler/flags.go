@@ -20,9 +20,9 @@ func parsePathDefs(to map[string]string, paths []string) error {
 	return nil
 }
 
-// JobsCreateCmdFlags represents a set of flags for the `scalemate jobs create` command.
+// CreateJobCmdFlags represents a set of flags for the `scalemate jobs create` command.
 // Positional arguments are not included.
-type JobsCreateCmdFlags struct {
+type CreateJobCmdFlags struct {
 	Ports           []string
 	Volumes         []string
 	DownloadPaths   []string
@@ -49,8 +49,8 @@ type JobsCreateCmdFlags struct {
 	IsDaemon        bool
 }
 
-// ToJobProto parses the flags and returns a filled in Job_RunConfig struct.
-func (f *JobsCreateCmdFlags) ToJobProto() (*scheduler_proto.Job, error) {
+// ToProto parses the flags and returns a filled in Job_RunConfig struct.
+func (f *CreateJobCmdFlags) ToProto() (*scheduler_proto.Job, error) {
 	job := &scheduler_proto.Job{
 		RunConfig: &scheduler_proto.Job_RunConfig{
 			Entrypoint:           f.Entrypoint,
@@ -129,16 +129,16 @@ func (f *JobsCreateCmdFlags) ToJobProto() (*scheduler_proto.Job, error) {
 	return job, nil
 }
 
-// JobsListCmdFlags represents a set of flags for the `scalemate jobs list` command.
-type JobsListCmdFlags struct {
+// ListJobsCmdFlags represents a set of flags for the `scalemate jobs list` command.
+type ListJobsCmdFlags struct {
 	Status   []int
 	Ordering int32
 	Limit    uint32
 	Offset   uint32
 }
 
-// ToListJobsRequestProto creates a new scheduler_proto.ListJobsRequest from the flags.
-func (f *JobsListCmdFlags) ToListJobsRequestProto() *scheduler_proto.ListJobsRequest {
+// ToProto creates a new scheduler_proto.ListJobsRequest from the flags.
+func (f *ListJobsCmdFlags) ToProto() *scheduler_proto.ListJobsRequest {
 	request := &scheduler_proto.ListJobsRequest{
 		Ordering: scheduler_proto.ListJobsRequest_Ordering(f.Ordering),
 		Limit:    f.Limit,
@@ -154,16 +154,16 @@ func (f *JobsListCmdFlags) ToListJobsRequestProto() *scheduler_proto.ListJobsReq
 	return request
 }
 
-// TasksListCmdFlags represents a set of flags for the `scalemate tasks list` command.
-type TasksListCmdFlags struct {
+// ListTasksCmdFlags represents a set of flags for the `scalemate tasks list` command.
+type ListTasksCmdFlags struct {
 	Status   []int
 	Ordering int32
 	Limit    uint32
 	Offset   uint32
 }
 
-// ToListTasksRequestProto creates a new scheduler_proto.ListTasksRequest from the flags.
-func (f *TasksListCmdFlags) ToListTasksRequestProto() *scheduler_proto.ListTasksRequest {
+// ToProto creates a new scheduler_proto.ListTasksRequest from the flags.
+func (f *ListTasksCmdFlags) ToProto() *scheduler_proto.ListTasksRequest {
 	request := &scheduler_proto.ListTasksRequest{
 		Ordering: scheduler_proto.ListTasksRequest_Ordering(f.Ordering),
 		Limit:    f.Limit,
@@ -173,6 +173,63 @@ func (f *TasksListCmdFlags) ToListTasksRequestProto() *scheduler_proto.ListTasks
 		request.Status = make([]scheduler_proto.Task_Status, len(f.Status))
 		for i, s := range f.Status {
 			request.Status[i] = scheduler_proto.Task_Status(s)
+		}
+	}
+
+	return request
+}
+
+// ListNodesCmdFlags represents a set of flags for the `scalemate nodes list` command.
+type ListNodesCmdFlags struct {
+	Status          []int
+	Ordering        int32
+	Limit           uint32
+	Offset          uint32
+	CpuAvailable    float32
+	CpuClass        int32
+	MemoryAvailable uint32
+	GpuAvailable    uint32
+	GpuClass        int32
+	DiskAvailable   uint32
+	DiskClass       int32
+	CpuLabels       []string
+	GpuLabels       []string
+	DiskLabels      []string
+	MemoryLabels    []string
+	UsernameLabels  []string
+	NameLabels      []string
+	OtherLabels     []string
+	TasksFinished   uint64
+	TasksFailed     uint64
+}
+
+// ToProto creates a new ListNodesRequest from flags.
+func (f *ListNodesCmdFlags) ToProto() *scheduler_proto.ListNodesRequest {
+	request := &scheduler_proto.ListNodesRequest{
+		Ordering:        scheduler_proto.ListNodesRequest_Ordering(f.Ordering),
+		Limit:           f.Limit,
+		Offset:          f.Offset,
+		CpuAvailable:    f.CpuAvailable,
+		CpuClass:        scheduler_proto.CPUClass(f.CpuClass),
+		MemoryAvailable: f.MemoryAvailable,
+		GpuAvailable:    f.GpuAvailable,
+		GpuClass:        scheduler_proto.GPUClass(f.GpuClass),
+		DiskAvailable:   f.DiskAvailable,
+		DiskClass:       scheduler_proto.DiskClass(f.DiskClass),
+		CpuLabels:       f.CpuLabels,
+		GpuLabels:       f.GpuLabels,
+		DiskLabels:      f.DiskLabels,
+		MemoryLabels:    f.MemoryLabels,
+		UsernameLabels:  f.UsernameLabels,
+		NameLabels:      f.NameLabels,
+		OtherLabels:     f.OtherLabels,
+		TasksFinished:   f.TasksFinished,
+		TasksFailed:     f.TasksFailed,
+	}
+	if len(f.Status) != 0 {
+		request.Status = make([]scheduler_proto.Node_Status, len(f.Status))
+		for i, s := range f.Status {
+			request.Status[i] = scheduler_proto.Node_Status(s)
 		}
 	}
 

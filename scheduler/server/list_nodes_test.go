@@ -42,7 +42,7 @@ func (s *ServerTestSuite) TestListNodes() {
 			},
 			nodeNamesExpected:  []string{"node1"},
 			totalCountExpected: 2,
-			request:            &scheduler_proto.ListNodesRequest{Username: "username1", Limit: 1},
+			request:            &scheduler_proto.ListNodesRequest{UsernameLabels: []string{"username1"}, Limit: 1},
 		},
 		{
 			nodes: []*models.Node{
@@ -54,13 +54,17 @@ func (s *ServerTestSuite) TestListNodes() {
 					CpuClass:        models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
 					CpuClassMin:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_INTERMEDIATE),
 					CpuAvailable:    4,
+					CpuModel:        "Intel i7",
 					MemoryAvailable: 2000,
+					MemoryModel:     "DDR3",
 					GpuClass:        models.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
 					GpuClassMin:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_INTERMEDIATE),
 					GpuAvailable:    2,
+					GpuModel:        "Nvidia",
 					DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 					DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 					DiskAvailable:   10000,
+					DiskModel:       "Seagate",
 					Labels:          []string{"label1", "label2", "label3"},
 					TasksFinished:   100,
 					TasksFailed:     50,
@@ -80,7 +84,6 @@ func (s *ServerTestSuite) TestListNodes() {
 			nodeNamesExpected:  []string{"node1"},
 			totalCountExpected: 1,
 			request: &scheduler_proto.ListNodesRequest{
-				Username: "username1",
 				Status: []scheduler_proto.Node_Status{
 					scheduler_proto.Node_STATUS_ONLINE,
 					scheduler_proto.Node_STATUS_OFFLINE,
@@ -92,9 +95,16 @@ func (s *ServerTestSuite) TestListNodes() {
 				GpuAvailable:    2,
 				DiskClass:       scheduler_proto.DiskClass_DISK_CLASS_SSD,
 				DiskAvailable:   5000,
-				Labels:          []string{"label1", "label2", "label4"},
+				UsernameLabels:  []string{"username1"},
+				NameLabels:      []string{"node1", "node2"},
+				CpuLabels:       []string{"Intel i7"},
+				GpuLabels:       []string{"Nvidia"},
+				MemoryLabels:    []string{"DDR3"},
+				DiskLabels:      []string{"Seagate"},
+				OtherLabels:     []string{"label1", "label2", "label4"},
 				TasksFinished:   100,
 				TasksFailed:     80,
+				Limit:           10,
 			},
 		},
 		{
@@ -119,6 +129,7 @@ func (s *ServerTestSuite) TestListNodes() {
 			totalCountExpected: 3,
 			request: &scheduler_proto.ListNodesRequest{
 				Ordering: scheduler_proto.ListNodesRequest_SCHEDULED_AT_DESC,
+				Limit:    10,
 				Offset:   1,
 			},
 		},
@@ -142,7 +153,7 @@ func (s *ServerTestSuite) TestListNodes() {
 			},
 			nodeNamesExpected:  []string{"node1", "node2", "node3"},
 			totalCountExpected: 3,
-			request:            &scheduler_proto.ListNodesRequest{},
+			request:            &scheduler_proto.ListNodesRequest{Limit: 10},
 		},
 	} {
 		for _, node := range testCase.nodes {

@@ -40,7 +40,7 @@ func TestCreateJobController(t *testing.T) {
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
-			image, "", &scheduler.JobsCreateCmdFlags{})
+			image, "", &scheduler.CreateJobCmdFlags{})
 		require.NoError(t, err)
 		assert.NotNil(t, job)
 	})
@@ -73,7 +73,7 @@ func TestCreateJobController(t *testing.T) {
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
-			image, command, &scheduler.JobsCreateCmdFlags{
+			image, command, &scheduler.CreateJobCmdFlags{
 				Ports:      []string{"8080:8080"},
 				Volumes:    []string{"./path:/path"},
 				Entrypoint: entrypoint,
@@ -89,7 +89,7 @@ func TestCreateJobController(t *testing.T) {
 		schedulerClient := NewMockSchedulerClient(ctrl)
 
 		_, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
-			"image", "", &scheduler.JobsCreateCmdFlags{})
+			"image", "", &scheduler.CreateJobCmdFlags{})
 		assert.Error(t, err)
 	})
 
@@ -110,7 +110,7 @@ func TestCreateJobController(t *testing.T) {
 		schedulerClient := NewMockSchedulerClient(ctrl)
 
 		_, err = scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
-			"", "", &scheduler.JobsCreateCmdFlags{})
+			"", "", &scheduler.CreateJobCmdFlags{})
 		assert.Error(t, err)
 	})
 
@@ -134,7 +134,7 @@ func TestCreateJobController(t *testing.T) {
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
-			"image", "", &scheduler.JobsCreateCmdFlags{})
+			"image", "", &scheduler.CreateJobCmdFlags{})
 		require.Error(t, err)
 		assert.Nil(t, job)
 	})
@@ -201,7 +201,7 @@ func TestListJobsController(t *testing.T) {
 
 		ctx := context.Background()
 
-		flags := &scheduler.JobsListCmdFlags{}
+		flags := &scheduler.ListJobsCmdFlags{}
 		username := "test_username"
 		listJobsRequestExpected := &scheduler_proto.ListJobsRequest{Username: username}
 
@@ -223,7 +223,7 @@ func TestListJobsController(t *testing.T) {
 
 		ctx := context.Background()
 
-		flags := &scheduler.JobsListCmdFlags{
+		flags := &scheduler.ListJobsCmdFlags{
 			Status:   []int{int(scheduler_proto.Job_STATUS_FINISHED)},
 			Ordering: int32(scheduler_proto.ListJobsRequest_CREATED_AT_ASC),
 			Limit:    150,
@@ -277,7 +277,7 @@ func TestListJobsController(t *testing.T) {
 		defer deleteTokens()
 
 		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient,
-			&scheduler.JobsListCmdFlags{})
+			&scheduler.ListJobsCmdFlags{})
 		require.Error(t, err)
 		assert.Nil(t, response)
 	})
@@ -398,7 +398,7 @@ func TestListTasksController(t *testing.T) {
 
 		ctx := context.Background()
 
-		flags := &scheduler.TasksListCmdFlags{}
+		flags := &scheduler.ListTasksCmdFlags{}
 		jobIDs := []uint64{1, 2}
 		username := "test_username"
 		listTasksRequestExpected := &scheduler_proto.ListTasksRequest{Username: username, JobId: jobIDs}
@@ -422,7 +422,7 @@ func TestListTasksController(t *testing.T) {
 		ctx := context.Background()
 
 		jobIDs := []uint64{1, 2}
-		flags := &scheduler.TasksListCmdFlags{
+		flags := &scheduler.ListTasksCmdFlags{
 			Status:   []int{int(scheduler_proto.Task_STATUS_RUNNING)},
 			Ordering: int32(scheduler_proto.ListTasksRequest_UPDATED_AT_ASC),
 			Limit:    150,
@@ -477,7 +477,7 @@ func TestListTasksController(t *testing.T) {
 		defer deleteTokens()
 
 		response, err := scheduler.ListTasksController(NewMockAccountsClient(ctrl), schedulerClient,
-			jobIDs, &scheduler.TasksListCmdFlags{})
+			jobIDs, &scheduler.ListTasksCmdFlags{})
 		require.Error(t, err)
 		assert.Nil(t, response)
 	})
@@ -537,12 +537,12 @@ func TestCancelTaskController(t *testing.T) {
 	})
 }
 
-type schedulerIterateTasksFakeClient struct {
+type tasksStreamingFakeClient struct {
 	index int
 	tasks []*scheduler_proto.Task
 }
 
-func (c *schedulerIterateTasksFakeClient) Recv() (*scheduler_proto.Task, error) {
+func (c *tasksStreamingFakeClient) Recv() (*scheduler_proto.Task, error) {
 	if c.index < len(c.tasks) {
 		c.index++
 		return c.tasks[c.index-1], nil
@@ -550,32 +550,32 @@ func (c *schedulerIterateTasksFakeClient) Recv() (*scheduler_proto.Task, error) 
 	return nil, io.EOF
 }
 
-func (c *schedulerIterateTasksFakeClient) Header() (metadata.MD, error) {
+func (c *tasksStreamingFakeClient) Header() (metadata.MD, error) {
 	return nil, nil
 }
 
-func (c *schedulerIterateTasksFakeClient) Trailer() metadata.MD {
+func (c *tasksStreamingFakeClient) Trailer() metadata.MD {
 	return nil
 }
 
-func (c *schedulerIterateTasksFakeClient) CloseSend() error {
+func (c *tasksStreamingFakeClient) CloseSend() error {
 	return nil
 }
 
-func (c *schedulerIterateTasksFakeClient) Context() context.Context {
+func (c *tasksStreamingFakeClient) Context() context.Context {
 	return nil
 }
 
-func (c *schedulerIterateTasksFakeClient) SendMsg(m interface{}) error {
+func (c *tasksStreamingFakeClient) SendMsg(m interface{}) error {
 	return nil
 }
 
-func (c *schedulerIterateTasksFakeClient) RecvMsg(m interface{}) error {
+func (c *tasksStreamingFakeClient) RecvMsg(m interface{}) error {
 	return nil
 }
 
 // Compile time interface check.
-var _ scheduler_proto.Scheduler_IterateTasksClient = new(schedulerIterateTasksFakeClient)
+var _ scheduler_proto.Scheduler_IterateTasksClient = new(tasksStreamingFakeClient)
 
 func TestIterateTasksController(t *testing.T) {
 	t.Run("TasksSuccessfullyReceived", func(t *testing.T) {
@@ -589,7 +589,7 @@ func TestIterateTasksController(t *testing.T) {
 
 		schedulerClient := NewMockSchedulerClient(ctrl)
 		schedulerClient.EXPECT().IterateTasks(ctx, iterateTasksRequest, gomock.Any()).
-			Return(new(schedulerIterateTasksFakeClient), nil)
+			Return(new(tasksStreamingFakeClient), nil)
 
 		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
@@ -628,5 +628,25 @@ func TestIterateTasksController(t *testing.T) {
 		task, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobID, false)
 		require.Error(t, err)
 		assert.Nil(t, task)
+	})
+}
+
+func TestGetNodeController(t *testing.T) {
+	t.Run("NodeSuccessfullyReturned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		nodeID := uint64(42)
+		nodeLookupRequestExpected := &scheduler_proto.NodeLookupRequest{NodeId: nodeID}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().GetNode(ctx, nodeLookupRequestExpected, gomock.Any()).
+			Return(&scheduler_proto.Node{Id: nodeID}, nil)
+
+		job, err := scheduler.GetNodeController(schedulerClient, nodeID)
+		require.NoError(t, err)
+		assert.NotNil(t, job)
 	})
 }

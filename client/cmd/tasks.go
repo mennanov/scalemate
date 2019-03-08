@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	tasksListCmdFlagValues         = scheduler.TasksListCmdFlags{}
+	tasksListCmdFlagValues         = scheduler.ListTasksCmdFlags{}
 	tasksIterateCmdIncludeExisting bool
 )
 

@@ -19,8 +19,9 @@ type Model struct {
 }
 
 func init() {
-	// Remove the default gorm callback on Create as it populates the `UpdatedAt` field which is undesirable.
+	// Remove default gorm callbacks on Create as it populates the `UpdatedAt` field which is undesirable.
 	gorm.DefaultCallback.Create().Remove("gorm:update_time_stamp")
+	gorm.DefaultCallback.Create().Remove("gorm:update_time_stamp_when_create")
 }
 
 // BeforeCreate is a gorm callback that is called before every Create operation. It populates the `CreatedAt` field with

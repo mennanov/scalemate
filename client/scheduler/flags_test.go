@@ -16,7 +16,7 @@ func TestJobsCreateCmdFlags_ToJobProto_WithAllFlagsCorrect(t *testing.T) {
 		for gpuClass := range scheduler_proto.GPUClass_name {
 			for diskClass := range scheduler_proto.DiskClass_name {
 				for restartPolicy := range scheduler_proto.Job_RestartPolicy_name {
-					flags := scheduler.JobsCreateCmdFlags{
+					flags := scheduler.CreateJobCmdFlags{
 						Ports:           []string{"80:8000", "443:4443"},
 						Volumes:         []string{"./cwd_relative_path:/path_in_container"},
 						DownloadPaths:   []string{"cwd_relative_path/sub_path:local_path"},
@@ -42,7 +42,7 @@ func TestJobsCreateCmdFlags_ToJobProto_WithAllFlagsCorrect(t *testing.T) {
 						OtherLabels:     []string{"special_promo_label"},
 						IsDaemon:        true,
 					}
-					job, err := flags.ToJobProto();
+					job, err := flags.ToProto();
 					require.NoError(t, err)
 					assert.NotNil(t, job)
 					// Check the values.
@@ -89,14 +89,14 @@ func TestJobsCreateCmdFlags_ToJobProto_WithAllFlagsCorrect(t *testing.T) {
 }
 
 func TestJobsCreateCmdFlags_ToJobProto_WithNoFlags(t *testing.T) {
-	emptyFlags := &scheduler.JobsCreateCmdFlags{}
-	job, err := emptyFlags.ToJobProto()
+	emptyFlags := &scheduler.CreateJobCmdFlags{}
+	job, err := emptyFlags.ToProto()
 	require.NoError(t, err)
 	require.NotNil(t, job)
 }
 
 func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
-	for _, flags := range []*scheduler.JobsCreateCmdFlags{
+	for _, flags := range []*scheduler.CreateJobCmdFlags{
 		// Invalid ports.
 		{Ports: []string{":"}},
 		{Ports: []string{"a:10"}},
@@ -121,7 +121,7 @@ func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
 		{EnvVars: []string{"foo"}},
 		{EnvVars: []string{""}},
 	} {
-		job, err := flags.ToJobProto()
+		job, err := flags.ToProto()
 		assert.Error(t, err, "failed for flags: %s", flags)
 		assert.Nil(t, job)
 	}
@@ -129,11 +129,11 @@ func TestJobsCreateCmdFlags_ToJobProto_InvalidInput(t *testing.T) {
 
 func TestJobsListCmdFlags_ToListJobsRequestProto(t *testing.T) {
 	for _, testCase := range []struct {
-		flags         *scheduler.JobsListCmdFlags
+		flags         *scheduler.ListJobsCmdFlags
 		expectedProto *scheduler_proto.ListJobsRequest
 	}{
 		{
-			flags: &scheduler.JobsListCmdFlags{
+			flags: &scheduler.ListJobsCmdFlags{
 				Status: []int{
 					int(scheduler_proto.Job_STATUS_FINISHED),
 					int(scheduler_proto.Job_STATUS_NEW),
@@ -154,7 +154,7 @@ func TestJobsListCmdFlags_ToListJobsRequestProto(t *testing.T) {
 			},
 		},
 		{
-			flags: &scheduler.JobsListCmdFlags{},
+			flags: &scheduler.ListJobsCmdFlags{},
 			expectedProto: &scheduler_proto.ListJobsRequest{
 				Username: "",
 				Status:   nil,
@@ -164,17 +164,17 @@ func TestJobsListCmdFlags_ToListJobsRequestProto(t *testing.T) {
 			},
 		},
 	} {
-		assert.Equal(t, testCase.expectedProto, testCase.flags.ToListJobsRequestProto())
+		assert.Equal(t, testCase.expectedProto, testCase.flags.ToProto())
 	}
 }
 
 func TestTasksListCmdFlags_ToListTasksRequestProto(t *testing.T) {
 	for _, testCase := range []struct {
-		flags         *scheduler.TasksListCmdFlags
+		flags         *scheduler.ListTasksCmdFlags
 		expectedProto *scheduler_proto.ListTasksRequest
 	}{
 		{
-			flags: &scheduler.TasksListCmdFlags{
+			flags: &scheduler.ListTasksCmdFlags{
 				Status: []int{
 					int(scheduler_proto.Task_STATUS_CANCELLED),
 					int(scheduler_proto.Task_STATUS_RUNNING),
@@ -195,7 +195,7 @@ func TestTasksListCmdFlags_ToListTasksRequestProto(t *testing.T) {
 			},
 		},
 		{
-			flags: &scheduler.TasksListCmdFlags{},
+			flags: &scheduler.ListTasksCmdFlags{},
 			expectedProto: &scheduler_proto.ListTasksRequest{
 				Username: "",
 				Status:   nil,
@@ -205,6 +205,6 @@ func TestTasksListCmdFlags_ToListTasksRequestProto(t *testing.T) {
 			},
 		},
 	} {
-		assert.Equal(t, testCase.expectedProto, testCase.flags.ToListTasksRequestProto())
+		assert.Equal(t, testCase.expectedProto, testCase.flags.ToProto())
 	}
 }

@@ -42,6 +42,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		defer restoreClaims()
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
+			Limit:    10,
 		}
 
 		res, err := s.client.ListJobs(ctx, req)
@@ -57,6 +58,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		defer restoreClaims()
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
+			Limit:    10,
 		}
 		res, err := s.client.ListJobs(ctx, req)
 		s.Require().NoError(err)
@@ -84,6 +86,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		req := &scheduler_proto.ListJobsRequest{
 			Username: "username1",
 			Status:   []scheduler_proto.Job_Status{scheduler_proto.Job_STATUS_PENDING},
+			Limit:    10,
 		}
 		res, err := s.client.ListJobs(ctx, req)
 		s.Require().NoError(err)
@@ -102,6 +105,7 @@ func (s *ServerTestSuite) TestListJobs() {
 				scheduler_proto.Job_STATUS_FINISHED,
 			},
 			Ordering: scheduler_proto.ListJobsRequest_CREATED_AT_ASC,
+			Limit:    10,
 		}
 		res, err := s.client.ListJobs(ctx, req)
 		s.Require().NoError(err)

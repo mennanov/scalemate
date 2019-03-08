@@ -26,6 +26,14 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
+const (
+	// JobsScheduledForNodeQueryLimit is the number of Jobs to be selected from DB when Jobs are selected to be
+	// scheduled on a Node.
+	JobsScheduledForNodeQueryLimit = 100
+	// ListJobsMaxLimit is a maximum allowed limit in the SQL query that lists Jobs.
+	ListJobsMaxLimit = 300
+)
+
 // Job defines a Job gorm model.
 // Whenever a user runs `scalemate run ...` a new Job is created in DB.
 type Job struct {
@@ -553,10 +561,10 @@ func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (u
 
 	// Apply limit.
 	var limit uint32
-	if request.GetLimit() != 0 {
+	if request.GetLimit() <= ListJobsMaxLimit {
 		limit = request.GetLimit()
 	} else {
-		limit = 50
+		limit = ListJobsMaxLimit
 	}
 	query = query.Limit(limit)
 

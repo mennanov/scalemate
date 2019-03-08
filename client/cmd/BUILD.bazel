@@ -7,6 +7,7 @@ go_library(
         "jobs.go",
         "login.go",
         "logout.go",
+        "nodes.go",
         "register.go",
         "root.go",
         "tasks.go",

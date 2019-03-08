@@ -19,6 +19,11 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
+const (
+	// ListTasksMaxLimit is a maximum allowed limit in the SQL query that lists Tasks.
+	ListTasksMaxLimit = 300
+)
+
 // Task represents a running Job on a Node (Docker container).
 type Task struct {
 	Model
@@ -211,7 +216,7 @@ var TaskStatusTransitions = map[scheduler_proto.Task_Status][]scheduler_proto.Ta
 	scheduler_proto.Task_STATUS_FINISHED:    {},
 	scheduler_proto.Task_STATUS_FAILED:      {},
 	scheduler_proto.Task_STATUS_NODE_FAILED: {},
-	scheduler_proto.Task_STATUS_CANCELLED: {},
+	scheduler_proto.Task_STATUS_CANCELLED:   {},
 }
 
 // UpdateStatus updates the Task's status. It returns an update event or an error if the newStatus can not be set.
@@ -285,10 +290,10 @@ func (tasks *Tasks) List(db *gorm.DB, request *scheduler_proto.ListTasksRequest)
 
 	// Apply limit.
 	var limit uint32
-	if request.GetLimit() != 0 {
+	if request.GetLimit() <= ListTasksMaxLimit {
 		limit = request.GetLimit()
 	} else {
-		limit = 50
+		limit = ListTasksMaxLimit
 	}
 	query = query.Limit(limit)
 
