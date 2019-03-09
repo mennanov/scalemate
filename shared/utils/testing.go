@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"regexp"
 	"testing"
 	"time"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/mennanov/scalemate/shared/auth"
 )
+
+const msgWaitTimeout = time.Second
 
 // WaitForMessages waits for the messages and matches their routing keys with the given keys.
 // The function returns once all the provided keys have matched.
@@ -41,7 +44,13 @@ func WaitForMessages(messages <-chan amqp.Delivery, keys ...string) {
 	}(allMessagesReceived)
 
 	// Wait until all messages are received.
-	<-allMessagesReceived
+	select {
+	case <-allMessagesReceived:
+
+	case <-time.Tick(msgWaitTimeout):
+		panic(fmt.Sprintf("unreceived messages within the timeout: %s", keys))
+	}
+
 }
 
 // CreateTestingTokenString creates a JWT testing string for a given ttl and token type.
@@ -97,4 +106,3 @@ func GetAllErrors() []error {
 	errs[17] = errors.New("Unknown error")
 	return errs
 }
-
