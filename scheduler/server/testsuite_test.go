@@ -139,6 +139,7 @@ func (s *ServerTestSuite) TearDownSuite() {
 	// Wait for the service to stop gracefully.
 	time.Sleep(time.Millisecond*200)
 	utils.Close(s.amqpConnection)
+	fmt.Println("ServerTestSuite.TearDownSuite complete.")
 }
 
 // newJob creates a minimal valid Job and applies the given options to it.

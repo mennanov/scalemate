@@ -138,6 +138,7 @@ func (s *ServerTestSuite) TearDownSuite() {
 	// Wait for the service to stop gracefully.
 	time.Sleep(time.Millisecond * 200)
 	s.NoError(migrations.RollbackAllMigrations(s.db))
+	utils.Close(s.amqpConnection)
 }
 
 func TestRunServerSuite(t *testing.T) {
