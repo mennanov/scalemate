@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/khaiql/dbcleaner.v2"
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
+	"gopkg.in/khaiql/dbcleaner.v2/logging"
 
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -16,7 +17,7 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-var cleaner = dbcleaner.New()
+var cleaner = dbcleaner.New(dbcleaner.SetLogger(&logging.Stdout{}))
 
 type ModelsTestSuite struct {
 	suite.Suite

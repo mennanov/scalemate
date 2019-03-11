@@ -111,7 +111,7 @@ go_repository(
 
 go_repository(
     name = "com_github_khaiql_dbcleaner",
-    commit = "3485a1ee4b01c233d640dc163757f60a77df9bf8",
+    commit = "bcdf5e508ebbc7cfffb0e8e1a93e9d01db4824a7",
     importpath = "github.com/khaiql/dbcleaner",
 )
 

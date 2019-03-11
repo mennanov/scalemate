@@ -22,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"gopkg.in/khaiql/dbcleaner.v2"
 	"gopkg.in/khaiql/dbcleaner.v2/engine"
+	"gopkg.in/khaiql/dbcleaner.v2/logging"
 
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -32,7 +33,7 @@ import (
 )
 
 var verbose bool
-var cleaner = dbcleaner.New()
+var cleaner = dbcleaner.New(dbcleaner.SetLogger(&logging.Stdout{}))
 
 func init() {
 	flag.BoolVar(&verbose, "verbose", false, "verbose")
