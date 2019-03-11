@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -66,7 +67,14 @@ var upCmd = &cobra.Command{
 		shutdown := make(chan os.Signal)
 		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-		schedulerServer.Serve(grpcAddr, shutdown)
+		ctx, ctxCancel := context.WithCancel(context.Background())
+
+		go func() {
+			<-shutdown
+			ctxCancel()
+		}()
+
+		schedulerServer.Serve(ctx, grpcAddr)
 	},
 }
 

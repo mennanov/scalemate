@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"net"
-	"os"
-	"sync"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -85,8 +83,8 @@ func (s *AccountsServer) Close() error {
 }
 
 // Serve creates a GRPC server and starts serving on a given address. This function is blocking and runs upon the server
-// termination.
-func (s *AccountsServer) Serve(grpcAddr string, shutdown chan os.Signal) {
+// termination (when the context is Done).
+func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string) {
 	entry := logrus.NewEntry(s.logger)
 	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
@@ -117,24 +115,17 @@ func (s *AccountsServer) Serve(grpcAddr string, shutdown chan os.Signal) {
 		}
 	}(f)
 
-	wg := &sync.WaitGroup{}
-	consumersCtx, consumersCtxCancel := context.WithCancel(context.Background())
 	for _, consumer := range s.consumers {
-		go consumer.Consume(consumersCtx, wg)
+		go consumer.Consume(ctx)
 	}
 
-	defer func() {
-		consumersCtxCancel()
-		wg.Wait()
-	}()
-
 	select {
-	case <-shutdown:
+	case <-ctx.Done():
 		s.logger.Info("Gracefully stopping gRPC server...")
 		grpcServer.GracefulStop()
-		s.logger.Info("gRPC stopped.")
 
 	case err := <-f:
 		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
 	}
+	s.logger.Info("gRPC server is stopped.")
 }

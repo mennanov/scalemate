@@ -47,7 +47,7 @@ type ServerTestSuite struct {
 	db              *gorm.DB
 	amqpChannel     *amqp.Channel
 	amqpConnection  *amqp.Connection
-	shutdown        chan os.Signal
+	ctxCancel       context.CancelFunc
 	bCryptCost      int
 	accessTokenTTL  time.Duration
 	refreshTokenTTL time.Duration
@@ -58,7 +58,6 @@ func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 	var err error
-	s.shutdown = make(chan os.Signal)
 
 	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
 	s.Require().NoError(err)
@@ -104,8 +103,12 @@ func (s *ServerTestSuite) SetupSuite() {
 		panic(fmt.Sprintf("Failed to create gRPC server: %+v", err))
 	}
 
+	var ctx context.Context
+	ctx, s.ctxCancel = context.WithCancel(context.Background())
+
 	go func() {
-		s.service.Serve(localAddr, s.shutdown)
+		s.service.Serve(ctx, localAddr)
+		defer utils.Close(s.service)
 	}()
 
 	// Waiting for gRPC server to start serving.
@@ -130,9 +133,10 @@ func (s *ServerTestSuite) TearDownTest() {
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
-	// Send os.Interrupt to the shutdown channel to gracefully stop the server.
+	s.ctxCancel()
+	// Wait for the service to stop gracefully.
+	time.Sleep(time.Millisecond * 200)
 	s.NoError(migrations.RollbackAllMigrations(s.db))
-	s.shutdown <- os.Interrupt
 }
 
 func TestRunServerSuite(t *testing.T) {

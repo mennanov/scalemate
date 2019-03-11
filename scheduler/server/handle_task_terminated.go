@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
@@ -51,7 +52,19 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Job status"))
 	}
 
-	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent); err != nil {
+	node := &models.Node{Model: models.Model{ID: task.NodeID}}
+	nodeUpdates := make(map[string]interface{})
+	if task.Status == models.Enum(scheduler_proto.Task_STATUS_NODE_FAILED) {
+		nodeUpdates["tasks_failed"] = gorm.Expr("tasks_failed + 1")
+	} else {
+		nodeUpdates["tasks_finished"] = gorm.Expr("tasks_finished + 1")
+	}
+	nodeUpdatedEvent, err := node.Updates(tx, nodeUpdates)
+	if err != nil {
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Node statistics"))
+	}
+
+	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent, nodeUpdatedEvent); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

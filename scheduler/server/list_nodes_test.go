@@ -12,7 +12,6 @@ import (
 func (s *ServerTestSuite) TestListNodes() {
 	ctx := context.Background()
 
-	s.db = s.db.LogMode(true)
 	minuteAgo := time.Now().Add(-time.Minute)
 	hourAgo := time.Now().Add(-time.Minute * 60)
 	dayAgo := time.Now().Add(-time.Hour * 24)

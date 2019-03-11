@@ -3,8 +3,6 @@ package server
 import (
 	"context"
 	"net"
-	"os"
-	"sync"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -152,7 +150,8 @@ func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*event
 
 // Serve creates a gRPC server and starts serving on a given address.
 // It also starts all the consumers.
-func (s *SchedulerServer) Serve(grpcAddr string, shutdown chan os.Signal) {
+// The service is gracefully stopped when the given context is Done.
+func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
 	entry := logrus.NewEntry(s.logger)
 	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
@@ -184,25 +183,17 @@ func (s *SchedulerServer) Serve(grpcAddr string, shutdown chan os.Signal) {
 		}
 	}(f)
 
-	consumersCtx, consumersCtxCancel := context.WithCancel(context.Background())
-	wg := &sync.WaitGroup{}
-
-	defer func() {
-		consumersCtxCancel()
-		wg.Wait()
-	}()
-
 	for _, consumer := range s.consumers {
-		go consumer.Consume(consumersCtx, wg)
+		go consumer.Consume(ctx)
 	}
 
 	select {
-	case <-shutdown:
+	case <-ctx.Done():
 		s.logger.Info("Gracefully stopping gRPC server...")
-		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-f:
 		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
 	}
+	s.logger.Info("gRPC server is stopped.")
 }

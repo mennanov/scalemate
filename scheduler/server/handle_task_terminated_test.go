@@ -37,10 +37,14 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
 	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated\..*?tasks_finished`)
 
 	// Verify that the jobScheduled now has a status "FINISHED".
 	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
+	// Verify than the Node's statistics are updated.
+	s.Require().NoError(node.LoadFromDB(s.db))
+	s.Equal(uint64(1), node.TasksFinished)
 }
 
 func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() {
@@ -67,14 +71,18 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 	_, err = task.Create(s.db)
 	s.Require().NoError(err)
 
-	taskUpdatedEvent, err := task.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FAILED)
+	taskUpdatedEvent, err := task.UpdateStatus(s.db, scheduler_proto.Task_STATUS_NODE_FAILED)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
 	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated\..*?tasks_failed`)
 
 	// Verify that the jobScheduled now has a status "PENDING".
 	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_PENDING), job.Status)
+	// Verify than the Node's statistics are updated.
+	s.Require().NoError(node.LoadFromDB(s.db))
+	s.Equal(uint64(1), node.TasksFailed)
 }

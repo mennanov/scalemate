@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
@@ -15,7 +14,7 @@ import (
 type Consumer interface {
 	// Consume is a blocking function that consumes events until the context is Done.
 	// It should increment the wg.Add(1) when it starts and call wg.Done() when the function exits.
-	Consume(ctx context.Context, wg *sync.WaitGroup)
+	Consume(ctx context.Context)
 	// Close closes all the corresponding consumer resources.
 	Close() error
 }
@@ -67,10 +66,7 @@ func NewAMQPConsumer(
 
 // Consume receives messages from an AMQP queue, unmarshals the protobuf message and calls the handler.
 // The function terminates when the context is Done.
-func (l *AMQPConsumer) Consume(ctx context.Context, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
-
+func (l *AMQPConsumer) Consume(ctx context.Context) {
 	for {
 		select {
 		case msg, ok := <-l.messages:

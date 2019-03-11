@@ -49,6 +49,8 @@ type ServerTestSuite struct {
 	amqpRawConsumer <-chan amqp.Delivery
 	shutdown        chan os.Signal
 	producer        events.Producer
+	grpcConnection  *grpc.ClientConn
+	ctxCancel       context.CancelFunc
 
 	claimsInjector *auth.FakeClaimsInjector
 }
@@ -56,7 +58,6 @@ type ServerTestSuite struct {
 func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50052"
-	s.shutdown = make(chan os.Signal)
 
 	var err error
 	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
@@ -95,13 +96,18 @@ func (s *ServerTestSuite) SetupSuite() {
 	pg := engine.NewPostgresEngine(dsn)
 	cleaner.SetEngine(pg)
 
+	var ctx context.Context
+	ctx, s.ctxCancel = context.WithCancel(context.Background())
+
 	go func() {
-		s.service.Serve(localAddr, s.shutdown)
+		s.service.Serve(ctx, localAddr)
+		defer utils.Close(s.service)
 	}()
 
 	// Waiting for gRPC server to start serving.
 	time.Sleep(time.Millisecond * 100)
-	s.client = scheduler_proto.NewSchedulerClient(newTestConn(localAddr))
+	s.grpcConnection = newTestConn(localAddr)
+	s.client = scheduler_proto.NewSchedulerClient(s.grpcConnection)
 }
 
 func (s *ServerTestSuite) SetupTest() {
@@ -127,7 +133,11 @@ func (s *ServerTestSuite) TearDownTest() {
 
 func (s *ServerTestSuite) TearDownSuite() {
 	// Send os.Interrupt to the shutdown channel to gracefully stop the server.
-	s.shutdown <- os.Interrupt
+	utils.Close(s.grpcConnection)
+	s.ctxCancel()
+	// Wait for the service to stop gracefully.
+	time.Sleep(time.Millisecond*200)
+	utils.Close(s.amqpConnection)
 }
 
 // newJob creates a minimal valid Job and applies the given options to it.
