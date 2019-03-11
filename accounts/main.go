@@ -1,4 +1,4 @@
-package accounts
+package main
 
 import (
 	"github.com/mennanov/scalemate/accounts/cmd"
