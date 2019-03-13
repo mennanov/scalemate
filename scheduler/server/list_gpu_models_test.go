@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -61,29 +60,22 @@ func (s *ServerTestSuite) TestListGpuModels() {
 		req := &scheduler_proto.ListGpuModelsRequest{}
 		res, err := s.client.ListGpuModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(2, len(res.GpuModels))
-		mask := fieldmask_utils.MaskFromString("GpuModel,GpuClass,GpuCapacity,GpuAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"GpuModel":     "model1",
-			"GpuClass":     scheduler_proto.GPUClass_GPU_CLASS_ENTRY,
-			"GpuCapacity":  uint32(8),
-			"GpuAvailable": uint32(3),
-			"NodesCount":   uint32(2),
-		}, resMap)
-
-		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[1], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"GpuModel":     "model2",
-			"GpuClass":     scheduler_proto.GPUClass_GPU_CLASS_PRO,
-			"GpuCapacity":  uint32(8),
-			"GpuAvailable": uint32(1),
-			"NodesCount":   uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListGpuModelsResponse_GpuModel{
+			{
+				GpuModel:     "model1",
+				GpuClass:     scheduler_proto.GPUClass_GPU_CLASS_ENTRY,
+				GpuCapacity:  8,
+				GpuAvailable: 3,
+				NodesCount:   2,
+			},
+			{
+				GpuModel:     "model2",
+				GpuClass:     scheduler_proto.GPUClass_GPU_CLASS_PRO,
+				GpuCapacity:  8,
+				GpuAvailable: 1,
+				NodesCount:   1,
+			},
+		}, res.GpuModels)
 	})
 
 	s.T().Run("returns GPUs for requested class", func(t *testing.T) {
@@ -92,18 +84,15 @@ func (s *ServerTestSuite) TestListGpuModels() {
 		}
 		res, err := s.client.ListGpuModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(1, len(res.GpuModels))
-		mask := fieldmask_utils.MaskFromString("GpuModel,GpuClass,GpuCapacity,GpuAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.GpuModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"GpuModel":     "model2",
-			"GpuClass":     scheduler_proto.GPUClass_GPU_CLASS_PRO,
-			"GpuCapacity":  uint32(8),
-			"GpuAvailable": uint32(1),
-			"NodesCount":   uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListGpuModelsResponse_GpuModel{
+			{
+				GpuModel:     "model2",
+				GpuClass:     scheduler_proto.GPUClass_GPU_CLASS_PRO,
+				GpuCapacity:  8,
+				GpuAvailable: 1,
+				NodesCount:   1,
+			},
+		}, res.GpuModels)
 	})
 
 }

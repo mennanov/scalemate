@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -61,29 +60,22 @@ func (s *ServerTestSuite) TestListDiskModels() {
 		req := &scheduler_proto.ListDiskModelsRequest{}
 		res, err := s.client.ListDiskModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(2, len(res.DiskModels))
-		mask := fieldmask_utils.MaskFromString("DiskModel,DiskClass,DiskCapacity,DiskAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"DiskModel":     "model1",
-			"DiskClass":     scheduler_proto.DiskClass_DISK_CLASS_HDD,
-			"DiskCapacity":  uint32(8),
-			"DiskAvailable": uint32(3),
-			"NodesCount":    uint32(2),
-		}, resMap)
-
-		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[1], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"DiskModel":     "model2",
-			"DiskClass":     scheduler_proto.DiskClass_DISK_CLASS_SSD,
-			"DiskCapacity":  uint32(8),
-			"DiskAvailable": uint32(1),
-			"NodesCount":    uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListDiskModelsResponse_DiskModel{
+			{
+				DiskModel:     "model1",
+				DiskClass:     scheduler_proto.DiskClass_DISK_CLASS_HDD,
+				DiskCapacity:  8,
+				DiskAvailable: 3,
+				NodesCount:    2,
+			},
+			{
+				DiskModel:     "model2",
+				DiskClass:     scheduler_proto.DiskClass_DISK_CLASS_SSD,
+				DiskCapacity:  8,
+				DiskAvailable: 1,
+				NodesCount:    1,
+			},
+		}, res.DiskModels)
 	})
 
 	s.T().Run("returns Disks for requested class", func(t *testing.T) {
@@ -92,18 +84,15 @@ func (s *ServerTestSuite) TestListDiskModels() {
 		}
 		res, err := s.client.ListDiskModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(1, len(res.DiskModels))
-		mask := fieldmask_utils.MaskFromString("DiskModel,DiskClass,DiskCapacity,DiskAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.DiskModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"DiskModel":     "model2",
-			"DiskClass":     scheduler_proto.DiskClass_DISK_CLASS_SSD,
-			"DiskCapacity":  uint32(8),
-			"DiskAvailable": uint32(1),
-			"NodesCount":    uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListDiskModelsResponse_DiskModel{
+			{
+				DiskModel:     "model2",
+				DiskClass:     scheduler_proto.DiskClass_DISK_CLASS_SSD,
+				DiskCapacity:  8,
+				DiskAvailable: 1,
+				NodesCount:    1,
+			},
+		}, res.DiskModels)
 	})
 
 }

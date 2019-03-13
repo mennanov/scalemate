@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -58,26 +57,19 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 		req := &empty.Empty{}
 		res, err := s.client.ListMemoryModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(2, len(res.MemoryModels))
-		mask := fieldmask_utils.MaskFromString("MemoryModel,MemoryCapacity,MemoryAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"MemoryModel":     "model1",
-			"MemoryCapacity":  uint32(8),
-			"MemoryAvailable": uint32(3),
-			"NodesCount":      uint32(2),
-		}, resMap)
-
-		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.MemoryModels[1], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"MemoryModel":     "model2",
-			"MemoryCapacity":  uint32(8),
-			"MemoryAvailable": uint32(1),
-			"NodesCount":      uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListMemoryModelsResponse_MemoryModel{
+			{
+				MemoryModel:     "model1",
+				MemoryCapacity:  8,
+				MemoryAvailable: 3,
+				NodesCount:      2,
+			},
+			{
+				MemoryModel:     "model2",
+				MemoryCapacity:  8,
+				MemoryAvailable: 1,
+				NodesCount:      1,
+			},
+		}, res.MemoryModels)
 	})
 }

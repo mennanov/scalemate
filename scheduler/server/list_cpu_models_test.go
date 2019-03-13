@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
@@ -61,29 +60,22 @@ func (s *ServerTestSuite) TestListCpuModels() {
 		req := &scheduler_proto.ListCpuModelsRequest{}
 		res, err := s.client.ListCpuModels(ctx, req)
 		s.Require().NoError(err)
-		s.Equal(2, len(res.CpuModels))
-		mask := fieldmask_utils.MaskFromString("CpuModel,CpuClass,CpuCapacity,CpuAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"CpuModel":     "model1",
-			"CpuClass":     scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
-			"CpuCapacity":  uint32(8),
-			"CpuAvailable": float32(3),
-			"NodesCount":   uint32(2),
-		}, resMap)
-
-		resMap = make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[1], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"CpuModel":     "model2",
-			"CpuClass":     scheduler_proto.CPUClass_CPU_CLASS_PRO,
-			"CpuCapacity":  uint32(8),
-			"CpuAvailable": float32(1),
-			"NodesCount":   uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListCpuModelsResponse_CpuModel{
+			{
+				CpuModel:     "model1",
+				CpuClass:     scheduler_proto.CPUClass_CPU_CLASS_ENTRY,
+				CpuCapacity:  8,
+				CpuAvailable: 3,
+				NodesCount:   2,
+			},
+			{
+				CpuModel:     "model2",
+				CpuClass:     scheduler_proto.CPUClass_CPU_CLASS_PRO,
+				CpuCapacity:  8,
+				CpuAvailable: 1,
+				NodesCount:   1,
+			},
+		}, res.CpuModels)
 	})
 
 	s.T().Run("returns CPUs for requested class", func(t *testing.T) {
@@ -93,17 +85,15 @@ func (s *ServerTestSuite) TestListCpuModels() {
 		res, err := s.client.ListCpuModels(ctx, req)
 		s.Require().NoError(err)
 		s.Equal(1, len(res.CpuModels))
-		mask := fieldmask_utils.MaskFromString("CpuModel,CpuClass,CpuCapacity,CpuAvailable,NodesCount")
-		resMap := make(map[string]interface{})
-		err = fieldmask_utils.StructToMap(mask, res.CpuModels[0], resMap)
-		s.Require().NoError(err)
-		s.Equal(map[string]interface{}{
-			"CpuModel":     "model2",
-			"CpuClass":     scheduler_proto.CPUClass_CPU_CLASS_PRO,
-			"CpuCapacity":  uint32(8),
-			"CpuAvailable": float32(1),
-			"NodesCount":   uint32(1),
-		}, resMap)
+		s.Equal([]*scheduler_proto.ListCpuModelsResponse_CpuModel{
+			{
+				CpuModel:     "model2",
+				CpuClass:     scheduler_proto.CPUClass_CPU_CLASS_PRO,
+				CpuCapacity:  8,
+				CpuAvailable: 1,
+				NodesCount:   1,
+			},
+		}, res.CpuModels)
 	})
 
 }
