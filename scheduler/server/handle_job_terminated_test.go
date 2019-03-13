@@ -1,12 +1,16 @@
 package server_test
 
 import (
+	"context"
+	"io"
+	"sync"
+
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
 )
 
-func (s *ServerTestSuite) TestHandleJobTerminated_CorrespondingChannelIsClosed() {
+func (s *ServerTestSuite) TestHandleJobTerminated_ClientStopsReceivingTasks() {
 	node := &models.Node{
 		Username: "username",
 		Name:     "node_name",
@@ -14,23 +18,31 @@ func (s *ServerTestSuite) TestHandleJobTerminated_CorrespondingChannelIsClosed()
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{Status: models.Enum(scheduler_proto.Job_STATUS_SCHEDULED)}
+	job := &models.Job{
+		Username: s.claimsInjector.Claims.Username,
+		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+	}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)
 
 	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_FINISHED)
 	s.Require().NoError(err)
 
-	tasksByJob := make(chan *scheduler_proto.Task)
-	s.service.NewTasksByJobID[job.ID] = tasksByJob
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 
-	channelClosed := make(chan struct{})
-	go func() {
-		_, ok := <-tasksByJob
-		s.False(ok)
-		channelClosed <- struct{}{}
-	}()
+	iterateTasksClient, err := s.client.IterateTasks(
+		context.Background(), &scheduler_proto.IterateTasksRequest{JobId: job.ID})
+	s.Require().NoError(err)
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+
+		receivedTask, err := iterateTasksClient.Recv()
+		s.Equal(io.EOF, err)
+		s.Nil(receivedTask)
+	}(wg)
 
 	s.Require().NoError(s.service.HandleJobTerminated(jobUpdatedEvent))
-	<-channelClosed
+	wg.Wait()
 }

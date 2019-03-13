@@ -1,9 +1,15 @@
 package server_test
 
 import (
+	"context"
+	"sync"
+
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels() {
@@ -14,19 +20,12 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{}
+	job := &models.Job{
+		// Putting the same username as for the Node above to simplify claims injection.
+		Username: node.Username,
+	}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)
-
-	tasksForNode := make(chan *scheduler_proto.Task)
-	s.service.NewTasksByNodeIDMutex.Lock()
-	s.service.NewTasksByNodeID[node.ID] = tasksForNode
-	s.service.NewTasksByNodeIDMutex.Unlock()
-
-	tasksByJob := make(chan *scheduler_proto.Task)
-	s.service.NewTasksByJobIDMutex.Lock()
-	s.service.NewTasksByJobID[job.ID] = tasksByJob
-	s.service.NewTasksByJobIDMutex.Unlock()
 
 	task := &models.Task{
 		NodeID: node.ID,
@@ -35,16 +34,40 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 	taskCreatedEvent, err := task.Create(s.db)
 	s.Require().NoError(err)
 
-	tasksReceived := make(chan struct{})
-	go func() {
-		// This Task is expected to be sent to the appropriate channels.
-		taskForNode := <-tasksForNode
-		taskByJob := <-tasksByJob
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
+	ctx := context.Background()
 
-		s.Equal(taskByJob.Id, taskForNode.Id)
-		tasksReceived <- struct{}{}
-	}()
+	// Claims should contain a Node name.
+	restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{
+		Username: node.Username,
+		NodeName: node.Name,
+	})
+	defer restoreClaims()
+
+	iterateTasksClient, err := s.client.IterateTasks(ctx, &scheduler_proto.IterateTasksRequest{JobId: job.ID})
+	s.Require().NoError(err)
+	go func(wg *sync.WaitGroup, task *models.Task) {
+		defer wg.Done()
+
+		receivedTask, err := iterateTasksClient.Recv()
+		s.Require().NoError(err)
+		s.Equal(receivedTask.Id, task.ID)
+	}(wg, task)
+
+	iterateTasksForNodeClient, err := s.client.IterateTasksForNode(ctx, &empty.Empty{})
+	s.Require().NoError(err)
+	go func(wg *sync.WaitGroup, task *models.Task) {
+		defer wg.Done()
+
+		receivedTask, err := iterateTasksForNodeClient.Recv()
+		s.Require().NoError(err)
+		s.Equal(receivedTask.Id, task.ID)
+	}(wg, task)
+
+	// Wait for the Node to be marked ONLINE.
+	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated`)
 
 	s.Require().NoError(s.service.HandleTaskCreated(taskCreatedEvent))
-	<-tasksReceived
+	wg.Wait()
 }

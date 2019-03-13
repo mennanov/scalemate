@@ -4,6 +4,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/scheduler/server"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -19,12 +20,12 @@ func (s *ServerTestSuite) TestConnectNode() {
 	connectEvent, err := s.service.ConnectNode(s.db, node)
 	s.Require().NoError(err)
 	s.NotNil(connectEvent)
-	// Verify that the Node is Online now.
+	// Verify that the Node is marked as Online in DB now.
 	s.Require().NoError(node.LoadFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Node_STATUS_ONLINE), node.Status)
-	// Check that there is a Tasks channel for this Node.
-	_, ok := s.service.NewTasksByNodeID[node.ID]
-	s.True(ok)
+	// Verify that the consecutive call to ConnectNode fails.
+	_, err = s.service.ConnectNode(s.db, node)
+	s.Equal(server.ErrNodeAlreadyConnected, err)
 }
 
 func (s *ServerTestSuite) TestDisconnectNode_ConnectThenDisconnect_UpdatesNodeJobTaskStatuses() {
@@ -65,8 +66,4 @@ func (s *ServerTestSuite) TestDisconnectNode_ConnectThenDisconnect_UpdatesNodeJo
 	s.Equal(models.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), task.Status)
 	s.Require().NoError(task.LoadJobFromDB(s.db))
 	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), task.Job.Status)
-
-	// Check that there is no Tasks channel for this Node anymore.
-	_, ok := s.service.NewTasksByNodeID[node.ID]
-	s.False(ok)
 }

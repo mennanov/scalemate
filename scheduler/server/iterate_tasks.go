@@ -35,7 +35,8 @@ func (s SchedulerServer) IterateTasks(
 			"request": req,
 			"claims":  claims,
 		}).Warn("permission denied in IterateTasks")
-		return status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
+		return status.Errorf(codes.PermissionDenied,
+			"Job username '%s' does not match currently authenticated user: '%s'", job.Username, claims.Username)
 	}
 
 	if req.IncludeExisting {
@@ -60,15 +61,15 @@ func (s SchedulerServer) IterateTasks(
 
 	// Create a Task channel to receive newly created Tasks sent by event listeners.
 	tasks := make(chan *scheduler_proto.Task)
-	s.NewTasksByJobIDMutex.Lock()
-	s.NewTasksByJobID[job.ID] = tasks
-	s.NewTasksByJobIDMutex.Unlock()
+	s.tasksForClientsMux.Lock()
+	s.tasksForClients[job.ID] = tasks
+	s.tasksForClientsMux.Unlock()
 
 	// Delete this channel once iteration is over.
 	defer func() {
-		s.NewTasksByJobIDMutex.Lock()
-		delete(s.NewTasksByJobID, job.ID)
-		s.NewTasksByJobIDMutex.Unlock()
+		s.tasksForClientsMux.Lock()
+		delete(s.tasksForClients, job.ID)
+		s.tasksForClientsMux.Unlock()
 	}()
 
 	for {

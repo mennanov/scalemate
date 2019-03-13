@@ -18,16 +18,16 @@ func (s *SchedulerServer) HandleTaskCreated(eventProto *events_proto.Event) erro
 	if !ok {
 		return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Task")
 	}
-	s.NewTasksByNodeIDMutex.RLock()
-	ch, ok := s.NewTasksByNodeID[taskProto.NodeId]
-	s.NewTasksByNodeIDMutex.RUnlock()
+	s.tasksForNodesMux.RLock()
+	ch, ok := s.tasksForNodes[taskProto.NodeId]
+	s.tasksForNodesMux.RUnlock()
 	if ok {
 		ch <- taskProto
 	}
 
-	s.NewTasksByJobIDMutex.RLock()
-	ch, ok = s.NewTasksByJobID[taskProto.JobId]
-	s.NewTasksByJobIDMutex.RUnlock()
+	s.tasksForClientsMux.RLock()
+	ch, ok = s.tasksForClients[taskProto.JobId]
+	s.tasksForClientsMux.RUnlock()
 	if ok {
 		ch <- taskProto
 	}

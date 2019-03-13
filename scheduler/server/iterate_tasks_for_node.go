@@ -74,11 +74,11 @@ func (s SchedulerServer) IterateTasksForNode(
 		}
 	}()
 
-	s.NewTasksByNodeIDMutex.RLock()
-	tasks, ok := s.NewTasksByNodeID[node.ID]
-	s.NewTasksByNodeIDMutex.RUnlock()
+	s.tasksForNodesMux.RLock()
+	tasks, ok := s.tasksForNodes[node.ID]
+	s.tasksForNodesMux.RUnlock()
 	if !ok {
-		return status.Errorf(codes.Internal, "tasks channel not found in NewTasksByNodeID for Node %d", node.ID)
+		return status.Errorf(codes.Internal, "tasks channel not found in tasksForNodes for Node %d", node.ID)
 	}
 
 	for {

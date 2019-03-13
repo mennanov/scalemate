@@ -28,9 +28,9 @@ func (s *SchedulerServer) HandleJobTerminated(eventProto *events_proto.Event) er
 		return nil
 	}
 
-	s.NewTasksByJobIDMutex.RLock()
-	ch, ok := s.NewTasksByJobID[job.ID]
-	s.NewTasksByJobIDMutex.RUnlock()
+	s.tasksForClientsMux.RLock()
+	ch, ok := s.tasksForClients[job.ID]
+	s.tasksForClientsMux.RUnlock()
 	if ok {
 		// Close the corresponding Tasks channel as there can't be any future Tasks for this terminated Job.
 		close(ch)
