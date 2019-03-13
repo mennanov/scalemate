@@ -19,10 +19,14 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 	s.Require().NoError(err)
 
 	tasksForNode := make(chan *scheduler_proto.Task)
+	s.service.NewTasksByNodeIDMutex.Lock()
 	s.service.NewTasksByNodeID[node.ID] = tasksForNode
+	s.service.NewTasksByNodeIDMutex.Unlock()
 
 	tasksByJob := make(chan *scheduler_proto.Task)
+	s.service.NewTasksByJobIDMutex.Lock()
 	s.service.NewTasksByJobID[job.ID] = tasksByJob
+	s.service.NewTasksByJobIDMutex.Unlock()
 
 	task := &models.Task{
 		NodeID: node.ID,

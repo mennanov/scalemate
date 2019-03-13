@@ -59,15 +59,23 @@ func (s SchedulerServer) IterateTasks(
 	}
 
 	// Create a Task channel to receive newly created Tasks sent by event listeners.
-	s.NewTasksByJobID[job.ID] = make(chan *scheduler_proto.Task)
+	tasks := make(chan *scheduler_proto.Task)
+	s.NewTasksByJobIDMutex.Lock()
+	s.NewTasksByJobID[job.ID] = tasks
+	s.NewTasksByJobIDMutex.Unlock()
+
 	// Delete this channel once iteration is over.
-	defer delete(s.NewTasksByJobID, job.ID)
+	defer func() {
+		s.NewTasksByJobIDMutex.Lock()
+		delete(s.NewTasksByJobID, job.ID)
+		s.NewTasksByJobIDMutex.Unlock()
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return status.Error(codes.Canceled, "Tasks iteration is cancelled by client")
-		case taskProto, ok := <-s.NewTasksByJobID[job.ID]:
+		case taskProto, ok := <-tasks:
 			if !ok {
 				// Channel is closed. No new Tasks are expected to be created: iteration is finished.
 				return nil

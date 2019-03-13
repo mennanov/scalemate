@@ -74,9 +74,16 @@ func (s SchedulerServer) IterateTasksForNode(
 		}
 	}()
 
+	s.NewTasksByNodeIDMutex.RLock()
+	tasks, ok := s.NewTasksByNodeID[node.ID]
+	s.NewTasksByNodeIDMutex.RUnlock()
+	if !ok {
+		return status.Errorf(codes.Internal, "tasks channel not found in NewTasksByNodeID for Node %d", node.ID)
+	}
+
 	for {
 		select {
-		case taskProto, ok := <-s.NewTasksByNodeID[node.ID]:
+		case taskProto, ok := <-tasks:
 			if !ok {
 				// Channel is closed. Node is probably shutting down.
 				return nil

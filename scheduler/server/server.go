@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
@@ -59,10 +60,12 @@ type SchedulerServer struct {
 	// Events consumers.
 	consumers []events.Consumer
 	// TODO: make fields NewTasksByNodeID and NewTasksByJobID unexported.
-	// Tasks groupd by Node ID are sent to this channel as they are created by event listeners.
-	NewTasksByNodeID map[uint64]chan *scheduler_proto.Task
+	// Tasks grouped by Node ID are sent to this channel as they are created by event listeners.
+	NewTasksByNodeID      map[uint64]chan *scheduler_proto.Task
+	NewTasksByNodeIDMutex *sync.RWMutex
 	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
-	NewTasksByJobID map[uint64]chan *scheduler_proto.Task
+	NewTasksByJobID      map[uint64]chan *scheduler_proto.Task
+	NewTasksByJobIDMutex *sync.RWMutex
 	// gracefulStop channel is used to notify about the gRPC server GracefulStop() in progress. When the server is about
 	// to stop this channel is closed, this will unblock all the receivers of this channel and they will receive a zero
 	// value (empty struct) which should be discarded and take an appropriate action to gracefully finish long-running
@@ -77,9 +80,11 @@ var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
 // NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
 func NewSchedulerServer(options ...Option) (*SchedulerServer, error) {
 	s := &SchedulerServer{
-		NewTasksByNodeID: make(map[uint64]chan *scheduler_proto.Task),
-		NewTasksByJobID:  make(map[uint64]chan *scheduler_proto.Task),
-		gracefulStop:     make(chan struct{}),
+		NewTasksByNodeID:      make(map[uint64]chan *scheduler_proto.Task),
+		NewTasksByJobID:       make(map[uint64]chan *scheduler_proto.Task),
+		gracefulStop:          make(chan struct{}),
+		NewTasksByNodeIDMutex: new(sync.RWMutex),
+		NewTasksByJobIDMutex:  new(sync.RWMutex),
 	}
 	for _, option := range options {
 		if err := option(s); err != nil {
@@ -112,7 +117,10 @@ var (
 // This method should be called when the Node connects to receive Tasks.
 // FIXME: this method should be private.
 func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
-	if _, ok := s.NewTasksByNodeID[node.ID]; ok {
+	s.NewTasksByNodeIDMutex.RLock()
+	_, ok := s.NewTasksByNodeID[node.ID]
+	s.NewTasksByNodeIDMutex.RUnlock()
+	if ok {
 		return nil, ErrNodeAlreadyConnected
 	}
 	now := time.Now()
@@ -123,6 +131,8 @@ func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_p
 	if err != nil {
 		return nil, errors.Wrap(err, "node.Updates failed")
 	}
+	s.NewTasksByNodeIDMutex.Lock()
+	defer s.NewTasksByNodeIDMutex.Unlock()
 	s.NewTasksByNodeID[node.ID] = make(chan *scheduler_proto.Task)
 	return event, nil
 }
@@ -130,7 +140,10 @@ func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_p
 // DisconnectNode updates the Node status to OFFLINE.
 // FIXME: this method should be private.
 func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
-	if _, ok := s.NewTasksByNodeID[node.ID]; !ok {
+	s.NewTasksByNodeIDMutex.RLock()
+	_, ok := s.NewTasksByNodeID[node.ID]
+	s.NewTasksByNodeIDMutex.RUnlock()
+	if !ok {
 		return nil, ErrNodeIsNotConnected
 	}
 	now := time.Now()
@@ -142,6 +155,8 @@ func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*event
 		return nil, errors.Wrap(err, "node.Updates failed")
 	}
 
+	s.NewTasksByNodeIDMutex.Lock()
+	defer s.NewTasksByNodeIDMutex.Unlock()
 	close(s.NewTasksByNodeID[node.ID])
 	delete(s.NewTasksByNodeID, node.ID)
 
