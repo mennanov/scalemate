@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/golang/mock/gomock"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/stretchr/testify/assert"
@@ -632,7 +633,7 @@ func TestIterateTasksController(t *testing.T) {
 }
 
 func TestGetNodeController(t *testing.T) {
-	t.Run("NodeSuccessfullyReturned", func(t *testing.T) {
+	t.Run("Node successfully returned", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
@@ -645,8 +646,85 @@ func TestGetNodeController(t *testing.T) {
 		schedulerClient.EXPECT().GetNode(ctx, nodeLookupRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.Node{Id: nodeID}, nil)
 
-		job, err := scheduler.GetNodeController(schedulerClient, nodeID)
+		response, err := scheduler.GetNodeController(schedulerClient, nodeID)
 		require.NoError(t, err)
-		assert.NotNil(t, job)
+		assert.NotNil(t, response)
+	})
+}
+
+func TestListCpuModelsController(t *testing.T) {
+	t.Run("CPU models returned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		class := scheduler_proto.CPUClass_CPU_CLASS_INTERMEDIATE
+		requestExpected := &scheduler_proto.ListCpuModelsRequest{CpuClass: class}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListCpuModels(ctx, requestExpected, gomock.Any()).
+			Return(&scheduler_proto.ListCpuModelsResponse{}, nil)
+
+		response, err := scheduler.ListCpuModelsController(schedulerClient, class)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+}
+
+func TestListGpuModelsController(t *testing.T) {
+	t.Run("GPU models returned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		class := scheduler_proto.GPUClass_GPU_CLASS_INTERMEDIATE
+		requestExpected := &scheduler_proto.ListGpuModelsRequest{GpuClass: class}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListGpuModels(ctx, requestExpected, gomock.Any()).
+			Return(&scheduler_proto.ListGpuModelsResponse{}, nil)
+
+		response, err := scheduler.ListGpuModelsController(schedulerClient, class)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+}
+
+func TestListDiskModelsController(t *testing.T) {
+	t.Run("Disk models returned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		class := scheduler_proto.DiskClass_DISK_CLASS_SSD
+		requestExpected := &scheduler_proto.ListDiskModelsRequest{DiskClass: class}
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListDiskModels(ctx, requestExpected, gomock.Any()).
+			Return(&scheduler_proto.ListDiskModelsResponse{}, nil)
+
+		response, err := scheduler.ListDiskModelsController(schedulerClient, class)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
+	})
+}
+
+func TestListMemoryModelsController(t *testing.T) {
+	t.Run("Memory models returned", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		ctx := context.Background()
+
+		schedulerClient := NewMockSchedulerClient(ctrl)
+		schedulerClient.EXPECT().ListMemoryModels(ctx, &empty.Empty{}, gomock.Any()).
+			Return(&scheduler_proto.ListMemoryModelsResponse{}, nil)
+
+		response, err := scheduler.ListMemoryModelsController(schedulerClient)
+		require.NoError(t, err)
+		assert.NotNil(t, response)
 	})
 }

@@ -2,8 +2,8 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
@@ -206,6 +206,42 @@ func ListNodesController(
 	flags *ListNodesCmdFlags,
 ) (*scheduler_proto.ListNodesResponse, error) {
 	r := flags.ToProto()
-	fmt.Println("request: ", r)
 	return schedulerClient.ListNodes(context.Background(), r)
+}
+
+// ListCpuModelsController lists aggregated CPU models for the currently online Nodes.
+func ListCpuModelsController(
+	schedulerClient scheduler_proto.SchedulerClient,
+	class scheduler_proto.CPUClass,
+) (*scheduler_proto.ListCpuModelsResponse, error) {
+	return schedulerClient.ListCpuModels(context.Background(), &scheduler_proto.ListCpuModelsRequest{
+		CpuClass: class,
+	})
+}
+
+// ListGpuModelsController lists aggregated GPU models for the currently online Nodes.
+func ListGpuModelsController(
+	schedulerClient scheduler_proto.SchedulerClient,
+	class scheduler_proto.GPUClass,
+) (*scheduler_proto.ListGpuModelsResponse, error) {
+	return schedulerClient.ListGpuModels(context.Background(), &scheduler_proto.ListGpuModelsRequest{
+		GpuClass: class,
+	})
+}
+
+// ListDiskModelsController lists aggregated Disk models for the currently online Nodes.
+func ListDiskModelsController(
+	schedulerClient scheduler_proto.SchedulerClient,
+	class scheduler_proto.DiskClass,
+) (*scheduler_proto.ListDiskModelsResponse, error) {
+	return schedulerClient.ListDiskModels(context.Background(), &scheduler_proto.ListDiskModelsRequest{
+		DiskClass: class,
+	})
+}
+
+// ListMemoryModelsController lists aggregated Memory models for the currently online Nodes.
+func ListMemoryModelsController(
+	schedulerClient scheduler_proto.SchedulerClient,
+) (*scheduler_proto.ListMemoryModelsResponse, error) {
+	return schedulerClient.ListMemoryModels(context.Background(), &empty.Empty{})
 }
