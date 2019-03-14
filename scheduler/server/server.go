@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
 	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
@@ -14,10 +13,8 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events_proto"
-
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
@@ -68,7 +65,7 @@ type SchedulerServer struct {
 	// gracefulStop channel is used to notify about the gRPC server GracefulStop() in progress. When the server is about
 	// to stop this channel is closed, this will unblock all the receivers of this channel and they will receive a zero
 	// value (empty struct) which should be discarded and take an appropriate action to gracefully finish long-running
-	// request processing (streams, etc).
+	// request processing (streams, etc). Clients are expected to re-connect.
 	// Requests that are expected to be processed quickly should not take any action as they will be waited to finish.
 	gracefulStop chan struct{}
 }
@@ -107,60 +104,8 @@ func (s *SchedulerServer) Close() error {
 
 var (
 	// ErrNodeAlreadyConnected is used when the Node can't be "connected" because it is already connected.
-	ErrNodeAlreadyConnected = errors.New("Node is already connected")
-	// ErrNodeIsNotConnected is used when the Node can't be disconnected because it's already disconnected.
-	ErrNodeIsNotConnected = errors.New("Node is not connected")
+	ErrNodeAlreadyConnected = status.Error(codes.FailedPrecondition, "Node is already connected")
 )
-
-// ConnectNode adds the Node ID to the map of connected Nodes and updates the Node's status in DB.
-// This method should be called when the Node connects to receive Tasks.
-// FIXME: this method should be private.
-func (s *SchedulerServer) ConnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
-	s.tasksForNodesMux.RLock()
-	_, ok := s.tasksForNodes[node.ID]
-	s.tasksForNodesMux.RUnlock()
-	if ok {
-		return nil, ErrNodeAlreadyConnected
-	}
-	now := time.Now()
-	event, err := node.Updates(db, map[string]interface{}{
-		"connected_at": &now,
-		"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "node.Updates failed")
-	}
-	s.tasksForNodesMux.Lock()
-	defer s.tasksForNodesMux.Unlock()
-	s.tasksForNodes[node.ID] = make(chan *scheduler_proto.Task)
-	return event, nil
-}
-
-// DisconnectNode updates the Node status to OFFLINE.
-// FIXME: this method should be private.
-func (s *SchedulerServer) DisconnectNode(db *gorm.DB, node *models.Node) (*events_proto.Event, error) {
-	s.tasksForNodesMux.RLock()
-	_, ok := s.tasksForNodes[node.ID]
-	s.tasksForNodesMux.RUnlock()
-	if !ok {
-		return nil, ErrNodeIsNotConnected
-	}
-	now := time.Now()
-	nodeUpdatedEvent, err := node.Updates(db, map[string]interface{}{
-		"disconnected_at": &now,
-		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "node.Updates failed")
-	}
-
-	s.tasksForNodesMux.Lock()
-	defer s.tasksForNodesMux.Unlock()
-	close(s.tasksForNodes[node.ID])
-	delete(s.tasksForNodes, node.ID)
-
-	return nodeUpdatedEvent, nil
-}
 
 // Serve creates a gRPC server and starts serving on a given address.
 // It also starts all the consumers.
@@ -204,6 +149,7 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
 	select {
 	case <-ctx.Done():
 		s.logger.Info("Gracefully stopping gRPC server...")
+		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-f:

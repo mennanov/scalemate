@@ -1,6 +1,8 @@
 package server
 
 import (
+	"time"
+
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -41,7 +43,7 @@ func (s SchedulerServer) IterateTasksForNode(
 	// Lookup the Node in DB.
 	node := &models.Node{}
 	if err := node.Get(s.db, claims.Username, claims.NodeName); err != nil {
-		logger.WithFields(logrus.Fields{
+		logger.WithError(err).WithFields(logrus.Fields{
 			"nodeUsername": claims.Username,
 			"nodeName":     claims.NodeName,
 		}).Warning("Could not find a Node in DB in IterateTasksForNode method. Possible data inconsistency!")
@@ -52,31 +54,79 @@ func (s SchedulerServer) IterateTasksForNode(
 		return status.Error(codes.FailedPrecondition, "this Node is already online (receiving Tasks)")
 	}
 
-	tx := s.db.Begin()
-	connectEvent, err := s.ConnectNode(tx, node)
-	if err != nil {
-		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to ConnectNode"))
-	}
-	if err := events.CommitAndPublish(tx, s.producer, connectEvent); err != nil {
-		return errors.Wrap(err, "events.CommitAndPublish failed")
-	}
-
-	// Set the Node's status as offline when this RPC exits.
-	defer func() {
+	// Mark the Node as ONLINE.
+	errCh := make(chan error)
+	go func(e chan error) {
 		tx := s.db.Begin()
-		disconnectEvent, err := s.DisconnectNode(tx, node)
-		if err != nil {
-			logger.WithError(utils.RollbackTransaction(tx, err)).Error("failed to DisconnectNode")
+		// Lock tasksForNodesMux until this function exits due to a possible race condition when the same Node connects
+		// multiple times simultaneously.
+		s.tasksForNodesMux.Lock()
+		defer s.tasksForNodesMux.Unlock()
+
+		_, ok = s.tasksForNodes[node.ID]
+		if ok {
+			e <- ErrNodeAlreadyConnected
 			return
 		}
-		if err := events.CommitAndPublish(tx, s.producer, disconnectEvent); err != nil {
-			logger.WithError(err).Error("events.CommitAndPublish failed")
+		now := time.Now()
+		connectEvent, err := node.Updates(tx, map[string]interface{}{
+			"connected_at": &now,
+			"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+		})
+		if err != nil {
+			e <- errors.Wrap(err, "node.Updates failed")
+			return
 		}
-	}()
+		s.tasksForNodes[node.ID] = make(chan *scheduler_proto.Task)
+
+		if err != nil {
+			e <- utils.RollbackTransaction(tx, errors.Wrap(err, "failed to connectNode"))
+			return
+		}
+		if err := events.CommitAndPublish(tx, s.producer, connectEvent); err != nil {
+			e <- errors.Wrap(err, "events.CommitAndPublish failed")
+			return
+		}
+		e <- nil
+	}(errCh)
+
+	err := <-errCh
+	if err != nil {
+		return err
+	}
 
 	s.tasksForNodesMux.RLock()
 	tasks, ok := s.tasksForNodes[node.ID]
 	s.tasksForNodesMux.RUnlock()
+
+	// Set the Node's status as OFFLINE when this RPC exits.
+	defer func(tasks chan *scheduler_proto.Task) {
+		tx := s.db.Begin()
+
+		if !ok {
+			logger.Errorf("tasks channel not found for Node ID %d", node.ID)
+			return
+		}
+		now := time.Now()
+		nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
+			"disconnected_at": &now,
+			"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+		})
+		if err != nil {
+			logger.WithError(utils.RollbackTransaction(tx, err)).Error("node.Updates failed")
+			return
+		}
+
+		close(tasks)
+		s.tasksForNodesMux.Lock()
+		delete(s.tasksForNodes, node.ID)
+		s.tasksForNodesMux.Unlock()
+
+		if err := events.CommitAndPublish(tx, s.producer, nodeUpdatedEvent); err != nil {
+			logger.WithError(err).Error("events.CommitAndPublish failed")
+		}
+	}(tasks)
+
 	if !ok {
 		return status.Errorf(codes.Internal, "tasks channel not found in tasksForNodes for Node %d", node.ID)
 	}
@@ -85,15 +135,19 @@ func (s SchedulerServer) IterateTasksForNode(
 		select {
 		case taskProto, ok := <-tasks:
 			if !ok {
-				// Channel is closed. Node is probably shutting down.
-				return nil
+				// Channel is closed. This should never happen. Node was disconnected prematurely.
+				logger.WithFields(logrus.Fields{
+					"nodeUsername": node.Username,
+					"nodeName":     node.Name,
+				}).Warning("Tasks channel is unexpectedly closed")
+				return status.Error(codes.Internal, "tasks channel is unexpectedly closed")
 			}
 			if err := stream.Send(taskProto); err != nil {
 				return errors.Wrap(err, "failed to send a Task to the Tasks stream")
 			}
 
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 
 		case <-s.gracefulStop:
 			return status.Error(codes.Unavailable, "service is shutting down")

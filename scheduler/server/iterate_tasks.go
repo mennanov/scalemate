@@ -75,7 +75,7 @@ func (s SchedulerServer) IterateTasks(
 	for {
 		select {
 		case <-ctx.Done():
-			return status.Error(codes.Canceled, "Tasks iteration is cancelled by client")
+			return errors.Wrap(ctx.Err(), "Tasks iteration is cancelled by client")
 		case taskProto, ok := <-tasks:
 			if !ok {
 				// Channel is closed. No new Tasks are expected to be created: iteration is finished.

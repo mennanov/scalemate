@@ -47,7 +47,7 @@ func WaitForMessages(messages <-chan amqp.Delivery, keys ...string) {
 	select {
 	case <-allMessagesReceived:
 
-	case <-time.Tick(msgWaitTimeout):
+	case <-time.After(msgWaitTimeout):
 		panic(fmt.Sprintf("unreceived messages within the timeout: %s", keys))
 	}
 

@@ -86,7 +86,6 @@ go_test(
         "list_memory_models_test.go",
         "list_nodes_test.go",
         "list_tasks_test.go",
-        "server_test.go",
         "testsuite_test.go",
     ],
     embed = [":go_default_library"],
