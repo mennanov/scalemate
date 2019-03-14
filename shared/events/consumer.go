@@ -113,11 +113,12 @@ func NewAMQPRawConsumer(
 	queueName,
 	routingKey string,
 ) (<-chan amqp.Delivery, error) {
+	isTmpQueue := queueName == ""
 	queue, err := channel.QueueDeclare(
 		queueName,
-		true, // FIXME: figure out if it should be false for temp queues.
-		false,
-		false,
+		!isTmpQueue, // durable is false for temp queues.
+		isTmpQueue,  // autoDelete is true for temp queues.
+		isTmpQueue,  // exclusive is true for temp queues.
 		false,
 		nil)
 	if err != nil {

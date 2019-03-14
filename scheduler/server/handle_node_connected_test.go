@@ -56,6 +56,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 		s.Require().NoError(err)
 		jobIds = append(jobIds, job.ID)
 	}
+	// Manually create a Node connected event.
 	mask := &field_mask.FieldMask{
 		Paths: []string{"status", "connected_at"},
 	}
@@ -77,5 +78,8 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	for _, job := range jobs {
 		s.Require().NoError(job.LoadFromDB(s.db))
 		s.Equal(models.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
+		s.Require().NoError(job.LoadTasksFromDB(s.db))
+		s.Equal(1, len(job.Tasks))
+		s.Equal(node.ID, job.Tasks[0].NodeID)
 	}
 }
