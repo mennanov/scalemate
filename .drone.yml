@@ -3,25 +3,31 @@ workspace:
   path: scalemate
 
 steps:
-
-  test:
+  - name: test
     image: l.gcr.io/google/bazel:latest
     commands:
       - bazel --output_user_root=/tmp/bazel-drone-output --bazelrc=drone.bazelrc test --jobs=4 //...:all --test_output=errors --test_verbose_timeout_warnings
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/bazel-drone-output:/tmp/bazel-drone-output
+      - name: docker
+        host:
+          path: /var/run/docker.sock
+      - name: bazel
+        host:
+          path: /tmp/bazel-drone-output
+
+kind: pipeline
+name: default
 
 services:
-  shared-amqp:
+  - name: shared-amqp
     image: rabbitmq:3
 
-  scheduler-db:
+  - name: scheduler-db
     image: postgres:11
     tmpfs:
       - /var/lib/postgresql/data
 
-  accounts-db:
+  - name: accounts-db
     image: postgres:11
     tmpfs:
       - /var/lib/postgresql/data
