@@ -1,4 +1,5 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_binary")
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_docker//go:image.bzl", "go_image")
 
 go_library(
     name = "go_default_library",
@@ -8,7 +9,7 @@ go_library(
     deps = ["//scheduler/cmd:go_default_library"],
 )
 
-go_binary(
+go_image(
     name = "scheduler",
     embed = [":go_default_library"],
     visibility = ["//visibility:public"],

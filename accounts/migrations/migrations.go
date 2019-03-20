@@ -2,7 +2,7 @@ package migrations
 
 import (
 	"github.com/jinzhu/gorm"
-	"github.com/mennanov/gormigrate"
+	"github.com/go-gormigrate/gormigrate"
 
 	"github.com/mennanov/scalemate/accounts/models"
 )

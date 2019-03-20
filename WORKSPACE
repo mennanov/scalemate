@@ -2,14 +2,17 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "io_bazel_rules_go",
-    urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.16.5/rules_go-0.16.5.tar.gz"],
-    sha256 = "7be7dc01f1e0afdba6c8eb2b43d2fa01c743be1b9273ab1eaf6c233df078d705",
+    url = "https://github.com/bazelbuild/rules_go/releases/download/0.18.1/rules_go-0.18.1.tar.gz",
+    sha256 = "77dfd303492f2634de7a660445ee2d3de2960cbd52f97d8c0dffa9362d3ddef9",
 )
+load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
+go_rules_dependencies()
+go_register_toolchains()
 
 http_archive(
     name = "bazel_gazelle",
-    urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.16.0/bazel-gazelle-0.16.0.tar.gz"],
-    sha256 = "7949fc6cc17b5b191103e97481cf8889217263acf52e00b560683413af204fcb",
+    urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.17.0/bazel-gazelle-0.17.0.tar.gz"],
+    sha256 = "3c681998538231a2d24d0c07ed5a7658cb72bfb5fd4bf9911157c0e9ac6a2687",
 )
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
@@ -17,15 +20,9 @@ load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 http_archive(
     name = "com_github_atlassian_bazel_tools",
-    strip_prefix = "bazel-tools-1e588b1efac2c9dca66626b62a873f65de64de4b",
-    urls = ["https://github.com/atlassian/bazel-tools/archive/1e588b1efac2c9dca66626b62a873f65de64de4b.zip"],
+    strip_prefix = "bazel-tools-7d296003f478325b4a933c2b1372426d3a0926f0",
+    urls = ["https://github.com/atlassian/bazel-tools/archive/7d296003f478325b4a933c2b1372426d3a0926f0.zip"],
 )
-
-load("@io_bazel_rules_go//go:def.bzl", "go_rules_dependencies", "go_register_toolchains")
-
-go_rules_dependencies()
-
-go_register_toolchains()
 
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
 
@@ -38,38 +35,55 @@ go_revive_dependencies()
 git_repository(
     name = "bazel_gomock",
     remote = "https://github.com/jmhodges/bazel_gomock.git",
-    commit = "5b73edb74e569ff404b3beffc809d6d9f205e0e4",
+    commit = "9199dbae087ef6646397ea51738cdc282740501e",
 )
+
+# Docker rules.
+http_archive(
+    name = "io_bazel_rules_docker",
+    sha256 = "aed1c249d4ec8f703edddf35cbe9dfaca0b5f5ea6e4cd9e83e99f3b0d1136c3d",
+    strip_prefix = "rules_docker-0.7.0",
+    urls = ["https://github.com/bazelbuild/rules_docker/archive/v0.7.0.tar.gz"],
+)
+
+# This is NOT needed when going through the language lang_image
+# "repositories" function(s).
+load("@io_bazel_rules_docker//repositories:repositories.bzl", container_repositories = "repositories")
+container_repositories()
+
+load("@io_bazel_rules_docker//go:image.bzl", _go_image_repos = "repositories")
+
+_go_image_repos()
 
 # Gazelle generated dependencies below.
 
 go_repository(
     name = "com_github_dgrijalva_jwt_go",
-    commit = "06ea1031745cb8b3dab3f6a236daf2b0aa468b7e",
+    commit = "3af4c746e1c248ee8491a3e0c6f7a9cd831e95f8",
     importpath = "github.com/dgrijalva/jwt-go",
 )
 
 go_repository(
     name = "com_github_golang_mock",
-    commit = "c34cdb4725f4c3844d095133c6e40e448b86589b",
+    commit = "837231f7bb377b365da147e5ff6c031b12f0dfaa",
     importpath = "github.com/golang/mock",
 )
 
 go_repository(
     name = "com_github_google_uuid",
-    commit = "064e2069ce9c359c118179501254f67d7d37ba24",
+    commit = "0cd6bf5da1e1c83f8b45653022c74f71af0538a4",
     importpath = "github.com/google/uuid",
 )
 
 go_repository(
     name = "com_github_grpc_ecosystem_go_grpc_middleware",
-    commit = "c250d6563d4d4c20252cd865923440e829844f4e",
+    commit = "cfaf5686ec79ff8344257723b6f5ba1ae0ffeb4d",
     importpath = "github.com/grpc-ecosystem/go-grpc-middleware",
 )
 
 go_repository(
     name = "com_github_jinzhu_gorm",
-    commit = "6ed508ec6a4ecb3531899a69cbc746ccf65a4166",
+    commit = "8b07437717e71c2ff00602ae19f8353ba10aafbb",
     importpath = "github.com/jinzhu/gorm",
 )
 
@@ -81,25 +95,25 @@ go_repository(
 
 go_repository(
     name = "com_github_sirupsen_logrus",
-    commit = "3e01752db0189b9157070a0e1668a620f9a85da2",
+    commit = "dae0fa8d5b0c810a8ab733fbd5510c7cae84eca4",
     importpath = "github.com/sirupsen/logrus",
 )
 
 go_repository(
     name = "com_github_streadway_amqp",
-    commit = "70e15c650864f4fc47f5d3c82ea117285480895d",
+    commit = "14f78b41ce6da3d698c2ef2cc8c0ea7ce9e26688",
     importpath = "github.com/streadway/amqp",
 )
 
 go_repository(
     name = "com_github_stretchr_testify",
-    commit = "f35b8ab0b5a2cef36673838d662e249dd9c94686",
+    commit = "34c6fa2dc70986bccbbffcc6130f6920a924b075",
     importpath = "github.com/stretchr/testify",
 )
 
 go_repository(
     name = "org_golang_x_crypto",
-    commit = "de0752318171da717af4ce24d0a2e8626afaeb11",
+    commit = "a1f597ede03a7bef967a422b5b3a5bd08805a01e",
     importpath = "golang.org/x/crypto",
 )
 
@@ -117,7 +131,7 @@ go_repository(
 
 go_repository(
     name = "com_github_lib_pq",
-    commit = "90697d60dd844d5ef6ff15135d0203f65d2f53b8",
+    commit = "7aad666537ab32b76f0966145530335f1fed51fd",
     importpath = "github.com/lib/pq",
 )
 
@@ -128,20 +142,20 @@ go_repository(
 )
 
 go_repository(
-    name = "com_github_mennanov_gormigrate",
-    commit = "1776d94fb9d6887916af26d5e43df9586a32522a",
-    importpath = "github.com/mennanov/gormigrate",
+    name = "com_github_go_gormigrate_gormigrate",
+    commit = "0c6141ae05e70da27c2216945e1c1b2d5ad4aa46",
+    importpath = "github.com/go-gormigrate/gormigrate",
 )
 
 go_repository(
     name = "com_github_spf13_cobra",
-    commit = "ef82de70bb3f60c65fb8eebacbb2d122ef517385",
+    commit = "ba1052d4cbce7aac421a96de820558f75199ccbc",
     importpath = "github.com/spf13/cobra",
 )
 
 go_repository(
     name = "com_github_spf13_pflag",
-    commit = "9a97c102cda95a86cec2345a6f09f55a939babf5",
+    commit = "24fa6976df40757dce6aea913e7b81ade90530e1",
     importpath = "github.com/spf13/pflag",
 )
 
@@ -153,25 +167,25 @@ go_repository(
 
 go_repository(
     name = "com_github_fsnotify_fsnotify",
-    commit = "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9",
+    commit = "1485a34d5d5723fea214f5710708e19a831720e4",
     importpath = "github.com/fsnotify/fsnotify",
 )
 
 go_repository(
     name = "com_github_hashicorp_hcl",
-    commit = "ef8a98b0bbce4a65b5aa4c368430a80ddc533168",
+    commit = "65a6292f0157eff210d03ed1bf6c59b190b8b906",
     importpath = "github.com/hashicorp/hcl",
 )
 
 go_repository(
     name = "com_github_magiconair_properties",
-    commit = "c2353362d570a7bfa228149c62842019201cfb71",
+    commit = "7757cc9fdb852f7579b24170bcacda2c7471bb6a",
     importpath = "github.com/magiconair/properties",
 )
 
 go_repository(
     name = "com_github_mitchellh_go_homedir",
-    commit = "58046073cbffe2f25d425fe1331102f55cf719de",
+    commit = "af06845cf3004701891bf4fdb884bfe4920b3727",
     importpath = "github.com/mitchellh/go-homedir",
 )
 
@@ -183,13 +197,13 @@ go_repository(
 
 go_repository(
     name = "com_github_pelletier_go_toml",
-    commit = "c01d1270ff3e442a8a57cddc1c92dc1138598194",
+    commit = "405d48dc28228aa37553612a601116aafda69c1a",
     importpath = "github.com/pelletier/go-toml",
 )
 
 go_repository(
     name = "com_github_spf13_afero",
-    commit = "787d034dfe70e44075ccc060d346146ef53270ad",
+    commit = "f4711e4db9e9a1d3887343acb72b2bbfc2f686f5",
     importpath = "github.com/spf13/afero",
 )
 
@@ -201,18 +215,18 @@ go_repository(
 
 go_repository(
     name = "com_github_spf13_jwalterweatherman",
-    commit = "7c0cea34c8ece3fbeb2b27ab9b59511d360fb394",
+    commit = "94f6ae3ed3bceceafa716478c5fbf8d29ca601a1",
     importpath = "github.com/spf13/jwalterweatherman",
 )
 
 go_repository(
     name = "com_github_spf13_viper",
-    commit = "907c19d40d9a6c9bb55f040ff4ae45271a4754b9",
+    commit = "9e56dacc08fbbf8c9ee2dbc717553c758ce42bc9",
     importpath = "github.com/spf13/viper",
 )
 
 go_repository(
     name = "in_gopkg_yaml_v2",
-    commit = "5420a8b6744d3b0345ab293f6fcba19c978f1183",
+    commit = "51d6538a90f86fe93ac480b35f37b2be17fef232",
     importpath = "gopkg.in/yaml.v2",
 )

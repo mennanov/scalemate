@@ -225,7 +225,7 @@ func (user *User) LookUp(db *gorm.DB, req *accounts_proto.UserLookupRequest) err
 	} else if req.GetEmail() != "" {
 		return utils.HandleDBError(db.Where("email = ?", req.GetEmail()).First(user))
 	}
-	return status.Error(codes.InvalidArgument, "invalid UserLookupRequest")
+	return status.Error(codes.InvalidArgument, "invalid UserLookupRequest: all fields are empty")
 }
 
 // Delete soft-deletes a user.

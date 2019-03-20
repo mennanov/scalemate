@@ -110,7 +110,7 @@ message Job {
 
     message RunConfig {
         // Docker image name, e.g. "postgres:latest".
-        string image = 1 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
+        string image = 1 [(shared.proto.validator.field) = {length_gt: 1}];
         // Docker optional command with an arguments string, e.g. "bash -c 'echo hi'".
         string command = 2;
         // Exposed ports as a map <local port, remote container port>.
@@ -137,7 +137,7 @@ message Job {
     RunConfig run_config = 3 [(shared.proto.validator.field) = {msg_exists: true}];
 
     // Docker run CPU limits. See https://docs.docker.com/config/containers/resource_constraints/
-    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gte: 0.01, float_epsilon: 0.01}];
+    float cpu_limit = 4 [(shared.proto.validator.field) = {float_gte: 0.01}];
     CPUClass cpu_class = 5;
 
     // Docker run Memory limit in Megabytes.
