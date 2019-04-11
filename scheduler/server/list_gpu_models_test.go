@@ -7,6 +7,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListGpuModels() {
@@ -15,37 +16,37 @@ func (s *ServerTestSuite) TestListGpuModels() {
 			Username:     "username1",
 			Name:         "node1",
 			GpuModel:     "model1",
-			GpuClass:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
+			GpuClass:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
 			GpuCapacity:  4,
 			GpuAvailable: 2,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username1",
 			Name:         "node2",
 			GpuModel:     "model1",
-			GpuClass:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
+			GpuClass:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
 			GpuCapacity:  4,
 			GpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username1",
 			Name:         "node3",
 			GpuModel:     "model2",
-			GpuClass:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
+			GpuClass:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
 			GpuCapacity:  8,
 			GpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username2",
 			Name:         "node1",
 			GpuModel:     "model2",
-			GpuClass:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
+			GpuClass:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
 			GpuCapacity:  8,
 			GpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		},
 	}
 

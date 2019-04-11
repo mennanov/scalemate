@@ -49,7 +49,7 @@ func (s *SchedulerServer) HandleJobPending(eventProto *events_proto.Event) error
 	if err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "job.CreateTask failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
+	if err := events.CommitAndPublish(s.producer, schedulingEvents); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

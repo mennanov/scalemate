@@ -7,6 +7,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListNodes() {
@@ -49,19 +50,19 @@ func (s *ServerTestSuite) TestListNodes() {
 					Name:            "node1",
 					Username:        "username1",
 					ConnectedAt:     &minuteAgo,
-					Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
-					CpuClass:        models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
-					CpuClassMin:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_INTERMEDIATE),
+					Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
+					CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
+					CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_INTERMEDIATE),
 					CpuAvailable:    4,
 					CpuModel:        "Intel i7",
 					MemoryAvailable: 2000,
 					MemoryModel:     "DDR3",
-					GpuClass:        models.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-					GpuClassMin:     models.Enum(scheduler_proto.GPUClass_GPU_CLASS_INTERMEDIATE),
+					GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+					GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_INTERMEDIATE),
 					GpuAvailable:    2,
 					GpuModel:        "Nvidia",
-					DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
-					DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+					DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+					DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 					DiskAvailable:   10000,
 					DiskModel:       "Seagate",
 					Labels:          []string{"label1", "label2", "label3"},
@@ -72,12 +73,12 @@ func (s *ServerTestSuite) TestListNodes() {
 					Name:        "node2",
 					Username:    "username1",
 					ConnectedAt: &hourAgo,
-					Status:      models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+					Status:      utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 				},
 				{
 					Name:     "node3",
 					Username: "username1",
-					Status:   models.Enum(scheduler_proto.Node_STATUS_SHUTTING_DOWN),
+					Status:   utils.Enum(scheduler_proto.Node_STATUS_SHUTTING_DOWN),
 				},
 			},
 			nodeNamesExpected:  []string{"node1"},

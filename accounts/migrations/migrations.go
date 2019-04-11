@@ -1,8 +1,8 @@
 package migrations
 
 import (
-	"github.com/jinzhu/gorm"
 	"github.com/go-gormigrate/gormigrate"
+	"github.com/jinzhu/gorm"
 
 	"github.com/mennanov/scalemate/accounts/models"
 )

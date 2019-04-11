@@ -9,7 +9,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels() {
@@ -66,7 +66,7 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 	}(wg, task)
 
 	// Wait for the Node to be marked ONLINE.
-	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated`)
+	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.node.updated`)
 
 	s.Require().NoError(s.service.HandleTaskCreated(taskCreatedEvent))
 	wg.Wait()

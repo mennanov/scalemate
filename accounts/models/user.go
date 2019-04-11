@@ -29,20 +29,20 @@ func stringEye(s string) string {
 
 // User defines a User model in DB.
 type User struct {
-	gorm.Model
+	utils.Model
 	Username string                   `gorm:"type:varchar(32);unique_index"`
 	Email    string                   `gorm:"type:varchar(100);unique_index"`
 	Role     accounts_proto.User_Role `gorm:"not null"`
 	// Banned indicates whether the user is banned (deactivated).
 	Banned            bool `gorm:"not null;default:false"`
 	PasswordHash      string
-	PasswordChangedAt time.Time
+	PasswordChangedAt *time.Time
 }
 
 // FromProto populates the User fields from accounts_proto.User protobuf.
 // Fields `CreatedAt` and `UpdatedAt` are not populated.
 func (user *User) FromProto(p *accounts_proto.User) error {
-	user.ID = uint(p.GetId())
+	user.ID = p.GetId()
 	user.Username = p.GetUsername()
 	user.Email = p.GetEmail()
 	user.Role = p.GetRole()
@@ -53,7 +53,7 @@ func (user *User) FromProto(p *accounts_proto.User) error {
 		if err != nil {
 			return errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		user.PasswordChangedAt = passwordChangedAt
+		user.PasswordChangedAt = &passwordChangedAt
 	}
 	return nil
 }
@@ -67,25 +67,29 @@ func (user *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User
 		return nil, status.Errorf(codes.Internal, err.Error())
 	}
 
-	updatedAt, err := ptypes.TimestampProto(user.UpdatedAt)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
-	passwordChangedAt, err := ptypes.TimestampProto(user.PasswordChangedAt)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
 	p := &accounts_proto.User{
-		Id:                uint64(user.ID),
-		Username:          user.Username,
-		Email:             user.Email,
-		Role:              user.Role,
-		Banned:            user.Banned,
-		CreatedAt:         createdAt,
-		UpdatedAt:         updatedAt,
-		PasswordChangedAt: passwordChangedAt,
+		Id:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		Role:      user.Role,
+		Banned:    user.Banned,
+		CreatedAt: createdAt,
+	}
+
+	if user.UpdatedAt != nil {
+		updatedAt, err := ptypes.TimestampProto(*user.UpdatedAt)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, err.Error())
+		}
+		p.UpdatedAt = updatedAt
+	}
+
+	if user.PasswordChangedAt != nil {
+		passwordChangedAt, err := ptypes.TimestampProto(*user.PasswordChangedAt)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, err.Error())
+		}
+		p.PasswordChangedAt = passwordChangedAt
 	}
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
@@ -148,7 +152,7 @@ func (user *User) NewJWTSigned(
 	jwtSecretKey []byte,
 	nodeName string,
 ) (string, error) {
-	now := time.Now()
+	now := time.Now().UTC()
 	expiresAt := now.Add(ttl).Unix()
 
 	claims := &auth.Claims{
@@ -209,7 +213,7 @@ func (user *User) Create(db *gorm.DB) (*events_proto.Event, error) {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
 	event, err := events.
-		NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+		NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +246,7 @@ func (user *User) Delete(db *gorm.DB) (*events_proto.Event, error) {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
 	event, err := events.
-		NewEventFromPayload(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
+		NewEvent(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new accounts_user.delete event")
 	}
@@ -281,7 +285,7 @@ func (user *User) Update(
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
 	event, err := events.
-		NewEventFromPayload(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
+		NewEvent(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new account_users.updated event")
 	}
@@ -293,7 +297,8 @@ func (user *User) ChangePassword(db *gorm.DB, password string, bcryptCost int) (
 	if err := user.SetPasswordHash(password, bcryptCost); err != nil {
 		return nil, errors.Wrap(err, "failed to set password hash")
 	}
-	user.PasswordChangedAt = time.Now()
+	now := time.Now().UTC()
+	user.PasswordChangedAt = &now
 
 	if err := utils.HandleDBError(db.Model(user).
 		Updates(map[string]interface{}{
@@ -307,7 +312,7 @@ func (user *User) ChangePassword(db *gorm.DB, password string, bcryptCost int) (
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(
+	event, err := events.NewEvent(
 		userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create a new account_users.updated.password event")

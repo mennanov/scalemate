@@ -1,0 +1,20 @@
+# docker-compose configuration for unit and integration tests.
+# See https://docs.docker.com/compose/extends/#multiple-compose-files
+version: "3"
+
+services:
+
+  nats:
+    command: "-SDV -cid scalemate"
+
+  accounts-db:
+    ports:
+      - "25432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  scheduler-db:
+    ports:
+      - "35432:5432"
+    tmpfs:
+      - /var/lib/postgresql/data

@@ -2,19 +2,20 @@ package server_test
 
 import (
 	"context"
-	"flag"
 	"fmt"
-	"net"
-	"os"
-	"path"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
+	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
+	"google.golang.org/grpc/credentials"
 
+	"github.com/mennanov/scalemate/accounts/conf"
 	"github.com/mennanov/scalemate/accounts/migrations"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 
 	"google.golang.org/grpc"
@@ -22,168 +23,106 @@ import (
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
-	"gopkg.in/khaiql/dbcleaner.v2"
-	"gopkg.in/khaiql/dbcleaner.v2/engine"
-	"gopkg.in/khaiql/dbcleaner.v2/logging"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/accounts/server"
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-var verbose bool
-var cleaner = dbcleaner.New(dbcleaner.SetLogger(&logging.Stdout{}))
-
-func init() {
-	flag.BoolVar(&verbose, "verbose", false, "verbose")
-	flag.Parse()
-}
+const natsDurableName = "accounts-server-tests"
 
 type ServerTestSuite struct {
 	suite.Suite
 	service         *server.AccountsServer
 	client          accounts_proto.AccountsClient
 	db              *gorm.DB
-	amqpChannel     *amqp.Channel
-	amqpConnection  *amqp.Connection
+	sc              stan.Conn
+	subscription    events.Subscription
+	messagesHandler *events.MessagesTestingHandler
 	ctxCancel       context.CancelFunc
-	bCryptCost      int
-	accessTokenTTL  time.Duration
-	refreshTokenTTL time.Duration
-	jwtSecretKey    []byte
+	logger          *logrus.Logger
 }
 
 func (s *ServerTestSuite) SetupSuite() {
+	s.logger = logrus.StandardLogger()
+	utils.SetLogrusLevelFromEnv(s.logger)
+
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 	var err error
 
-	s.amqpConnection, err = utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
+	s.db, err = utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_server_test_suite")
 	s.Require().NoError(err)
 
-	s.db, err = utils.ConnectDBFromEnv(server.DBEnvConf)
+	s.sc, err = stan.Connect(
+		conf.AccountsConf.NatsClusterName,
+		fmt.Sprintf("accounts-service-%s", uuid.New().String()),
+		stan.NatsURL(conf.AccountsConf.NatsAddr))
 	s.Require().NoError(err)
 
-	s.jwtSecretKey, err = server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
-	s.Require().NoError(err)
-
-	s.bCryptCost, err = server.BCryptCostFromEnv(server.AccountsEnvConf)
-	s.Require().NoError(err)
-
-	s.accessTokenTTL, err = server.AccessTokenFromEnv(server.AccountsEnvConf)
-	s.Require().NoError(err)
-
-	s.refreshTokenTTL, err = server.RefreshTokenFromEnv(server.AccountsEnvConf)
-	s.Require().NoError(err)
+	consumer := events.NewNatsConsumer(s.sc, events.AccountsSubjectName, s.logger, stan.DurableName(natsDurableName))
+	s.messagesHandler = &events.MessagesTestingHandler{}
+	s.subscription, err = consumer.Consume(s.messagesHandler)
 
 	s.service, err = server.NewAccountsServer(
 		server.WithLogger(logrus.New()),
 		server.WithDBConnection(s.db),
-		server.WithAMQPConsumers(s.amqpConnection),
-		server.WithAMQPProducer(s.amqpConnection),
-		server.WithJWTSecretKey(s.jwtSecretKey),
-		server.WithClaimsInjector(s.jwtSecretKey),
-		server.WithAccessTokenTTL(s.accessTokenTTL),
-		server.WithRefreshTokenTTL(s.refreshTokenTTL),
-		server.WithBCryptCost(s.bCryptCost),
+		server.WithProducer(events.NewNatsProducer(s.sc, events.AccountsSubjectName)),
+		server.WithJWTSecretKey(conf.AccountsConf.JWTSecretKey),
+		server.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.AccountsConf.JWTSecretKey)),
+		server.WithAccessTokenTTL(conf.AccountsConf.AccessTokenTTL),
+		server.WithRefreshTokenTTL(conf.AccountsConf.RefreshTokenTTL),
+		server.WithBCryptCost(conf.AccountsConf.BCryptCost),
 	)
 	s.Require().NoError(err)
 
 	// Prepare database.
 	s.Require().NoError(migrations.RunMigrations(s.db))
 
-	dsn := fmt.Sprintf("host=%s port=%s user=%s dbname=%s password=%s sslmode=disable",
-		os.Getenv(server.DBEnvConf.Host), os.Getenv(server.DBEnvConf.Port), os.Getenv(server.DBEnvConf.User),
-		os.Getenv(server.DBEnvConf.Name), os.Getenv(server.DBEnvConf.Password))
-	pg := engine.NewPostgresEngine(dsn)
-	cleaner.SetEngine(pg)
-
-	if err != nil {
-		panic(fmt.Sprintf("Failed to create gRPC server: %+v", err))
-	}
-
 	var ctx context.Context
 	ctx, s.ctxCancel = context.WithCancel(context.Background())
 
-	go func() {
-		s.service.Serve(ctx, localAddr)
-		defer utils.Close(s.service)
-	}()
-
-	// Waiting for gRPC server to start serving.
-	time.Sleep(time.Millisecond * 100)
-	s.client = accounts_proto.NewAccountsClient(newTestConn(localAddr))
-}
-
-func (s *ServerTestSuite) SetupTest() {
-	var err error
-	s.amqpChannel, err = s.amqpConnection.Channel()
+	serverCreds, err := credentials.NewServerTLSFromFile(conf.AccountsConf.TLSCertFile, conf.AccountsConf.TLSKeyFile)
 	s.Require().NoError(err)
 
-	cleaner.Acquire("users")
-	cleaner.Acquire("nodes")
+	go func() {
+		s.service.Serve(ctx, localAddr, serverCreds)
+	}()
+
+	clientCreds, err := credentials.NewClientTLSFromFile(conf.AccountsConf.TLSCertFile, "localhost")
+	s.Require().NoError(err)
+	s.client = accounts_proto.NewAccountsClient(newClientConn(localAddr, clientCreds))
 }
 
 func (s *ServerTestSuite) TearDownTest() {
-	s.Require().NoError(s.amqpChannel.Close())
-
-	cleaner.Clean("users")
-	cleaner.Clean("nodes")
+	s.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", strings.Join(models.TableNames, ",")))
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
 	s.ctxCancel()
 	// Wait for the service to stop gracefully.
-	time.Sleep(time.Millisecond * 200)
-	s.NoError(migrations.RollbackAllMigrations(s.db))
-	utils.Close(s.amqpConnection)
+	time.Sleep(time.Millisecond * 100)
+
+	utils.Close(s.subscription, s.logger)
+	utils.Close(s.sc, s.logger)
+	utils.Close(s.db, s.logger)
 }
 
 func TestRunServerSuite(t *testing.T) {
 	suite.Run(t, new(ServerTestSuite))
 }
 
-func newTestConn(addr string) *grpc.ClientConn {
+func newClientConn(addr string, creds credentials.TransportCredentials) *grpc.ClientConn {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	conn, err := grpc.DialContext(
-		ctx,
-		addr,
-		grpc.WithTransportCredentials(tlsClientCredentialsFromEnv(server.TLSEnvConf)),
-		grpc.WithDialer(func(addr string, d time.Duration) (net.Conn, error) {
-			return net.Dial("tcp", addr)
-		}),
-	)
-
+	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		panic(err)
 	}
 
 	return conn
-}
-
-func tlsClientCredentialsFromEnv(conf utils.TLSEnvConf) credentials.TransportCredentials {
-	certFile := os.Getenv(conf.CertFile)
-
-	if certFile == "" {
-		panic(fmt.Sprintf("%s env variable is empty", conf.CertFile))
-	}
-
-	// Bazel specific path to data files. See https://docs.bazel.build/versions/master/build-ref.html#data
-	srcDir := os.Getenv("TEST_SRCDIR")
-	if srcDir != "" {
-		certFile = path.Join(srcDir, certFile)
-	}
-
-	creds, err := credentials.NewClientTLSFromFile(certFile, "localhost")
-	if err != nil {
-		panic(err)
-	}
-
-	return creds
 }
 
 func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
@@ -193,13 +132,13 @@ func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
 		Role:     accounts_proto.User_USER,
 		Banned:   false,
 	}
-	s.Require().NoError(user.SetPasswordHash(password, s.bCryptCost))
+	s.Require().NoError(user.SetPasswordHash(password, conf.AccountsConf.BCryptCost))
 	s.db.Create(user)
 	return user
 }
 
 func (s *ServerTestSuite) createTestUser(user *models.User, password string) *models.User {
-	s.Require().NoError(user.SetPasswordHash(password, s.bCryptCost))
+	s.Require().NoError(user.SetPasswordHash(password, conf.AccountsConf.BCryptCost))
 	s.db.Create(user)
 	return user
 }
@@ -216,24 +155,26 @@ func (s *ServerTestSuite) assertGRPCError(err error, code codes.Code) {
 }
 
 func (s *ServerTestSuite) assertAuthTokensValid(tokens *accounts_proto.AuthTokens, user *models.User, issuedAt time.Time, nodeName string) {
-	accessTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.AccessToken, s.jwtSecretKey)
+	accessTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.AccessToken, conf.AccountsConf.JWTSecretKey)
 	s.Require().NoError(err)
 
 	s.Equal(user.Username, accessTokenClaims.Username)
 	s.Equal(user.Role, accessTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), accessTokenClaims.IssuedAt)
 	s.Equal(auth.TokenTypeAccess, accessTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(s.accessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0), s.accessTokenTTL)
+	s.WithinDuration(issuedAt.Add(conf.AccountsConf.AccessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0),
+		conf.AccountsConf.AccessTokenTTL)
 	s.Equal(nodeName, accessTokenClaims.NodeName)
 
-	refreshTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.RefreshToken, s.jwtSecretKey)
+	refreshTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.RefreshToken, conf.AccountsConf.JWTSecretKey)
 	s.Require().NoError(err)
 
 	s.Equal(user.Username, refreshTokenClaims.Username)
 	s.Equal(user.Role, refreshTokenClaims.Role)
 	s.Equal(issuedAt.Unix(), refreshTokenClaims.IssuedAt)
 	s.Equal(auth.TokenTypeRefresh, refreshTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(s.refreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0), s.refreshTokenTTL)
+	s.WithinDuration(issuedAt.Add(conf.AccountsConf.RefreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0),
+		conf.AccountsConf.RefreshTokenTTL)
 	s.Equal(nodeName, refreshTokenClaims.NodeName)
 
 	s.True(accessTokenClaims.ExpiresAt < refreshTokenClaims.ExpiresAt)
@@ -252,9 +193,9 @@ func (s *ServerTestSuite) accessCredentialsQuick(ttl time.Duration, role account
 }
 
 func (s *ServerTestSuite) userAccessCredentials(user *models.User, ttl time.Duration) grpc.CallOption {
-	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, s.jwtSecretKey, "")
+	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, conf.AccountsConf.JWTSecretKey, "")
 	s.Require().NoError(err)
-	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, s.jwtSecretKey, "")
+	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, conf.AccountsConf.JWTSecretKey, "")
 	s.Require().NoError(err)
 	jwtCredentials := auth.NewJWTCredentials(
 		s.client,

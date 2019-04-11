@@ -10,12 +10,13 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListJobs() {
 	job1 := &models.Job{
 		Username: "username1",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_PENDING),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 	}
 	_, err := job1.Create(s.db)
 	s.Require().NoError(err)
@@ -23,7 +24,7 @@ func (s *ServerTestSuite) TestListJobs() {
 
 	job2 := &models.Job{
 		Username: "username1",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err = job2.Create(s.db)
 	s.Require().NoError(err)

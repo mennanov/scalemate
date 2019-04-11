@@ -4,13 +4,10 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
-	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // WithLogger creates an option that sets the logger.
@@ -53,58 +50,18 @@ func WithJWTSecretKey(jwtSecretKey []byte) Option {
 	}
 }
 
-// WithClaimsInjector creates an option that sets the ClaimsInjector to auth.NewJWTClaimsInjector with the
-// provided jwtSecretKey.
-func WithClaimsInjector(jwtSecretKey []byte) Option {
+// WithClaimsInjector creates an option that sets the claimsInjector value.
+func WithClaimsInjector(injector auth.ClaimsInjector) Option {
 	return func(s *AccountsServer) error {
-		s.claimsInjector = auth.NewJWTClaimsInjector(jwtSecretKey)
+		s.claimsInjector = injector
 		return nil
 	}
 }
 
-// WithAMQPProducer creates an option that sets the producer field value to AMQPProducer.
-func WithAMQPProducer(conn *amqp.Connection) Option {
+// WithProducer creates an option that sets the producer field value.
+func WithProducer(producer events.Producer) Option {
 	return func(s *AccountsServer) error {
-		if conn == nil {
-			return errors.New("amqp.Connection is nil")
-		}
-		producer, err := events.NewAMQPProducer(conn, events.AccountsAMQPExchangeName)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPProducer failed")
-		}
 		s.producer = producer
-		return nil
-	}
-}
-
-// WithAMQPConsumers creates an option that sets the consumers field value to AMQPConsumer(s).
-func WithAMQPConsumers(conn *amqp.Connection) Option {
-	return func(s *AccountsServer) error {
-		channel, err := conn.Channel()
-		defer utils.Close(channel)
-
-		if err != nil {
-			return errors.Wrap(err, "failed to open a new AMQP channel")
-		}
-		// Declare all required exchanges.
-		if err := events.AMQPExchangeDeclare(channel, events.AccountsAMQPExchangeName); err != nil {
-			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.AccountsAMQPExchangeName)
-		}
-		if err := events.AMQPExchangeDeclare(channel, events.SchedulerAMQPExchangeName); err != nil {
-			return errors.Wrapf(err, "failed to declare AMQP exchange %s", events.SchedulerAMQPExchangeName)
-		}
-
-		nodeConnectedConsumer, err := events.NewAMQPConsumer(
-			conn,
-			events.SchedulerAMQPExchangeName,
-			"accounts_scheduler_node_created",
-			"scheduler.node.created",
-			s.HandleSchedulerNodeCreatedEvent)
-		if err != nil {
-			return errors.Wrap(err, "events.NewAMQPRawConsumer failed for nodeConnectedConsumer")
-		}
-		s.consumers = []events.Consumer{nodeConnectedConsumer}
-
 		return nil
 	}
 }

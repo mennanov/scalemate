@@ -9,6 +9,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
@@ -94,7 +95,7 @@ func (s *ModelsTestSuite) TestNode_AllocateJobResources() {
 	node := &models.Node{
 		Username:        "node_owner",
 		Name:            "node1",
-		Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+		Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		CpuAvailable:    3,
 		MemoryAvailable: 6000,
 		GpuAvailable:    4,

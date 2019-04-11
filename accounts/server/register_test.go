@@ -4,17 +4,14 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestRegister() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	ctx := context.Background()
 	req := &accounts_proto.RegisterRequest{
 		Username: "username",
@@ -22,15 +19,21 @@ func (s *ServerTestSuite) TestRegister() {
 		Password: "password",
 	}
 
-	_, err = s.client.Register(ctx, req)
+	_, err := s.client.Register(ctx, req)
 	s.Require().NoError(err)
+	s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
+		Type:    events_proto.Event_CREATED,
+		Service: events_proto.Service_ACCOUNTS,
+		Payload: &events_proto.Event_AccountsUser{
+			AccountsUser: &accounts_proto.User{},
+		},
+	})))
 
-	// Verify that user is created in DB.
+	// Verify that the user is created in DB.
 	user := &models.User{}
 	err = s.db.Where("username = ?", req.Username).First(user).Error
 	s.Require().NoError(err)
 	s.NotEqual("", user.PasswordHash)
-	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
 func (s *ServerTestSuite) TestRegisterDuplicates() {

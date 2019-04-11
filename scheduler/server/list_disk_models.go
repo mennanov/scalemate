@@ -5,7 +5,6 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
-	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -18,12 +17,12 @@ func (s SchedulerServer) ListDiskModels(
 	q := s.db.Table("nodes").
 		Select("disk_model, disk_class, SUM(disk_capacity) AS disk_capacity, SUM(disk_available) AS disk_available, " +
 			"COUNT(id) AS nodes_count").
-		Where("status = ?", models.Enum(scheduler_proto.Node_STATUS_ONLINE)).
+		Where("status = ?", utils.Enum(scheduler_proto.Node_STATUS_ONLINE)).
 		Group("disk_class, disk_model").
 		Order("disk_class, disk_model")
 
 	if r.DiskClass != 0 {
-		q = q.Where("disk_class = ?", models.Enum(r.DiskClass))
+		q = q.Where("disk_class = ?", utils.Enum(r.DiskClass))
 	}
 
 	response := &scheduler_proto.ListDiskModelsResponse{}

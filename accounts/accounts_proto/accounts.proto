@@ -84,7 +84,7 @@ message CreateUserRequest {
 
 message UserLookupRequest {
     // Performs a lookup by any of the given fields.
-    uint32 id = 1;
+    uint64 id = 1;
     string username = 2;
     string email = 3;
 }

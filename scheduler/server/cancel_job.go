@@ -69,7 +69,7 @@ func (s SchedulerServer) CancelJob(
 		updateEvents = append(updateEvents, taskUpdatedEvent)
 	}
 
-	if err := events.CommitAndPublish(tx, s.producer, updateEvents...); err != nil {
+	if err := events.CommitAndPublish(s.producer, updateEvents); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 

@@ -1,10 +1,12 @@
 package cmd
 
 import (
-	"fmt"
+	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/mennanov/scalemate/accounts/conf"
 	"github.com/mennanov/scalemate/accounts/migrations"
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -14,17 +16,20 @@ var migrateCmd = &cobra.Command{
 	Use:   "migrate",
 	Short: "Apply all unapplied migrations",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Running migrations...")
-		db, err := utils.ConnectDBFromEnv(utils.DBEnvConf{})
+		logger := logrus.StandardLogger()
+		logger.SetLevel(logrus.Level(verbosity))
+
+		logger.Info("Running migrations...")
+		db, err := utils.ConnectDBFromEnv(conf.AccountsConf.DBUrl)
 		if err != nil {
-			fmt.Printf("Failed to connect to database: %+v\n", err)
-			return
+			logger.WithError(err).Fatalf("Failed to connect to database: %+v\n", err)
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
 		if err := migrations.RunMigrations(db); err != nil {
-			fmt.Printf("Failed to apply migrations: %v\n", err.Error())
-			return
+			logger.WithError(err).Fatalf("Failed to apply migrations: %v\n", err.Error())
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
-		fmt.Println("migrations applied.")
+		logger.Info("Migrations applied.")
 	},
 }
 

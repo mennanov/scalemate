@@ -230,3 +230,28 @@ go_repository(
     commit = "51d6538a90f86fe93ac480b35f37b2be17fef232",
     importpath = "gopkg.in/yaml.v2",
 )
+
+go_repository(
+    name = "com_github_nats_io_go_nats_streaming",
+    commit = "512d9079d04064a6b2788d47e9800269d6e32ba8",
+    importpath = "github.com/nats-io/go-nats-streaming",
+    build_file_proto_mode = "disable",
+)
+
+go_repository(
+    name = "com_github_nats_io_go_nats",
+    commit = "c528ff487513eec69347b5598eb35d91f0a63820",
+    importpath = "github.com/nats-io/go-nats",
+)
+
+go_repository(
+    name = "com_github_nats_io_nuid",
+    commit = "3024a71c3cbe30667286099921591e6fcc328230",
+    importpath = "github.com/nats-io/nuid",
+)
+
+go_repository(
+    name = "com_github_nats_io_nkeys",
+    commit = "1546a3320a8f195a5b5c84aef8309377c2e411d5",
+    importpath = "github.com/nats-io/nkeys",
+)

@@ -8,50 +8,15 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
+	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
 )
-
-const msgWaitTimeout = time.Second
-
-// WaitForMessages waits for the messages and matches their routing keys with the given keys.
-// The function returns once all the provided keys have matched.
-func WaitForMessages(messages <-chan amqp.Delivery, keys ...string) {
-	allMessagesReceived := make(chan struct{})
-	go func(c chan struct{}) {
-		for msg := range messages {
-			logrus.Debugf("Received AMQP message %s", msg.RoutingKey)
-			for i := range keys {
-				re := regexp.MustCompile(keys[i])
-				if re.MatchString(msg.RoutingKey) {
-					// Remove the key that matched from the keys.
-					keys = append(keys[:i], keys[i+1:]...)
-					if len(keys) == 0 {
-						c <- struct{}{}
-						return
-					}
-					break
-				}
-			}
-		}
-	}(allMessagesReceived)
-
-	// Wait until all messages are received.
-	select {
-	case <-allMessagesReceived:
-
-	case <-time.After(msgWaitTimeout):
-		panic(fmt.Sprintf("unreceived messages within the timeout: %s", keys))
-	}
-
-}
 
 // CreateTestingTokenString creates a JWT testing string for a given ttl and token type.
 func CreateTestingTokenString(ttl time.Duration, tokenType auth.TokenType, username string) string {
@@ -105,4 +70,22 @@ func GetAllErrors() []error {
 	// Add an unknown error.
 	errs[17] = errors.New("Unknown error")
 	return errs
+}
+
+// CreateTestingDatabase creates a new testing database and returns a connection to it.
+// It drops the existing database with the given name before creating it.
+func CreateTestingDatabase(dbURL, dbName string) (*gorm.DB, error) {
+	db, err := ConnectDBFromEnv(dbURL)
+	if err != nil {
+		return nil, errors.Wrap(err, "ConnectDBFromEnv failed")
+	}
+	if err := db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to drop a database %s", dbName)
+	}
+	if err := db.Exec(fmt.Sprintf("CREATE DATABASE %s", dbName)).Error; err != nil {
+		return nil, errors.Wrapf(err, "failed to create a database %s", dbName)
+	}
+
+	newUrl := regexp.MustCompile(`dbname=(\w+)`).ReplaceAllString(dbURL, fmt.Sprintf("dbname=%s", dbName))
+	return ConnectDBFromEnv(newUrl)
 }

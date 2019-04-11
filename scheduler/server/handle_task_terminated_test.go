@@ -4,6 +4,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -17,8 +18,8 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 
 	job := &models.Job{
 		Username:      "job1",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
+		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)
@@ -26,7 +27,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 	task := &models.Task{
 		JobID:  job.ID,
 		NodeID: node.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	_, err = task.Create(s.db)
 	s.Require().NoError(err)
@@ -36,12 +37,12 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsTerminated
 
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
-	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
-	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated\..*?tasks_finished`)
+	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.job.updated\..*?status`)
+	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.node.updated\..*?tasks_finished`)
 
 	// Verify that the jobScheduled now has a status "FINISHED".
 	s.Require().NoError(job.LoadFromDB(s.db))
-	s.Equal(models.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
+	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
 	// Verify than the Node's statistics are updated.
 	s.Require().NoError(node.LoadFromDB(s.db))
 	s.Equal(uint64(1), node.TasksFinished)
@@ -57,8 +58,8 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 
 	job := &models.Job{
 		Username:      "job1",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE),
+		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE),
 	}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)
@@ -66,7 +67,7 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 	task := &models.Task{
 		JobID:  job.ID,
 		NodeID: node.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	_, err = task.Create(s.db)
 	s.Require().NoError(err)
@@ -76,12 +77,12 @@ func (s *ServerTestSuite) TestTaskTerminatedHandler_CorrespondingJobIsPending() 
 
 	s.Require().NoError(s.service.HandleTaskTerminated(taskUpdatedEvent))
 
-	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.job.updated\..*?status`)
-	utils.WaitForMessages(s.amqpRawConsumer, `scheduler.node.updated\..*?tasks_failed`)
+	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.job.updated\..*?status`)
+	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.node.updated\..*?tasks_failed`)
 
 	// Verify that the jobScheduled now has a status "PENDING".
 	s.Require().NoError(job.LoadFromDB(s.db))
-	s.Equal(models.Enum(scheduler_proto.Job_STATUS_PENDING), job.Status)
+	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_PENDING), job.Status)
 	// Verify than the Node's statistics are updated.
 	s.Require().NoError(node.LoadFromDB(s.db))
 	s.Equal(uint64(1), node.TasksFailed)

@@ -5,18 +5,15 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/genproto/protobuf/field_mask"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestUpdate() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	user := s.createTestUser(&models.User{
 		Username: "username",
 		Email:    "email@mail.com",
@@ -26,7 +23,7 @@ func (s *ServerTestSuite) TestUpdate() {
 
 	ctx := context.Background()
 	req := &accounts_proto.UpdateUserRequest{
-		Lookup: &accounts_proto.UserLookupRequest{Id: uint32(user.ID)},
+		Lookup: &accounts_proto.UserLookupRequest{Id: user.ID},
 		User:   &accounts_proto.User{Username: "new_username", Role: accounts_proto.User_USER, Banned: false},
 		UpdateMask: &field_mask.FieldMask{
 			Paths: []string{"role", "banned", "username"},
@@ -36,18 +33,21 @@ func (s *ServerTestSuite) TestUpdate() {
 	res, err := s.client.Update(ctx, req, s.accessCredentialsQuick(time.Minute, accounts_proto.User_ADMIN))
 	s.Require().NoError(err)
 	s.NotNil(res)
+	s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
+		Type:    events_proto.Event_UPDATED,
+		Service: events_proto.Service_ACCOUNTS,
+		Payload: &events_proto.Event_AccountsUser{
+			AccountsUser: &accounts_proto.User{Id: user.ID},
+		},
+	})))
 
 	// Verify that the user is updated.
 	s.Equal(res.Username, req.User.Username)
 	s.Equal(res.Role, req.User.Role)
 	s.Equal(res.Banned, req.User.Banned)
-	// Check messages.
-	utils.WaitForMessages(messages, "accounts.user.updated")
 }
 
 func (s *ServerTestSuite) TestUpdateByFieldMaskOnly() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
 	user := s.createTestUser(&models.User{
 		Username: "username",
 		Email:    "email@mail.com",
@@ -57,7 +57,7 @@ func (s *ServerTestSuite) TestUpdateByFieldMaskOnly() {
 
 	ctx := context.Background()
 	req := &accounts_proto.UpdateUserRequest{
-		Lookup: &accounts_proto.UserLookupRequest{Id: uint32(user.ID)},
+		Lookup: &accounts_proto.UserLookupRequest{Id: user.ID},
 		User:   &accounts_proto.User{Username: "new_username", Role: accounts_proto.User_USER, Banned: false},
 		UpdateMask: &field_mask.FieldMask{
 			Paths: []string{"role"},
@@ -67,12 +67,18 @@ func (s *ServerTestSuite) TestUpdateByFieldMaskOnly() {
 	res, err := s.client.Update(ctx, req, s.accessCredentialsQuick(time.Minute, accounts_proto.User_ADMIN))
 	s.Require().NoError(err)
 	s.NotNil(res)
+	s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
+		Type:    events_proto.Event_UPDATED,
+		Service: events_proto.Service_ACCOUNTS,
+		Payload: &events_proto.Event_AccountsUser{
+			AccountsUser: &accounts_proto.User{Id: user.ID},
+		},
+	})))
 
 	// Verify that only "role" of the user is updated.
 	s.Equal(user.Username, res.Username)
 	s.Equal(req.User.Role, res.Role)
 	s.Equal(user.Banned, res.Banned)
-	utils.WaitForMessages(messages, `accounts.user.updated\..*?role.*?`)
 }
 
 func (s *ServerTestSuite) TestUpdateByEmptyFieldMask() {
@@ -85,7 +91,7 @@ func (s *ServerTestSuite) TestUpdateByEmptyFieldMask() {
 
 	ctx := context.Background()
 	req := &accounts_proto.UpdateUserRequest{
-		Lookup:     &accounts_proto.UserLookupRequest{Id: uint32(user.ID)},
+		Lookup:     &accounts_proto.UserLookupRequest{Id: user.ID},
 		User:       &accounts_proto.User{Username: "new_username", Role: accounts_proto.User_USER, Banned: false},
 		UpdateMask: &field_mask.FieldMask{},
 	}
@@ -98,7 +104,7 @@ func (s *ServerTestSuite) TestUpdateByEmptyFieldMask() {
 func (s *ServerTestSuite) TestUpdateLookupFails() {
 	ctx := context.Background()
 	req := &accounts_proto.UpdateUserRequest{
-		Lookup: &accounts_proto.UserLookupRequest{Id: uint32(1)},
+		Lookup: &accounts_proto.UserLookupRequest{Id: 1},
 		User:   &accounts_proto.User{Username: "new_username"},
 		UpdateMask: &field_mask.FieldMask{
 			Paths: []string{"username"},

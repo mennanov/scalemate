@@ -10,6 +10,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListTasks() {
@@ -22,11 +23,11 @@ func (s *ServerTestSuite) TestListTasks() {
 	jobs := []*models.Job{
 		{
 			Username: "username1",
-			Status:   models.Enum(scheduler_proto.Job_STATUS_PENDING),
+			Status:   utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 		},
 		{
 			Username: "username1",
-			Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+			Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 		},
 		{
 			Username: "username2",
@@ -40,17 +41,17 @@ func (s *ServerTestSuite) TestListTasks() {
 
 	tasks := []*models.Task{
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
+			Status: utils.Enum(scheduler_proto.Task_STATUS_NEW),
 			NodeID: node.ID,
 			JobID:  jobs[0].ID,
 		},
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_FINISHED),
+			Status: utils.Enum(scheduler_proto.Task_STATUS_FINISHED),
 			NodeID: node.ID,
 			JobID:  jobs[1].ID,
 		},
 		{
-			Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
+			Status: utils.Enum(scheduler_proto.Task_STATUS_NEW),
 			NodeID: node.ID,
 			JobID:  jobs[2].ID,
 		},

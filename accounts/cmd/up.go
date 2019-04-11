@@ -7,10 +7,16 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
+	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/credentials"
 
+	"github.com/mennanov/scalemate/accounts/conf"
 	"github.com/mennanov/scalemate/accounts/server"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -20,63 +26,48 @@ var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "up runs a gRPC service",
 	Run: func(cmd *cobra.Command, args []string) {
-		db, err := utils.ConnectDBFromEnv(server.DBEnvConf)
-		if err != nil {
-			logrus.WithError(err).Error("utils.ConnectDBFromEnv failed")
-			return
-		}
-		defer utils.Close(db)
-
-		amqpConnection, err := utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
-		if err != nil {
-			logrus.WithError(err).Error("utils.ConnectAMQPFromEnv failed")
-			return
-		}
-		defer utils.Close(amqpConnection)
-
-		jwtSecretKey, err := server.JWTSecretKeyFromEnv(server.AccountsEnvConf)
-		if err != nil {
-			fmt.Printf("server.JWTSecretKeyFromEnv failed: %s", err)
-			return
-		}
-
-		bCryptCost, err := server.BCryptCostFromEnv(server.AccountsEnvConf)
-		if err != nil {
-			fmt.Printf("server.BCryptCostFromEnv failed: %s", err)
-			return
-		}
-
-		accessTokenTTL, err := server.AccessTokenFromEnv(server.AccountsEnvConf)
-		if err != nil {
-			fmt.Printf("server.AccessTokenFromEnv failed: %s", err)
-			return
-		}
-
-		refreshTokenTTL, err := server.RefreshTokenFromEnv(server.AccountsEnvConf)
-		if err != nil {
-			fmt.Printf("server.RefreshTokenFromEnv failed: %s", err)
-			return
-		}
-
 		logger := logrus.StandardLogger()
-		utils.SetLogrusLevelFromEnv(logger)
+		logger.SetLevel(logrus.Level(verbosity))
+
+		creds, err := credentials.NewServerTLSFromFile(conf.AccountsConf.TLSCertFile, conf.AccountsConf.TLSKeyFile)
+		if err != nil {
+			logger.WithError(err).Fatal("utils.NewServerTLSCredentialsFromFile failed")
+			os.Exit(1) //revive:disable-line:deep-exit
+		}
+
+		db, err := utils.ConnectDBFromEnv(conf.AccountsConf.DBUrl)
+		if err != nil {
+			logger.WithError(err).Fatal("utils.ConnectDBFromEnv failed")
+			os.Exit(1) //revive:disable-line:deep-exit
+		}
+		defer utils.Close(db, logger)
+
+		sc, err := stan.Connect(
+			conf.AccountsConf.NatsClusterName,
+			fmt.Sprintf("accounts-service-%s", uuid.New().String()),
+			stan.NatsURL(conf.AccountsConf.NatsAddr))
+		if err != nil {
+			logger.Fatalf("stan.Connect failed: %s", err.Error())
+			os.Exit(1) //revive:disable-line:deep-exit
+		}
+		defer utils.Close(sc, logger)
+
+		producer := events.NewNatsProducer(sc, events.AccountsSubjectName)
 
 		accountsServer, err := server.NewAccountsServer(
 			server.WithLogger(logger),
 			server.WithDBConnection(db),
-			server.WithAMQPConsumers(amqpConnection),
-			server.WithAMQPProducer(amqpConnection),
-			server.WithJWTSecretKey(jwtSecretKey),
-			server.WithClaimsInjector(jwtSecretKey),
-			server.WithAccessTokenTTL(accessTokenTTL),
-			server.WithRefreshTokenTTL(refreshTokenTTL),
-			server.WithBCryptCost(bCryptCost),
+			server.WithProducer(producer),
+			server.WithJWTSecretKey(conf.AccountsConf.JWTSecretKey),
+			server.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.AccountsConf.JWTSecretKey)),
+			server.WithAccessTokenTTL(conf.AccountsConf.AccessTokenTTL),
+			server.WithRefreshTokenTTL(conf.AccountsConf.RefreshTokenTTL),
+			server.WithBCryptCost(conf.AccountsConf.BCryptCost),
 		)
 		if err != nil {
-			fmt.Printf("Failed to start gRPC server: %+v\n", err)
-			return
+			logger.WithError(err).Fatal("Failed to start gRPC server: %+v\n", err)
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
-		defer utils.Close(accountsServer)
 
 		shutdown := make(chan os.Signal)
 		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
@@ -88,7 +79,7 @@ var upCmd = &cobra.Command{
 			ctxCancel()
 		}()
 
-		accountsServer.Serve(ctx, grpcAddr)
+		accountsServer.Serve(ctx, grpcAddr, creds)
 	},
 }
 

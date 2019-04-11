@@ -1,10 +1,12 @@
 package cmd
 
 import (
-	"fmt"
+	"os"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"github.com/mennanov/scalemate/accounts/conf"
 	"github.com/mennanov/scalemate/accounts/migrations"
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -16,13 +18,16 @@ var rollbackCmd = &cobra.Command{
 	Long:  "Rollback sequentially to the given migration by ID or the last migration if ID is not provided",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		db, err := utils.ConnectDBFromEnv(utils.DBEnvConf{})
+		logger := logrus.StandardLogger()
+		logger.SetLevel(logrus.Level(verbosity))
+		db, err := utils.ConnectDBFromEnv(conf.AccountsConf.DBUrl)
 		if err != nil {
-			fmt.Printf("Failed to connect to database: %+v\n", err)
-			return
+			logger.WithError(err).Fatalf("Failed to connect to database: %+v\n", err)
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
 		if err := migrations.RollbackMigrations(db, args[0]); err != nil {
-			fmt.Printf("Failed to rollback migrations: %v\n", err.Error())
+			logger.WithError(err).Fatalf("Failed to rollback migrations: %v\n", err)
+			os.Exit(1) //revive:disable-line:deep-exit
 		}
 	},
 }

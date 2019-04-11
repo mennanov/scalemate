@@ -28,31 +28,31 @@ const (
 
 // Node represents a physical machine that runs Tasks (scheduled Jobs).
 type Node struct {
-	Model
+	utils.Model
 	Username     string `gorm:"not null;unique_index:idx_username_name"`
 	Name         string `gorm:"not null;unique_index:idx_username_name"`
-	Status       Enum
-	CpuCapacity  uint32  `gorm:"type:smallint;not null;"`
-	CpuAvailable float32 `gorm:"not null;"`
-	CpuClass     Enum    `gorm:"type:smallint;not null;"`
-	CpuClassMin  Enum    `gorm:"type:smallint;not null;"`
-	CpuModel     string  `gorm:"index:idx_cpu_model"`
+	Status       utils.Enum
+	CpuCapacity  uint32     `gorm:"type:smallint;not null;"`
+	CpuAvailable float32    `gorm:"not null;"`
+	CpuClass     utils.Enum `gorm:"type:smallint;not null;"`
+	CpuClassMin  utils.Enum `gorm:"type:smallint;not null;"`
+	CpuModel     string     `gorm:"index:idx_cpu_model"`
 
 	MemoryCapacity  uint32 `gorm:"not null;"`
 	MemoryAvailable uint32 `gorm:"not null;"`
 	MemoryModel     string `gorm:"index:idx_memory_model"`
 
-	GpuCapacity  uint32 `gorm:"type:smallint;not null;"`
-	GpuAvailable uint32 `gorm:"type:smallint;not null;"`
-	GpuClass     Enum   `gorm:"type:smallint;not null;"`
-	GpuClassMin  Enum   `gorm:"type:smallint;not null;"`
-	GpuModel     string `gorm:"index:idx_gpu_model"`
+	GpuCapacity  uint32     `gorm:"type:smallint;not null;"`
+	GpuAvailable uint32     `gorm:"type:smallint;not null;"`
+	GpuClass     utils.Enum `gorm:"type:smallint;not null;"`
+	GpuClassMin  utils.Enum `gorm:"type:smallint;not null;"`
+	GpuModel     string     `gorm:"index:idx_gpu_model"`
 
-	DiskCapacity  uint32 `gorm:"not null;"`
-	DiskAvailable uint32 `gorm:"not null;"`
-	DiskClass     Enum   `gorm:"type:smallint;not null;"`
-	DiskClassMin  Enum   `gorm:"type:smallint;not null;"`
-	DiskModel     string `gorm:"index:idx_disk_model"`
+	DiskCapacity  uint32     `gorm:"not null;"`
+	DiskAvailable uint32     `gorm:"not null;"`
+	DiskClass     utils.Enum `gorm:"type:smallint;not null;"`
+	DiskClassMin  utils.Enum `gorm:"type:smallint;not null;"`
+	DiskModel     string     `gorm:"index:idx_disk_model"`
 
 	// User defined labels.
 	Labels pq.StringArray `gorm:"type:text[]"`
@@ -221,12 +221,12 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 	n.ID = p.GetId()
 	n.Username = p.GetUsername()
 	n.Name = p.GetName()
-	n.Status = Enum(p.GetStatus())
+	n.Status = utils.Enum(p.GetStatus())
 
 	n.CpuCapacity = p.GetCpuCapacity()
 	n.CpuAvailable = p.GetCpuAvailable()
-	n.CpuClass = Enum(p.GetCpuClass())
-	n.CpuClassMin = Enum(p.GetCpuClassMin())
+	n.CpuClass = utils.Enum(p.GetCpuClass())
+	n.CpuClassMin = utils.Enum(p.GetCpuClassMin())
 	n.CpuModel = p.CpuModel
 
 	n.MemoryCapacity = p.GetMemoryCapacity()
@@ -235,14 +235,14 @@ func (n *Node) FromProto(p *scheduler_proto.Node) error {
 
 	n.GpuCapacity = p.GetGpuCapacity()
 	n.GpuAvailable = p.GetGpuAvailable()
-	n.GpuClass = Enum(p.GetGpuClass())
-	n.GpuClassMin = Enum(p.GetGpuClassMin())
+	n.GpuClass = utils.Enum(p.GetGpuClass())
+	n.GpuClassMin = utils.Enum(p.GetGpuClassMin())
 	n.GpuModel = p.GetGpuModel()
 
 	n.DiskCapacity = p.GetDiskCapacity()
 	n.DiskAvailable = p.GetDiskAvailable()
-	n.DiskClass = Enum(p.GetDiskClass())
-	n.DiskClassMin = Enum(p.GetDiskClassMin())
+	n.DiskClass = utils.Enum(p.GetDiskClass())
+	n.DiskClassMin = utils.Enum(p.GetDiskClassMin())
 	n.DiskModel = p.GetDiskModel()
 	n.TasksFinished = p.GetTasksFinished()
 	n.TasksFailed = p.GetTasksFailed()
@@ -298,7 +298,7 @@ func (n *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (n *Node) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -442,9 +442,9 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 
 	// Filter by status.
 	if len(request.Status) > 0 {
-		enumStatus := make([]Enum, len(request.Status))
+		enumStatus := make([]utils.Enum, len(request.Status))
 		for i, s := range request.Status {
-			enumStatus[i] = Enum(s)
+			enumStatus[i] = utils.Enum(s)
 		}
 		query = query.Where("status IN (?)", enumStatus)
 	}
@@ -453,7 +453,7 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 		query = query.Where("cpu_available >= ?", request.CpuAvailable)
 	}
 	if request.CpuClass != scheduler_proto.CPUClass_CPU_CLASS_UNKNOWN {
-		enum := Enum(request.CpuClass)
+		enum := utils.Enum(request.CpuClass)
 		query = query.Where("cpu_class_min <= ? AND cpu_class >= ?", enum, enum)
 	}
 
@@ -465,7 +465,7 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 		query = query.Where("gpu_available >= ?", request.GpuAvailable)
 	}
 	if request.GpuClass != scheduler_proto.GPUClass_GPU_CLASS_UNKNOWN {
-		enum := Enum(request.GpuClass)
+		enum := utils.Enum(request.GpuClass)
 		query = query.Where("gpu_class_min <= ? AND gpu_class >= ?", enum, enum)
 	}
 
@@ -473,7 +473,7 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 		query = query.Where("disk_available >= ?", request.DiskAvailable)
 	}
 	if request.DiskClass != scheduler_proto.DiskClass_DISK_CLASS_UNKNOWN {
-		enum := Enum(request.DiskClass)
+		enum := utils.Enum(request.DiskClass)
 		query = query.Where("disk_class_min <= ? AND disk_class >= ?", enum, enum)
 	}
 

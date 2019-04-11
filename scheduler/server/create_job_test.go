@@ -7,7 +7,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/events"
 )
 
 func (s *ServerTestSuite) TestCreateJob_ValidMinimalRequest() {
@@ -16,7 +16,7 @@ func (s *ServerTestSuite) TestCreateJob_ValidMinimalRequest() {
 	s.Require().NotNil(res)
 	s.NotEqual(uint64(0), res.Id)
 
-	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created")
+	events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.created")
 }
 
 func (s *ServerTestSuite) TestCreateJob_ValidFullRequest() {
@@ -55,7 +55,7 @@ func (s *ServerTestSuite) TestCreateJob_ValidFullRequest() {
 	s.Require().NoError(err)
 	s.Require().NotNil(res)
 	s.NotEqual(uint64(0), res.Id)
-	utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.created")
+	events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.created")
 }
 
 func (s *ServerTestSuite) TestCreateJob_InvalidRequests() {

@@ -38,7 +38,7 @@ func (s *SchedulerServer) HandleNodeConnected(eventProto *events_proto.Event) er
 	if len(schedulingEvents) == 0 {
 		s.logger.Debug("no Jobs have been scheduled to the recently connected Node")
 	}
-	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
+	if err := events.CommitAndPublish(s.producer, schedulingEvents); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

@@ -10,19 +10,20 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
 	// Create dependent entities first.
 	job := &models.Job{
 		Username: "username",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
 	node := &models.Node{
 		Username: "username2",
-		Status:   models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+		Status:   utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 	}
 	_, err = node.Create(s.db)
 	s.Require().NoError(err)
@@ -88,10 +89,10 @@ func (s *ModelsTestSuite) TestTask_FromProto_ToProto() {
 
 func (s *ModelsTestSuite) TestTask_ToProto() {
 	task := &models.Task{
-		Model:  models.Model{ID: 42},
+		Model:  utils.Model{ID: 42},
 		JobID:  1,
 		NodeID: 2,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	mask := &field_mask.FieldMask{Paths: []string{"id", "job_id", "node_id"}}
 	taskProto, err := task.ToProto(mask)
@@ -129,7 +130,7 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	taskRunningOnNode1 := &models.Task{
 		JobID:  job1.ID,
 		NodeID: node1.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	_, err = taskRunningOnNode1.Create(s.db)
 	s.Require().NoError(err)
@@ -137,7 +138,7 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	taskFinishedOnNode1 := &models.Task{
 		JobID:  job1.ID,
 		NodeID: node1.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_FINISHED),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_FINISHED),
 	}
 	_, err = taskFinishedOnNode1.Create(s.db)
 	s.Require().NoError(err)
@@ -145,7 +146,7 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	taskRunningOnNode2 := &models.Task{
 		JobID:  job2.ID,
 		NodeID: node2.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	_, err = taskRunningOnNode2.Create(s.db)
 	s.Require().NoError(err)
@@ -163,14 +164,14 @@ func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunning
 	s.Equal(scheduler_proto.Task_STATUS_NODE_FAILED, taskProto.Status)
 	// Status should be updated only for taskRunningOnNode1.
 	s.Require().NoError(taskRunningOnNode1.LoadFromDB(s.db))
-	s.Equal(models.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), taskRunningOnNode1.Status)
+	s.Equal(utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), taskRunningOnNode1.Status)
 	// tasks should contain exactly 1 element by that time.
 	s.Equal(taskRunningOnNode1.ID, tasks[0].ID)
 	s.Equal(taskRunningOnNode1.Status, tasks[0].Status)
 	s.Require().NoError(taskFinishedOnNode1.LoadFromDB(s.db))
-	s.Equal(models.Enum(scheduler_proto.Task_STATUS_FINISHED), taskFinishedOnNode1.Status)
+	s.Equal(utils.Enum(scheduler_proto.Task_STATUS_FINISHED), taskFinishedOnNode1.Status)
 	s.Require().NoError(taskRunningOnNode2.LoadFromDB(s.db))
-	s.Equal(models.Enum(scheduler_proto.Task_STATUS_RUNNING), taskRunningOnNode2.Status)
+	s.Equal(utils.Enum(scheduler_proto.Task_STATUS_RUNNING), taskRunningOnNode2.Status)
 }
 
 func (s *ModelsTestSuite) TestTask_StatusTransitions() {

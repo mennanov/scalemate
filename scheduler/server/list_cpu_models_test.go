@@ -7,6 +7,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListCpuModels() {
@@ -15,37 +16,37 @@ func (s *ServerTestSuite) TestListCpuModels() {
 			Username:     "username1",
 			Name:         "node1",
 			CpuModel:     "model1",
-			CpuClass:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+			CpuClass:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 			CpuCapacity:  4,
 			CpuAvailable: 2,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username1",
 			Name:         "node2",
 			CpuModel:     "model1",
-			CpuClass:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+			CpuClass:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
 			CpuCapacity:  4,
 			CpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username1",
 			Name:         "node3",
 			CpuModel:     "model2",
-			CpuClass:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_PRO),
+			CpuClass:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_PRO),
 			CpuCapacity:  8,
 			CpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:     "username2",
 			Name:         "node1",
 			CpuModel:     "model2",
-			CpuClass:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_PRO),
+			CpuClass:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_PRO),
 			CpuCapacity:  8,
 			CpuAvailable: 1,
-			Status:       models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+			Status:       utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		},
 	}
 

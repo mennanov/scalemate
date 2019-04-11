@@ -5,16 +5,13 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestChangePassword() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	user := s.createTestUserQuick("password")
 	originalPasswordHash := user.PasswordHash
 
@@ -29,10 +26,16 @@ func (s *ServerTestSuite) TestChangePassword() {
 	s.NotNil(res)
 
 	// Verify that the user's password is updated.
-	err = user.LookUp(s.db, &accounts_proto.UserLookupRequest{Id: uint32(user.ID)})
+	err = user.LookUp(s.db, &accounts_proto.UserLookupRequest{Id: user.ID})
 	s.Require().NoError(err)
 	s.NotEqual(user.PasswordHash, originalPasswordHash)
-	utils.WaitForMessages(messages, "accounts.user.updated.*?password_changed_at.*?")
+	s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
+		Type:    events_proto.Event_UPDATED,
+		Service: events_proto.Service_ACCOUNTS,
+		Payload: &events_proto.Event_AccountsUser{
+			AccountsUser: &accounts_proto.User{Id: user.ID},
+		},
+	})))
 }
 
 func (s *ServerTestSuite) TestChangePasswordLookupFails() {

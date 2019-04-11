@@ -13,7 +13,7 @@ func (s *ServerTestSuite) TestGet() {
 	user := s.createTestUserQuick("password")
 
 	ctx := context.Background()
-	req := &accounts_proto.UserLookupRequest{Id: uint32(user.ID)}
+	req := &accounts_proto.UserLookupRequest{Id: user.ID}
 
 	res, err := s.client.Get(ctx, req, s.accessCredentialsQuick(time.Minute, accounts_proto.User_ADMIN))
 	s.Require().NoError(err)

@@ -8,6 +8,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListMemoryModels() {
@@ -18,7 +19,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 			MemoryModel:     "model1",
 			MemoryCapacity:  4,
 			MemoryAvailable: 2,
-			Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:        "username1",
@@ -26,7 +27,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 			MemoryModel:     "model1",
 			MemoryCapacity:  4,
 			MemoryAvailable: 1,
-			Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:        "username1",
@@ -34,7 +35,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 			MemoryModel:     "model2",
 			MemoryCapacity:  8,
 			MemoryAvailable: 1,
-			Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:        "username2",
@@ -42,7 +43,7 @@ func (s *ServerTestSuite) TestListMemoryModels() {
 			MemoryModel:     "model2",
 			MemoryCapacity:  8,
 			MemoryAvailable: 1,
-			Status:          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+			Status:          utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		},
 	}
 

@@ -1,0 +1,18 @@
+# Base docker-compose configuration.
+# See https://docs.docker.com/compose/extends/#multiple-compose-files
+version: "3"
+
+services:
+
+  nats:
+    image: nats-streaming
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: "-cid scalemate"
+
+  accounts-db:
+    image: postgres:11
+
+  scheduler-db:
+    image: postgres:11

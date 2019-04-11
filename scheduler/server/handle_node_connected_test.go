@@ -7,23 +7,24 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode() {
 	node := &models.Node{
 		Username:        "username",
 		Name:            "node_name",
-		Status:          models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+		Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		CpuCapacity:     4,
 		CpuAvailable:    2,
-		CpuClass:        models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
-		CpuClassMin:     models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
+		CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
+		CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
 		MemoryCapacity:  32000,
 		MemoryAvailable: 16000,
 		DiskCapacity:    64000,
 		DiskAvailable:   28000,
-		DiskClass:       models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
-		DiskClassMin:    models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
+		DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+		DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
@@ -32,21 +33,21 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	jobs := []*models.Job{
 		{
 			Username:    "job1",
-			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
+			Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 			CpuLimit:    1,
-			CpuClass:    models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
+			CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
 			MemoryLimit: 8000,
 			DiskLimit:   14000,
-			DiskClass:   models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+			DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 		},
 		{
 			Username:    "job2",
-			Status:      models.Enum(scheduler_proto.Job_STATUS_PENDING),
+			Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 			CpuLimit:    1,
-			CpuClass:    models.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
+			CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
 			MemoryLimit: 8000,
 			DiskLimit:   14000,
-			DiskClass:   models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+			DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 		},
 	}
 
@@ -62,7 +63,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	}
 	nodeProto, err := node.ToProto(mask)
 	s.Require().NoError(err)
-	eventProto, err := events.NewEventFromPayload(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
+	eventProto, err := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
 	s.Require().NoError(err)
 	// Run the handler.
 	s.Require().NoError(s.service.HandleNodeConnected(eventProto))
@@ -77,7 +78,7 @@ func (s *ServerTestSuite) TestHandleNodeConnected_SchedulesPendingJobsOnTheNode(
 	// Verify that Jobs now have a status "SCHEDULED".
 	for _, job := range jobs {
 		s.Require().NoError(job.LoadFromDB(s.db))
-		s.Equal(models.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
+		s.Equal(utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
 		s.Require().NoError(job.LoadTasksFromDB(s.db))
 		s.Equal(1, len(job.Tasks))
 		s.Equal(node.ID, job.Tasks[0].NodeID)

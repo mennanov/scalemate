@@ -8,6 +8,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestHandleJobTerminated_ClientStopsReceivingTasks() {
@@ -20,7 +21,7 @@ func (s *ServerTestSuite) TestHandleJobTerminated_ClientStopsReceivingTasks() {
 
 	job := &models.Job{
 		Username: s.claimsInjector.Claims.Username,
-		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
 	_, err = job.Create(s.db)
 	s.Require().NoError(err)

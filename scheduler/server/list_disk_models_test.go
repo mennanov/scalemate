@@ -7,6 +7,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestListDiskModels() {
@@ -15,37 +16,37 @@ func (s *ServerTestSuite) TestListDiskModels() {
 			Username:      "username1",
 			Name:          "node1",
 			DiskModel:     "model1",
-			DiskClass:     models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
+			DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskCapacity:  4,
 			DiskAvailable: 2,
-			Status:        models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:        utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:      "username1",
 			Name:          "node2",
 			DiskModel:     "model1",
-			DiskClass:     models.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
+			DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 			DiskCapacity:  4,
 			DiskAvailable: 1,
-			Status:        models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:        utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:      "username1",
 			Name:          "node3",
 			DiskModel:     "model2",
-			DiskClass:     models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+			DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 			DiskCapacity:  8,
 			DiskAvailable: 1,
-			Status:        models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			Status:        utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		},
 		{
 			Username:      "username2",
 			Name:          "node1",
 			DiskModel:     "model2",
-			DiskClass:     models.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
+			DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
 			DiskCapacity:  8,
 			DiskAvailable: 1,
-			Status:        models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+			Status:        utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		},
 	}
 

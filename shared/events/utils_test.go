@@ -5,16 +5,15 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/protobuf/field_mask"
 
-	"github.com/mennanov/scalemate/shared/events_proto"
-
 	"github.com/mennanov/scalemate/shared/events"
 )
 
-func TestRoutingKeyFromEvent(t *testing.T) {
+func TestNatsSubjectFromEvent(t *testing.T) {
 	testCases := []struct {
 		event       *events_proto.Event
 		expectedKey string
@@ -23,19 +22,19 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 			event: &events_proto.Event{
 				Type:    events_proto.Event_CREATED,
 				Service: events_proto.Service_SCHEDULER,
-				Payload: &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{}},
+				Payload: &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{Id: 1}},
 			},
-			expectedKey: "scheduler.job.created",
+			expectedKey: "scheduler.job.CREATED.1",
 		},
 		{
 			event: &events_proto.Event{
 				Type:    events_proto.Event_UPDATED,
 				Service: events_proto.Service_SCHEDULER,
-				// The actual payload does not affect the routing key, only the mask.
-				Payload:     &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{}},
+				// The actual payload does not affect the routing subject, only the mask.
+				Payload:     &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{Id: 2}},
 				PayloadMask: &field_mask.FieldMask{Paths: []string{"status", "connected_at"}},
 			},
-			expectedKey: "scheduler.job.updated.status.connected_at",
+			expectedKey: "scheduler.job.UPDATED.2",
 		},
 		{
 			event: &events_proto.Event{
@@ -43,19 +42,18 @@ func TestRoutingKeyFromEvent(t *testing.T) {
 				Service: events_proto.Service_ACCOUNTS,
 				Payload: &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{}},
 			},
-			expectedKey: "accounts.user.created",
+			expectedKey: "accounts.user.CREATED",
 		},
 	}
 	for _, testCase := range testCases {
-		key, err := events.RoutingKeyFromEvent(testCase.event)
-		require.NoError(t, err)
+		key := events.KeyForEvent(testCase.event)
 		assert.Equal(t, testCase.expectedKey, key)
 	}
 }
 
 func TestNewEvent(t *testing.T) {
 	userProto := &accounts_proto.User{Id: 42}
-	event, err := events.NewEventFromPayload(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	require.NoError(t, err)
 	payload, ok := event.Payload.(*events_proto.Event_AccountsUser)
 	require.True(t, ok)

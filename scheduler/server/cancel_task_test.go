@@ -9,6 +9,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -29,10 +30,10 @@ func (s *ServerTestSuite) TestCancelTask() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			task: &models.Task{
-				Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
+				Status: utils.Enum(scheduler_proto.Task_STATUS_NEW),
 			},
 			claims:            &auth.Claims{Username: "test_username"},
 			expectedErrorCode: 0,
@@ -40,10 +41,10 @@ func (s *ServerTestSuite) TestCancelTask() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
 			task: &models.Task{
-				Status: models.Enum(scheduler_proto.Task_STATUS_CANCELLED),
+				Status: utils.Enum(scheduler_proto.Task_STATUS_CANCELLED),
 			},
 			claims:            &auth.Claims{Username: "test_username"},
 			expectedErrorCode: codes.FailedPrecondition,
@@ -51,10 +52,10 @@ func (s *ServerTestSuite) TestCancelTask() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			task: &models.Task{
-				Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+				Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: 0,
@@ -62,10 +63,10 @@ func (s *ServerTestSuite) TestCancelTask() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
 			task: &models.Task{
-				Status: models.Enum(scheduler_proto.Task_STATUS_CANCELLED),
+				Status: utils.Enum(scheduler_proto.Task_STATUS_CANCELLED),
 			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: codes.FailedPrecondition,
@@ -73,10 +74,10 @@ func (s *ServerTestSuite) TestCancelTask() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			task: &models.Task{
-				Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+				Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 			},
 			claims:            &auth.Claims{Username: "different_username"},
 			expectedErrorCode: codes.PermissionDenied,
@@ -103,6 +104,6 @@ func (s *ServerTestSuite) TestCancelTask() {
 		}
 		s.NoError(err)
 		s.Equal(scheduler_proto.Task_STATUS_CANCELLED, taskProto.GetStatus())
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.updated")
 	}
 }

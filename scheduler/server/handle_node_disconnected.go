@@ -27,7 +27,7 @@ func (s *SchedulerServer) HandleNodeDisconnected(eventProto *events_proto.Event)
 	if err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "tasks.UpdateStatusForDisconnectedNode failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, tasksEvents...); err != nil {
+	if err := events.CommitAndPublish(s.producer, tasksEvents); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

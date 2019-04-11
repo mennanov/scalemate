@@ -1,150 +1,154 @@
 package events
 
 import (
-	"context"
-
 	"github.com/golang/protobuf/proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
+	"github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/streadway/amqp"
 )
 
-// Consumer defines an interface that is used to consumer events.
+// Consumer defines an interface to consume events.
 type Consumer interface {
-	// Consume is a blocking function that consumes events until the context is Done.
-	// It should increment the wg.Add(1) when it starts and call wg.Done() when the function exits.
-	Consume(ctx context.Context)
-	// Close closes all the corresponding consumer resources.
+	// Consume starts consuming messages and creates a Subscription to control this process.
+	Consume(handlers ...EventHandler) (Subscription, error)
+}
+
+// Subscription controls an ongoing messages consumption.
+type Subscription interface {
+	// Close stops receiving messages and closes the corresponding resources if any.
 	Close() error
+	// Errors returns a channel of errors that occur during the messages processing.
+	Errors() <-chan error
 }
 
-// EventHandler is a function that is capable of handling events.
-type EventHandler func(eventProto *events_proto.Event) error
-
-// AMQPConsumer implements Consumer for AMQP.
-type AMQPConsumer struct {
-	exchangeName string
-	queueName    string
-	routingKey   string
-	handler      EventHandler
-
-	channel  *amqp.Channel
-	messages <-chan amqp.Delivery
+// EventHandler defines an interface for matching and processing events.
+type EventHandler interface {
+	// Handle processes the given event.
+	Handle(eventProto *events_proto.Event) error
 }
 
-// Compile time interface check.
-var _ Consumer = new(AMQPConsumer)
+// createStanMsgHandler returns a stan.MsgHandler function that processes the messages via the given handlers and sends
+// all errors to the handlersErrors channel.
+func createStanMsgHandler(handlersErrors chan error, logger *logrus.Logger, handlers ...EventHandler) stan.MsgHandler {
+	return func(msg *stan.Msg) {
+		logger.Debug("received message: %s", msg.String())
 
-// NewAMQPConsumer creates a new instance of AMQPConsumer.
-func NewAMQPConsumer(
-	connection *amqp.Connection,
-	exchangeName string,
-	queueName string,
-	routingKey string,
-	handler EventHandler,
-) (*AMQPConsumer, error) {
-	channel, err := connection.Channel()
-	if err != nil {
-		return nil, errors.Wrap(err, "connection.Channel failed")
-	}
-
-	consumer, err := NewAMQPRawConsumer(channel, exchangeName, queueName, routingKey)
-	if err != nil {
-		return nil, errors.Wrap(err, "events.NewAMQPRawConsumer failed")
-	}
-
-	return &AMQPConsumer{
-		exchangeName: exchangeName,
-		queueName:    queueName,
-		routingKey:   routingKey,
-		handler:      handler,
-		channel:      channel,
-		messages:     consumer,
-	}, nil
-}
-
-// Consume receives messages from an AMQP queue, unmarshals the protobuf message and calls the handler.
-// The function terminates when the context is Done.
-func (l *AMQPConsumer) Consume(ctx context.Context) {
-	for {
-		select {
-		case msg, ok := <-l.messages:
-			if !ok {
-				logrus.Error("messages channel is unexpectedly closed")
-				return
-			}
-			// Process the message in a go routine.
-			go func(msg *amqp.Delivery) {
-				eventProto := &events_proto.Event{}
-				if err := proto.Unmarshal(msg.Body, eventProto); err != nil {
-					logrus.Error("failed to unmarshal events_proto.Event")
-					return
-				}
-				if err := l.handler(eventProto); err != nil {
-					logrus.WithError(err).WithField("event", eventProto).
-						Error("failed to handle AMQP message")
-					// Requeue the message only if it is not redelivered, otherwise it may get into a loop.
-					// TODO: this makes the failed message be retried only once. Figure out how to retry multiple times.
-					if err := msg.Nack(false, !msg.Redelivered); err != nil {
-						logrus.WithError(err).Error("msg.Nack failed")
-					}
-					return
-				}
-				if err := msg.Ack(false); err != nil {
-					logrus.WithError(err).Error("msg.Ack failed")
-				}
-			}(&msg)
-		case <-ctx.Done():
+		event := &events_proto.Event{}
+		if err := proto.Unmarshal(msg.Data, event); err != nil {
+			handlersErrors <- errors.Wrap(err, "proto.Unmarshal failed")
 			return
+		}
+
+		allHandlersSucceeded := true
+		for _, handler := range handlers {
+			if err := handler.Handle(event); err != nil {
+				allHandlersSucceeded = false
+				handlersErrors <- errors.Wrap(err, "handler.Handle failed")
+				break
+			}
+		}
+		// Manually acknowledge the message only if all the handlers succeeded to process it.
+		// Unacknowledged message will be redelivered after the AckTimeout.
+		if allHandlersSucceeded {
+			if err := msg.Ack(); err != nil {
+				handlersErrors <- errors.Wrap(err, "failed to acknowledge a message")
+			}
 		}
 	}
 }
 
-// Close closes the corresponding AMQP channel that is used to receive messages.
-func (l *AMQPConsumer) Close() error {
-	return l.channel.Close()
+// NatsConsumer implements a Consumer interface for NATS Streaming.
+type NatsConsumer struct {
+	conn    stan.Conn
+	subject string
+	logger  *logrus.Logger
+	opts    []stan.SubscriptionOption
 }
 
-// NewAMQPRawConsumer declares an AMQP queue, binds a consumer to it and returns a channel to receive messages.
-func NewAMQPRawConsumer(
-	channel *amqp.Channel,
-	exchangeName,
-	queueName,
-	routingKey string,
-) (<-chan amqp.Delivery, error) {
-	isTmpQueue := queueName == ""
-	queue, err := channel.QueueDeclare(
-		queueName,
-		!isTmpQueue, // durable is false for temp queues.
-		isTmpQueue,  // autoDelete is true for temp queues.
-		isTmpQueue,  // exclusive is true for temp queues.
-		false,
-		nil)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to declare AMQP queue %s", queueName)
-	}
-
-	if err = channel.QueueBind(
-		queue.Name,
-		routingKey,
-		exchangeName,
-		false,
-		nil); err != nil {
-		return nil, errors.Wrapf(err, "failed to bind AMQP Queue for key '%s'", routingKey)
-	}
-
-	consumer, err := channel.Consume(
-		queue.Name,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil)
-
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to register AMQP Consumer")
-	}
-	return consumer, nil
+// NewNatsConsumer creates a new instance of NatsConsumer.
+// stan.SetManualAckMode() is forcibly appended to the opts as it is required by the message handler behavior to
+// provide data consistency: message is acknowledged only if it was successfully processed by all the handlers.
+func NewNatsConsumer(
+	conn stan.Conn, subject string, logger *logrus.Logger, opts ...stan.SubscriptionOption) *NatsConsumer {
+	return &NatsConsumer{conn: conn, subject: subject, logger: logger, opts: append(opts, stan.SetManualAckMode())}
 }
+
+// Consume subscribes to the topic and starts receiving messages until the context is done.
+// The messages are converted to events_proto.Event and processed by the given handlers.
+func (c *NatsConsumer) Consume(handlers ...EventHandler) (Subscription, error) {
+	handlersErrors := make(chan error)
+	subscription, err := c.conn.Subscribe(
+		c.subject, createStanMsgHandler(handlersErrors, c.logger, handlers...), c.opts...)
+	if err != nil {
+		return nil, errors.Wrap(err, "conn.Subscribe failed")
+	}
+
+	natsSubscription := &NatsSubscription{
+		subscription: subscription,
+		errors:       handlersErrors,
+	}
+
+	return natsSubscription, nil
+}
+
+// NatsQueueConsumer implements a Consumer interface for NATS Streaming for queues.
+type NatsQueueConsumer struct {
+	NatsConsumer
+	queueName string
+}
+
+// NewNatsQueueConsumer creates a new instance of NatsQueueConsumer. Behavior is identical to the NatsConsumer.
+func NewNatsQueueConsumer(
+	conn stan.Conn, subject string, queueName string, logger *logrus.Logger, opts ...stan.SubscriptionOption) *NatsQueueConsumer {
+	return &NatsQueueConsumer{
+		NatsConsumer: NatsConsumer{
+			conn: conn, subject: subject, logger: logger, opts: append(opts, stan.SetManualAckMode()),
+		},
+		queueName: queueName,
+	}
+}
+
+// Consume subscribes to the topic with a given queue group and starts receiving messages until the context is done.
+// The messages are converted to events_proto.Event and processed by the given handlers.
+func (c *NatsQueueConsumer) Consume(handlers ...EventHandler) (Subscription, error) {
+	handlersErrors := make(chan error)
+	subscription, err := c.conn.QueueSubscribe(
+		c.subject, c.queueName, createStanMsgHandler(handlersErrors, c.logger, handlers...), c.opts...)
+	if err != nil {
+		return nil, errors.Wrap(err, "conn.QueueSubscribe failed")
+	}
+
+	natsSubscription := &NatsSubscription{
+		subscription: subscription,
+		errors:       handlersErrors,
+	}
+
+	return natsSubscription, nil
+}
+
+// NatsSubscription implements a Subscription interface for NATS Streaming.
+type NatsSubscription struct {
+	subscription stan.Subscription
+	errors       chan error
+}
+
+// Close closes the existing subscription.
+func (s *NatsSubscription) Close() error {
+	if err := s.subscription.Close(); err != nil {
+		return errors.Wrap(err, "subscription.Close failed")
+	}
+	close(s.errors)
+	return nil
+}
+
+// Errors returns errors that occurred during the messages processing.
+func (s *NatsSubscription) Errors() <-chan error {
+	return s.errors
+}
+
+// Compile time interface check.
+var _ Subscription = new(NatsSubscription)
+
+// Compile time interface check.
+var _ Consumer = new(NatsConsumer)

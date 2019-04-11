@@ -9,6 +9,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -29,17 +30,17 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			tasks: []*models.Task{
 				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_NEW),
+					Status: utils.Enum(scheduler_proto.Task_STATUS_NEW),
 				},
 				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_FINISHED),
+					Status: utils.Enum(scheduler_proto.Task_STATUS_FINISHED),
 				},
 				{
-					Status: models.Enum(scheduler_proto.Task_STATUS_FAILED),
+					Status: utils.Enum(scheduler_proto.Task_STATUS_FAILED),
 				},
 			},
 			claims:            &auth.Claims{Username: "test_username"},
@@ -48,7 +49,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_CANCELLED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_CANCELLED),
 			},
 			claims:            &auth.Claims{Username: "test_username"},
 			expectedErrorCode: codes.FailedPrecondition,
@@ -56,7 +57,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: 0,
@@ -64,7 +65,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
 			claims:            &auth.Claims{Username: "test_username", Role: accounts_proto.User_ADMIN},
 			expectedErrorCode: codes.FailedPrecondition,
@@ -72,7 +73,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 		{
 			job: &models.Job{
 				Username: "test_username",
-				Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
 			claims:            &auth.Claims{Username: "different_username"},
 			expectedErrorCode: codes.PermissionDenied,
@@ -101,7 +102,7 @@ func (s *ServerTestSuite) TestCancelJob() {
 		}
 		s.NoError(err)
 		s.Equal(scheduler_proto.Job_STATUS_CANCELLED, jobProto.GetStatus())
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.updated")
 
 		for _, task := range testCase.tasks {
 			if task.IsTerminated() {
@@ -112,8 +113,8 @@ func (s *ServerTestSuite) TestCancelJob() {
 			} else {
 				s.Require().NoError(task.LoadFromDB(s.db))
 				// Verify that the Task is cancelled.
-				s.Equal(models.Enum(scheduler_proto.Task_STATUS_CANCELLED), task.Status)
-				utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated")
+				s.Equal(utils.Enum(scheduler_proto.Task_STATUS_CANCELLED), task.Status)
+				events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.updated")
 			}
 		}
 	}

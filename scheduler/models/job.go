@@ -37,26 +37,26 @@ const (
 // Job defines a Job gorm model.
 // Whenever a user runs `scalemate run ...` a new Job is created in DB.
 type Job struct {
-	Model
-	Username string `gorm:"type:varchar(32);index"`
-	Status   Enum   `gorm:"type:smallint;not null"`
+	utils.Model
+	Username string     `gorm:"type:varchar(32);index"`
+	Status   utils.Enum `gorm:"type:smallint;not null"`
 
 	// CpuLimit https://docs.docker.com/config/containers/resource_constraints/#cpu
-	CpuLimit float32 `gorm:"type:real;not null"`
-	CpuClass Enum    `gorm:"type:smallint"`
+	CpuLimit float32    `gorm:"type:real;not null"`
+	CpuClass utils.Enum `gorm:"type:smallint"`
 
 	// MemoryLimit is a memory limit in Megabytes.
 	MemoryLimit uint32 `gorm:"not null"`
 
-	GpuLimit uint32 `gorm:"type:smallint;not null"`
-	GpuClass Enum   `gorm:"type:smallint"`
+	GpuLimit uint32     `gorm:"type:smallint;not null"`
+	GpuClass utils.Enum `gorm:"type:smallint"`
 
 	// DiskLimit is a disk limit in Megabytes including image size, container writable layer and volumes.
-	DiskLimit uint32 `gorm:"not null"`
-	DiskClass Enum   `gorm:"type:smallint"`
+	DiskLimit uint32     `gorm:"not null"`
+	DiskClass utils.Enum `gorm:"type:smallint"`
 	// RunConfig is `docker run` specific parameters like ports, volumes, etc.
 	RunConfig     postgres.Jsonb
-	RestartPolicy Enum `gorm:"type:smallint"`
+	RestartPolicy utils.Enum `gorm:"type:smallint"`
 	// Constraint labels.
 	CpuLabels      pq.StringArray `gorm:"type:text[]"`
 	GpuLabels      pq.StringArray `gorm:"type:text[]"`
@@ -166,14 +166,14 @@ func (j *Job) whereNodeLabels(q *gorm.DB) *gorm.DB {
 func (j *Job) FromProto(p *scheduler_proto.Job) error {
 	j.ID = p.GetId()
 	j.Username = p.GetUsername()
-	j.Status = Enum(p.GetStatus())
+	j.Status = utils.Enum(p.GetStatus())
 	j.CpuLimit = p.GetCpuLimit()
-	j.CpuClass = Enum(p.GetCpuClass())
+	j.CpuClass = utils.Enum(p.GetCpuClass())
 	j.MemoryLimit = p.GetMemoryLimit()
 	j.GpuLimit = p.GetGpuLimit()
-	j.GpuClass = Enum(p.GetGpuClass())
+	j.GpuClass = utils.Enum(p.GetGpuClass())
 	j.DiskLimit = p.GetDiskLimit()
-	j.DiskClass = Enum(p.GetDiskClass())
+	j.DiskClass = utils.Enum(p.GetDiskClass())
 
 	j.CpuLabels = p.GetCpuLabels()
 	j.GpuLabels = p.GetGpuLabels()
@@ -209,7 +209,7 @@ func (j *Job) FromProto(p *scheduler_proto.Job) error {
 	} else {
 		j.RunConfig = postgres.Jsonb{RawMessage: json.RawMessage([]byte{})}
 	}
-	j.RestartPolicy = Enum(p.GetRestartPolicy())
+	j.RestartPolicy = utils.Enum(p.GetRestartPolicy())
 
 	return nil
 }
@@ -293,7 +293,7 @@ func (j *Job) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEvent(jobProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -341,7 +341,7 @@ func (j *Job) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Job_Status) (*
 		if s == newStatus {
 			now := time.Now()
 			return j.Updates(db, map[string]interface{}{
-				"status":     Enum(newStatus),
+				"status":     utils.Enum(newStatus),
 				"updated_at": &now,
 			})
 		}
@@ -364,7 +364,7 @@ func (j *Job) Updates(db *gorm.DB, updates map[string]interface{}) (*events_prot
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEvent(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -379,7 +379,7 @@ func (j *Job) Updates(db *gorm.DB, updates map[string]interface{}) (*events_prot
 // have sufficient resources.
 // FIXME: this method is not used.
 func (j *Job) SuitableNodeExists(db *gorm.DB) bool {
-	q := db.Model(&Node{}).Where("status = ?", Enum(scheduler_proto.Node_STATUS_ONLINE))
+	q := db.Model(&Node{}).Where("status = ?", utils.Enum(scheduler_proto.Node_STATUS_ONLINE))
 	q = j.whereNodeCpuClass(q)
 	q = j.whereNodeDiskClass(q)
 	q = j.whereNodeGpuClass(q)
@@ -405,7 +405,7 @@ func (j *Job) FindSuitableNode(db *gorm.DB) (*Node, error) {
 	// Perform a `SELECT ... FOR UPDATE` query to lock the Node table rows of interest as they are going to be updated
 	// later below in this function.
 	q := db.Set("gorm:query_option", "FOR UPDATE").
-		Where("status = ?", Enum(scheduler_proto.Node_STATUS_ONLINE))
+		Where("status = ?", utils.Enum(scheduler_proto.Node_STATUS_ONLINE))
 	q = j.whereNodeCpuClass(q)
 	q = j.whereNodeCpuAvailable(q)
 	q = j.whereNodeDiskClass(q)
@@ -455,7 +455,7 @@ func (j *Job) CreateTask(db *gorm.DB, node *Node) ([]*events_proto.Event, error)
 	task := &Task{
 		NodeID: node.ID,
 		JobID:  j.ID,
-		Status: Enum(scheduler_proto.Task_STATUS_NEW),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_NEW),
 	}
 	event, err := task.Create(db)
 	if err != nil {
@@ -492,8 +492,8 @@ func (j *Job) LoadTasksFromDB(db *gorm.DB, fields ...string) error {
 
 // IsTerminated returns true if Job is in the final status (terminated) and never going to be scheduled again.
 func (j *Job) IsTerminated() bool {
-	return j.Status == Enum(scheduler_proto.Job_STATUS_FINISHED) ||
-		j.Status == Enum(scheduler_proto.Job_STATUS_CANCELLED)
+	return j.Status == utils.Enum(scheduler_proto.Job_STATUS_FINISHED) ||
+		j.Status == utils.Enum(scheduler_proto.Job_STATUS_CANCELLED)
 }
 
 // NeedsRescheduling returns true if the Job should be rescheduled according to the RestartPolicy.
@@ -501,8 +501,8 @@ func (j *Job) NeedsRescheduling(taskStatus scheduler_proto.Task_Status) bool {
 	if taskStatus != scheduler_proto.Task_STATUS_FAILED && taskStatus != scheduler_proto.Task_STATUS_NODE_FAILED {
 		return false
 	}
-	return j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE) ||
-		j.RestartPolicy == Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE)
+	return j.RestartPolicy == utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE) ||
+		j.RestartPolicy == utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE)
 }
 
 // mapKeys returns a slice of map string keys.
@@ -544,9 +544,9 @@ func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (u
 
 	// Filter by status.
 	if len(request.Status) != 0 {
-		enumStatus := make([]Enum, len(request.Status))
+		enumStatus := make([]utils.Enum, len(request.Status))
 		for i, s := range request.Status {
-			enumStatus[i] = Enum(s)
+			enumStatus[i] = utils.Enum(s)
 		}
 		query = query.Where("status IN (?)", enumStatus)
 	}
@@ -582,7 +582,7 @@ func (jobs *Jobs) List(db *gorm.DB, request *scheduler_proto.ListJobsRequest) (u
 // Selected Job rows are locked FOR UPDATE.
 func (jobs *Jobs) FindPendingForNode(db *gorm.DB, node *Node) error {
 	q := db.Set("gorm:query_option", "FOR UPDATE").
-		Where("status = ?", Enum(scheduler_proto.Job_STATUS_PENDING))
+		Where("status = ?", utils.Enum(scheduler_proto.Job_STATUS_PENDING))
 
 	q = node.whereJobCpuClass(q)
 	q = node.whereJobCpuLimit(q)
@@ -623,8 +623,8 @@ func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) (
 		`UPDATE jobs SET status = (CASE WHEN restart_policy = ? THEN ?::int ELSE ?::int END), updated_at = ? 
 		WHERE id IN(?) RETURNING jobs.*`,
 		// Set clause.
-		Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE), Enum(scheduler_proto.Job_STATUS_PENDING),
-		Enum(scheduler_proto.Job_STATUS_FINISHED), time.Now(),
+		utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE), utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		utils.Enum(scheduler_proto.Job_STATUS_FINISHED), time.Now(),
 		// Where clause.
 		jobIDs).Rows()
 
@@ -644,10 +644,10 @@ func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) (
 		if err != nil {
 			return nil, errors.Wrap(err, "job.ToProto failed")
 		}
-		event, err := events.NewEventFromPayload(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := events.NewEvent(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
-			return nil, errors.Wrap(err, "NewEventFromPayload failed")
+			return nil, errors.Wrap(err, "NewEvent failed")
 		}
 		updateEvents = append(updateEvents, event)
 

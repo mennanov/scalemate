@@ -26,12 +26,12 @@ const (
 
 // Task represents a running Job on a Node (Docker container).
 type Task struct {
-	Model
+	utils.Model
 	Job        *Job
 	JobID      uint64 `gorm:"not null;index" sql:"type:integer REFERENCES jobs(id)"`
 	Node       *Node
-	NodeID     uint64 `gorm:"not null;index" sql:"type:integer REFERENCES nodes(id)"`
-	Status     Enum   `gorm:"type:smallint"`
+	NodeID     uint64     `gorm:"not null;index" sql:"type:integer REFERENCES nodes(id)"`
+	Status     utils.Enum `gorm:"type:smallint"`
 	StartedAt  *time.Time
 	FinishedAt *time.Time
 }
@@ -53,7 +53,7 @@ func (t *Task) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
+	event, err := events.NewEvent(taskProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (t *Task) FromProto(p *scheduler_proto.Task) error {
 	t.ID = p.GetId()
 	t.JobID = p.GetJobId()
 	t.NodeID = p.GetNodeId()
-	t.Status = Enum(p.GetStatus())
+	t.Status = utils.Enum(p.GetStatus())
 
 	if p.CreatedAt != nil {
 		createdAt, err := ptypes.Timestamp(p.CreatedAt)
@@ -193,7 +193,7 @@ func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_pro
 	if err != nil {
 		return nil, errors.Wrap(err, "task.ToProto failed")
 	}
-	event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+	event, err := events.NewEvent(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 		fieldMask)
 	if err != nil {
 		return nil, err
@@ -226,7 +226,7 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 		if s == newStatus {
 			now := time.Now()
 			return t.Updates(db, map[string]interface{}{
-				"status":     Enum(newStatus),
+				"status":     utils.Enum(newStatus),
 				"updated_at": &now,
 			})
 		}
@@ -237,7 +237,7 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 
 // IsTerminated returns true if the Task has terminated (not running regardless the reason).
 func (t *Task) IsTerminated() bool {
-	return t.Status != Enum(scheduler_proto.Task_STATUS_NEW) && t.Status != Enum(scheduler_proto.Task_STATUS_RUNNING)
+	return t.Status != utils.Enum(scheduler_proto.Task_STATUS_NEW) && t.Status != utils.Enum(scheduler_proto.Task_STATUS_RUNNING)
 }
 
 // Tasks represent a collection of Tasks with methods working with a collection of Tasks.
@@ -272,9 +272,9 @@ func (tasks *Tasks) List(db *gorm.DB, request *scheduler_proto.ListTasksRequest)
 
 	// Filter by status.
 	if len(request.Status) != 0 {
-		enumStatus := make([]Enum, len(request.Status))
+		enumStatus := make([]utils.Enum, len(request.Status))
 		for i, s := range request.Status {
-			enumStatus[i] = Enum(s)
+			enumStatus[i] = utils.Enum(s)
 		}
 		query = query.Where("tasks.status IN (?)", enumStatus)
 	}
@@ -315,9 +315,9 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 	rows, err := db.Raw(
 		"UPDATE tasks SET status = ?, updated_at = ? WHERE node_id = ? AND status IN(?) RETURNING tasks.*",
 		// Set clause.
-		Enum(scheduler_proto.Task_STATUS_NODE_FAILED), &now,
+		utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), &now,
 		// Where clause.
-		nodeID, []Enum{Enum(scheduler_proto.Task_STATUS_NEW), Enum(scheduler_proto.Task_STATUS_RUNNING)}).Rows()
+		nodeID, []utils.Enum{utils.Enum(scheduler_proto.Task_STATUS_NEW), utils.Enum(scheduler_proto.Task_STATUS_RUNNING)}).Rows()
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update Tasks status to NODE_FAILED")
@@ -334,10 +334,10 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 		if err != nil {
 			return nil, errors.Wrap(err, "task.ToProto failed")
 		}
-		event, err := events.NewEventFromPayload(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
+		event, err := events.NewEvent(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
 			fieldMask)
 		if err != nil {
-			return nil, errors.Wrap(err, "NewEventFromPayload failed")
+			return nil, errors.Wrap(err, "NewEvent failed")
 		}
 		updateEvents = append(updateEvents, event)
 

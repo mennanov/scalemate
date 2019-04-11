@@ -52,9 +52,9 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Job status"))
 	}
 
-	node := &models.Node{Model: models.Model{ID: task.NodeID}}
+	node := &models.Node{Model: utils.Model{ID: task.NodeID}}
 	nodeUpdates := make(map[string]interface{})
-	if task.Status == models.Enum(scheduler_proto.Task_STATUS_NODE_FAILED) {
+	if task.Status == utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED) {
 		nodeUpdates["tasks_failed"] = gorm.Expr("tasks_failed + 1")
 	} else {
 		nodeUpdates["tasks_finished"] = gorm.Expr("tasks_finished + 1")
@@ -64,7 +64,7 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Node statistics"))
 	}
 
-	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent, nodeUpdatedEvent); err != nil {
+	if err := events.CommitAndPublish(s.producer, jobStatusUpdatedEvent, nodeUpdatedEvent); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

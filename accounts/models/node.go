@@ -7,12 +7,9 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/protobuf/field_mask"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
-	"github.com/mennanov/scalemate/shared/events_proto"
 
 	"github.com/mennanov/scalemate/shared/events"
 
@@ -24,7 +21,7 @@ import (
 // authenticate a Node instead of making a gRPC query to the Scheduler service.
 // The data in this DB table is populated by listening to the Scheduler service events when a new Node is created.
 type Node struct {
-	gorm.Model
+	utils.Model
 	Username    string `gorm:"not null;unique_index:idx_node_username_name"`
 	Name        string `gorm:"not null;unique_index:idx_node_username_name"`
 	CpuModel    string
@@ -35,6 +32,7 @@ type Node struct {
 
 // FromSchedulerProto populates the Node struct with values from `scheduler_proto.Node`.
 func (node *Node) FromSchedulerProto(p *scheduler_proto.Node) {
+	node.ID = p.Id
 	node.Username = p.Username
 	node.Name = p.Name
 	node.CpuModel = p.CpuModel
@@ -43,18 +41,8 @@ func (node *Node) FromSchedulerProto(p *scheduler_proto.Node) {
 	node.DiskModel = p.DiskModel
 }
 
-// ToProto creates
+// ToProto creates an accounts_proto.Node instance from the Node.
 func (node *Node) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.Node, error) {
-	createdAt, err := ptypes.TimestampProto(node.CreatedAt)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
-	updatedAt, err := ptypes.TimestampProto(node.UpdatedAt)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
-
 	p := &accounts_proto.Node{
 		Id:          uint64(node.ID),
 		Username:    node.Username,
@@ -63,8 +51,22 @@ func (node *Node) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.Node
 		GpuModel:    node.GpuModel,
 		MemoryModel: node.MemoryModel,
 		DiskModel:   node.DiskModel,
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
+	}
+
+	if !node.CreatedAt.IsZero() {
+		createdAt, err := ptypes.TimestampProto(node.CreatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.CreatedAt = createdAt
+	}
+
+	if node.UpdatedAt != nil {
+		scheduledAt, err := ptypes.TimestampProto(*node.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.UpdatedAt = scheduledAt
 	}
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
@@ -85,9 +87,6 @@ func (node *Node) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.Node
 
 // Create creates a new Node in DB.
 func (node *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
-	if node.ID != 0 {
-		return nil, status.Error(codes.InvalidArgument, "can't create existing Node")
-	}
 	if err := utils.HandleDBError(db.Create(node)); err != nil {
 		return nil, err
 	}
@@ -96,7 +95,7 @@ func (node *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "node.ToProto failed")
 	}
-	return events.NewEventFromPayload(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	return events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 }
 
 // Get gets the Node from DB by a username and a Node name.

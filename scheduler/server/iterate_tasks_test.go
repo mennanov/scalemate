@@ -10,6 +10,7 @@ import (
 
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -23,14 +24,14 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 
 	job1 := &models.Job{
 		Username: "username_job",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_FINISHED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
@@ -86,15 +87,15 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 
 	job1 := &models.Job{
 		Username:      "username_job",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
+		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
 	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
@@ -134,19 +135,19 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 		taskNewJob1 := &models.Task{
 			JobID:  job1.ID,
 			NodeID: node.ID,
-			Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+			Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 		}
 		taskCreatedEvent, err := taskNewJob1.Create(s.db)
 		s.Require().NoError(err)
 
 		s.Require().NoError(s.producer.Send(taskCreatedEvent))
 		// Wait for the message to be received.
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.created")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.created")
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
 		s.Require().NoError(s.producer.Send(taskUpdatedEvent))
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.updated", "scheduler.job.updated")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.updated", "scheduler.job.updated")
 		wg.Done()
 	}(wg)
 
@@ -179,15 +180,15 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 
 	job1 := &models.Job{
 		Username:      "username_job",
-		Status:        models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: models.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
+		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
 	}
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
 	job2 := &models.Job{
 		Username: "username_job",
-		Status:   models.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
+		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
 	_, err = job2.Create(s.db)
 	s.Require().NoError(err)
@@ -228,7 +229,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		taskNewJob1 := &models.Task{
 			JobID:  job1.ID,
 			NodeID: node.ID,
-			Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+			Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 		}
 		taskCreatedEvent, err := taskNewJob1.Create(s.db)
 		s.Require().NoError(err)
@@ -236,13 +237,13 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 
 		s.Require().NoError(s.producer.Send(taskCreatedEvent))
 		// Wait for the message to be received.
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.task.created")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.created")
 		// Give the service some time to process this event.
 		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
 		s.Require().NoError(s.producer.Send(taskUpdatedEvent))
-		utils.WaitForMessages(s.amqpRawConsumer, "scheduler.job.updated")
+		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.updated")
 		wg.Done()
 	}(wg)
 

@@ -56,7 +56,7 @@ func (s SchedulerServer) CancelTask(
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "task.UpdateStatus failed"))
 	}
 
-	if err := events.CommitAndPublish(tx, s.producer, taskStatusEvent); err != nil {
+	if err := events.CommitAndPublish(s.producer, taskStatusEvent); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 

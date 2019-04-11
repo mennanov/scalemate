@@ -102,7 +102,7 @@ func (s *ServerTestSuite) SetupSuite() {
 
 	go func() {
 		s.service.Serve(ctx, localAddr)
-		defer utils.Close(s.service)
+		defer utils.Close(s.service, nil)
 	}()
 
 	// Waiting for gRPC server to start serving.
@@ -134,11 +134,11 @@ func (s *ServerTestSuite) TearDownTest() {
 
 func (s *ServerTestSuite) TearDownSuite() {
 	// Send os.Interrupt to the shutdown channel to gracefully stop the server.
-	utils.Close(s.grpcConnection)
+	utils.Close(s.grpcConnection, nil)
 	s.ctxCancel()
 	// Wait for the service to stop gracefully.
 	time.Sleep(time.Millisecond*200)
-	utils.Close(s.amqpConnection)
+	utils.Close(s.amqpConnection, nil)
 	fmt.Println("ServerTestSuite.TearDownSuite complete.")
 }
 

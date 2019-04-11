@@ -26,7 +26,7 @@ var upCmd = &cobra.Command{
 			logrus.WithError(err).Error("utils.ConnectDBFromEnv failed")
 			return
 		}
-		defer utils.Close(db)
+		defer utils.Close(db, nil)
 
 		// Connect to AMQP.
 		amqpConnection, err := utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
@@ -34,7 +34,7 @@ var upCmd = &cobra.Command{
 			logrus.WithError(err).Error("utils.ConnectAMQPFromEnv failed")
 			return
 		}
-		defer utils.Close(amqpConnection)
+		defer utils.Close(amqpConnection, nil)
 
 		logger := logrus.StandardLogger()
 		utils.SetLogrusLevelFromEnv(logger)
@@ -62,7 +62,7 @@ var upCmd = &cobra.Command{
 			logger.WithError(err).Error("server.NewSchedulerServer failed")
 			return
 		}
-		defer utils.Close(schedulerServer)
+		defer utils.Close(schedulerServer, nil)
 
 		shutdown := make(chan os.Signal)
 		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)

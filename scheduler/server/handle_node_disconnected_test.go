@@ -6,6 +6,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestHandleNodeDisconnected_UpdatesCorrespondingTasks() {
@@ -22,14 +23,14 @@ func (s *ServerTestSuite) TestHandleNodeDisconnected_UpdatesCorrespondingTasks()
 	task := &models.Task{
 		JobID:  job.ID,
 		NodeID: node.ID,
-		Status: models.Enum(scheduler_proto.Task_STATUS_RUNNING),
+		Status: utils.Enum(scheduler_proto.Task_STATUS_RUNNING),
 	}
 	_, err = task.Create(s.db)
 
 	now := time.Now()
 	nodeUpdatedEvent, err := node.Updates(s.db, map[string]interface{}{
 		"disconnected_at": &now,
-		"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+		"status":          utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})
 	s.Require().NoError(err)
 

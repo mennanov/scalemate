@@ -50,7 +50,7 @@ func (s SchedulerServer) IterateTasksForNode(
 		return status.Errorf(codes.NotFound, "node with name '%s' ")
 	}
 
-	if node.Status == models.Enum(scheduler_proto.Node_STATUS_ONLINE) {
+	if node.Status == utils.Enum(scheduler_proto.Node_STATUS_ONLINE) {
 		return status.Error(codes.FailedPrecondition, "this Node is already online (receiving Tasks)")
 	}
 
@@ -71,7 +71,7 @@ func (s SchedulerServer) IterateTasksForNode(
 		now := time.Now()
 		connectEvent, err := node.Updates(tx, map[string]interface{}{
 			"connected_at": &now,
-			"status":       models.Enum(scheduler_proto.Node_STATUS_ONLINE),
+			"status":       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		})
 		if err != nil {
 			e <- errors.Wrap(err, "node.Updates failed")
@@ -83,7 +83,7 @@ func (s SchedulerServer) IterateTasksForNode(
 			e <- utils.RollbackTransaction(tx, errors.Wrap(err, "failed to connectNode"))
 			return
 		}
-		if err := events.CommitAndPublish(tx, s.producer, connectEvent); err != nil {
+		if err := events.CommitAndPublish(s.producer, connectEvent); err != nil {
 			e <- errors.Wrap(err, "events.CommitAndPublish failed")
 			return
 		}
@@ -110,7 +110,7 @@ func (s SchedulerServer) IterateTasksForNode(
 		now := time.Now()
 		nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
 			"disconnected_at": &now,
-			"status":          models.Enum(scheduler_proto.Node_STATUS_OFFLINE),
+			"status":          utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		})
 		if err != nil {
 			logger.WithError(utils.RollbackTransaction(tx, err)).Error("node.Updates failed")
@@ -122,7 +122,7 @@ func (s SchedulerServer) IterateTasksForNode(
 		delete(s.tasksForNodes, node.ID)
 		s.tasksForNodesMux.Unlock()
 
-		if err := events.CommitAndPublish(tx, s.producer, nodeUpdatedEvent); err != nil {
+		if err := events.CommitAndPublish(s.producer, nodeUpdatedEvent); err != nil {
 			logger.WithError(err).Error("events.CommitAndPublish failed")
 		}
 	}(tasks)

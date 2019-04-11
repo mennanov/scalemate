@@ -47,7 +47,7 @@ func WithProducer(producer events.Producer) Option {
 func WithAMQPConsumers(conn *amqp.Connection) Option {
 	return func(s *SchedulerServer) error {
 		channel, err := conn.Channel()
-		defer utils.Close(channel)
+		defer utils.Close(channel, nil)
 
 		if err != nil {
 			return errors.Wrap(err, "failed to open a new AMQP channel")

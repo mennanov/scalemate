@@ -4,19 +4,15 @@ import (
 	"context"
 	"time"
 
-	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ServerTestSuite) TestCreate() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
 	ctx := context.Background()
 	req := &accounts_proto.CreateUserRequest{
 		User: &accounts_proto.User{
@@ -28,36 +24,29 @@ func (s *ServerTestSuite) TestCreate() {
 
 	res, err := s.client.Create(ctx, req, s.accessCredentialsQuick(time.Minute, accounts_proto.User_ADMIN))
 	s.Require().NoError(err)
-
-	s.NotEqual(0, res.GetId())
-	expected := map[string]interface{}{
-		"Username": req.User.Username,
-		"Email":    req.User.Email,
-		"Role":     accounts_proto.User_UNKNOWN,
-		"Banned":   req.User.Banned,
-	}
-	mask := fieldmask_utils.MaskFromString("Username,Email,Role,Banned")
-	actual := make(map[string]interface{})
-	err = fieldmask_utils.StructToMap(mask, res, actual)
-	s.Require().NoError(err)
-	s.Equal(expected, actual)
+	s.Require().NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
+		Type:    events_proto.Event_CREATED,
+		Service: events_proto.Service_ACCOUNTS,
+		Payload: &events_proto.Event_AccountsUser{
+			AccountsUser: &accounts_proto.User{},
+		},
+	})))
 
 	s.NotEqual(uint64(0), res.GetId())
+	s.Equal(req.User.Username, res.Username)
+	s.Equal(req.User.Email, res.Email)
+	s.Equal(accounts_proto.User_UNKNOWN, res.Role)
+	s.False(res.Banned)
 	s.NotNil(res.GetCreatedAt())
-	s.NotNil(res.GetUpdatedAt())
+	s.Nil(res.GetUpdatedAt())
 
 	// Verify that user is created in DB.
 	user := &models.User{}
-	err = s.db.First(user, res.GetId()).Error
-	s.Require().NoError(err)
+	s.Require().NoError(user.LookUp(s.db, &accounts_proto.UserLookupRequest{Id: res.Id}))
 	s.NotEqual("", user.PasswordHash)
-	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
-func (s *ServerTestSuite) TestCreateDuplicates() {
-	messages, err := events.NewAMQPRawConsumer(s.amqpChannel, events.AccountsAMQPExchangeName, "", "#")
-	s.Require().NoError(err)
-
+func (s *ServerTestSuite) TestCreate_FailsForDuplicates() {
 	ctx := context.Background()
 	req := &accounts_proto.CreateUserRequest{
 		User: &accounts_proto.User{
@@ -67,14 +56,14 @@ func (s *ServerTestSuite) TestCreateDuplicates() {
 		Password: "password",
 	}
 
-	count := 0
 	creds := s.accessCredentialsQuick(time.Minute, accounts_proto.User_ADMIN)
 
-	_, err = s.client.Create(ctx, req, creds)
+	_, err := s.client.Create(ctx, req, creds)
 	s.Require().NoError(err)
 
 	users := &[]models.User{}
 
+	var count int
 	s.db.Find(&users).Count(&count)
 	s.Equal(1, count)
 
@@ -84,7 +73,6 @@ func (s *ServerTestSuite) TestCreateDuplicates() {
 
 	s.db.Find(&users).Count(&count)
 	s.Equal(1, count)
-	utils.WaitForMessages(messages, "accounts.user.created")
 }
 
 func (s *ServerTestSuite) TestCreateValidationFails() {
@@ -117,8 +105,4 @@ func (s *ServerTestSuite) TestCreatePermissionDenied() {
 	// Make a request with insufficient access credentials.
 	_, err := s.client.Create(ctx, req, s.accessCredentialsQuick(time.Minute, accounts_proto.User_USER))
 	s.assertGRPCError(err, codes.PermissionDenied)
-}
-
-func stringEye(s string) string {
-	return s
 }

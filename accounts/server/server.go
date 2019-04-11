@@ -12,8 +12,9 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jinzhu/gorm"
-	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+
 	// required by gorm
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
@@ -23,7 +24,6 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/middleware"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // LoggedErrorCodes are the error codes for the errors that will be logged with the "Error" level with a full stack
@@ -47,7 +47,6 @@ type AccountsServer struct {
 	db             *gorm.DB
 	claimsInjector auth.ClaimsInjector
 	producer       events.Producer
-	consumers      []events.Consumer
 	// bcrypt cost value used to make password hashes. Should be reasonably high in PROD and low in TEST/DEV.
 	bCryptCost      int
 	accessTokenTTL  time.Duration
@@ -71,24 +70,13 @@ func NewAccountsServer(options ...Option) (*AccountsServer, error) {
 	return s, nil
 }
 
-// Close closes the server resources.
-func (s *AccountsServer) Close() error {
-	for _, consumer := range s.consumers {
-		if err := consumer.Close(); err != nil {
-			return errors.Wrap(err, "consumer.Close failed")
-		}
-	}
-
-	return errors.Wrap(s.producer.Close(), "AccountsServer.producer.Close failed")
-}
-
 // Serve creates a GRPC server and starts serving on a given address. This function is blocking and runs upon the server
 // termination (when the context is Done).
-func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string) {
+func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string, creds credentials.TransportCredentials) {
 	entry := logrus.NewEntry(s.logger)
 	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
-		grpc.Creds(utils.TLSServerCredentialsFromEnv(TLSEnvConf)),
+		grpc.Creds(creds),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpc_ctxtags.UnaryServerInterceptor(),
 			grpc_logrus.UnaryServerInterceptor(entry),
@@ -102,7 +90,7 @@ func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string) {
 
 	accounts_proto.RegisterAccountsServer(grpcServer, s)
 
-	f := make(chan error, 1)
+	serverErrors := make(chan error, 1)
 
 	go func(f chan error) {
 		lis, err := net.Listen("tcp", grpcAddr)
@@ -113,19 +101,15 @@ func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string) {
 		if err := grpcServer.Serve(lis); err != nil {
 			f <- err
 		}
-	}(f)
-
-	for _, consumer := range s.consumers {
-		go consumer.Consume(ctx)
-	}
+	}(serverErrors)
 
 	select {
 	case <-ctx.Done():
 		s.logger.Info("Gracefully stopping gRPC server...")
 		grpcServer.GracefulStop()
 
-	case err := <-f:
-		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
+	case err := <-serverErrors:
+		s.logger.WithError(err).Error("gRPC server unexpectedly failed.")
 	}
 	s.logger.Info("gRPC server is stopped.")
 }

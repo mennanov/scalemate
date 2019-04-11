@@ -114,7 +114,7 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
 	entry := logrus.NewEntry(s.logger)
 	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
-		grpc.Creds(utils.TLSServerCredentialsFromEnv(TLSEnvConf)),
+		grpc.Creds(utils.NewServerTLSCredentialsFromFile(TLSEnvConf)),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpc_ctxtags.UnaryServerInterceptor(),
 			grpc_logrus.UnaryServerInterceptor(entry),
