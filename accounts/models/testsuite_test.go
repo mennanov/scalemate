@@ -1,8 +1,6 @@
 package models_test
 
 import (
-	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/jinzhu/gorm"
@@ -33,7 +31,7 @@ func (s *ModelsTestSuite) SetupSuite() {
 }
 
 func (s *ModelsTestSuite) TearDownTest() {
-	s.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", strings.Join(models.TableNames, ",")))
+	utils.TruncateTables(s.db, s.logger, models.TableNames...)
 }
 
 func (s *ModelsTestSuite) TearDownSuite() {

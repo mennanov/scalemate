@@ -3,6 +3,7 @@ package utils
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -88,4 +90,12 @@ func CreateTestingDatabase(dbURL, dbName string) (*gorm.DB, error) {
 
 	newUrl := regexp.MustCompile(`dbname=(\w+)`).ReplaceAllString(dbURL, fmt.Sprintf("dbname=%s", dbName))
 	return ConnectDBFromEnv(newUrl)
+}
+
+// TruncateTables truncates the database tables and resets associated sequence generators.
+func TruncateTables(db *gorm.DB, logger *logrus.Logger, tableNames ...string) {
+	if err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE",
+		strings.Join(tableNames, ","))).Error; err != nil {
+		logger.WithError(err).Errorf("failed to truncate tables %s", tableNames)
+	}
 }

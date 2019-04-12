@@ -5,6 +5,8 @@ import (
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
@@ -44,6 +46,13 @@ func (s *SchedulerNodeCreatedHandler) Handle(eventProto *events_proto.Event) err
 	tx := s.db.Begin()
 	event, err := node.Create(tx)
 	if err != nil {
+		if s, ok := status.FromError(errors.Cause(err)); ok {
+			if s.Code() == codes.AlreadyExists {
+				// Do nothing if the Node already exists.
+				return utils.RollbackTransaction(tx, nil)
+			}
+		}
+
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "node.Create failed"))
 	}
 	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {

@@ -3,7 +3,6 @@ package server_test
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -96,7 +95,7 @@ func (s *ServerTestSuite) SetupSuite() {
 }
 
 func (s *ServerTestSuite) TearDownTest() {
-	s.db.Exec(fmt.Sprintf("TRUNCATE TABLE %s CASCADE", strings.Join(models.TableNames, ",")))
+	utils.TruncateTables(s.db, s.logger, models.TableNames...)
 }
 
 func (s *ServerTestSuite) TearDownSuite() {

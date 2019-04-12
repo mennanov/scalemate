@@ -12,6 +12,7 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/conf"
 	"github.com/mennanov/scalemate/accounts/migrations"
+	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -46,6 +47,10 @@ func (s *HandlersTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	s.Require().NoError(migrations.RunMigrations(s.db))
+}
+
+func (s *HandlersTestSuite) TearDownTest() {
+	utils.TruncateTables(s.db, s.logger, models.TableNames...)
 }
 
 func (s *HandlersTestSuite) TearDownSuite() {

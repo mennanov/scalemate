@@ -75,4 +75,10 @@ func (s *HandlersTestSuite) TestSchedulerNodeCreatedHandler_Handle() {
 	s.Equal(nodeProto.MemoryModel, node.MemoryModel)
 	s.Equal(nodeProto.GpuModel, node.GpuModel)
 	s.Equal(nodeProto.DiskModel, node.DiskModel)
+
+	// Verify that the operation is idempotent.
+	s.Require().NoError(handler.Handle(event))
+	var count int
+	s.db.Where("username = ? AND name = ?", node.Username, node.Name).Find(node).Count(&count)
+	s.Equal(1, count)
 }
