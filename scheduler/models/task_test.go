@@ -103,8 +103,6 @@ func (s *ModelsTestSuite) TestTask_ToProto() {
 }
 
 func (s *ModelsTestSuite) TestTasks_UpdateForDisconnectedNode_UpdatesOnlyRunningTasksForThatNode() {
-	s.db = s.db.LogMode(true)
-
 	node1 := &models.Node{
 		Username: "username",
 		Name:     "node1",

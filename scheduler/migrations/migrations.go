@@ -94,6 +94,16 @@ var migrations = []*gormigrate.Migration{
 			return tx.RemoveIndex("idx_job_schedule_index").Error
 		},
 	},
+	{
+		ID: "20190413_create_processed_Event",
+		Migrate: func(tx *gorm.DB) error {
+			// TODO: inline the model struct here once we have real migrations later.
+			return tx.AutoMigrate(&models.ProcessedEvent{}).Error
+		},
+		Rollback: func(tx *gorm.DB) error {
+			return tx.DropTable("processed_event").Error
+		},
+	},
 }
 
 // RunMigrations runs all the un-applied migrations.

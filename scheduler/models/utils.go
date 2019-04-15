@@ -5,7 +5,7 @@ import (
 )
 
 // TableNames is a list of all the registered table names that is used in tests to clean up database.
-var TableNames = [3]string{"tasks", "jobs", "nodes"}
+var TableNames = []string{"tasks", "jobs", "nodes", "processed_events"}
 
 func init() {
 	// Remove default gorm callbacks on Create as it populates the `UpdatedAt` field which is undesirable.

@@ -108,6 +108,6 @@ func (m *Model) BeforeCreate(scope *gorm.Scope) error {
 type Enum int32
 
 // String returns a string representation of the Enum (int32), e.g. "5" for 5.
-func (s *Enum) String() string {
+func (s Enum) String() string {
 	return fmt.Sprintf("%d", s)
 }

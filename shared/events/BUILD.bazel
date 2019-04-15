@@ -16,6 +16,7 @@ go_library(
         "//shared/utils:go_default_library",
         "@com_github_golang_protobuf//proto:go_default_library",
         "@com_github_golang_protobuf//ptypes:go_default_library_gen",
+        "@com_github_google_uuid//:go_default_library",
         "@com_github_jinzhu_gorm//:go_default_library",
         "@com_github_nats_io_go_nats_streaming//:go_default_library",
         "@com_github_pkg_errors//:go_default_library",

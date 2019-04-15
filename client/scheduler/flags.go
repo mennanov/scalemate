@@ -23,30 +23,31 @@ func parsePathDefs(to map[string]string, paths []string) error {
 // CreateJobCmdFlags represents a set of flags for the `scalemate jobs create` command.
 // Positional arguments are not included.
 type CreateJobCmdFlags struct {
-	Ports           []string
-	Volumes         []string
-	DownloadPaths   []string
-	DownloadExclude []string
-	UploadPaths     []string
-	UploadExclude   []string
-	EnvVars         []string
-	Entrypoint      string
-	CpuLimit        float32
-	CpuClass        int32
-	GpuLimit        uint32
-	GpuClass        int32
-	DiskLimit       uint32
-	DiskClass       int32
-	MemoryLimit     uint32
-	RestartPolicy   int32
-	CpuLabels       []string
-	GpuLabels       []string
-	DiskLabels      []string
-	MemoryLabels    []string
-	UsernameLabels  []string
-	NameLabels      []string
-	OtherLabels     []string
-	IsDaemon        bool
+	Ports            []string
+	Volumes          []string
+	DownloadPaths    []string
+	DownloadExclude  []string
+	UploadPaths      []string
+	UploadExclude    []string
+	EnvVars          []string
+	Entrypoint       string
+	CpuLimit         float32
+	CpuClass         int32
+	GpuLimit         uint32
+	GpuClass         int32
+	DiskLimit        uint32
+	DiskClass        int32
+	MemoryLimit      uint32
+	RestartPolicy    int32
+	ReschedulePolicy int32
+	CpuLabels        []string
+	GpuLabels        []string
+	DiskLabels       []string
+	MemoryLabels     []string
+	UsernameLabels   []string
+	NameLabels       []string
+	OtherLabels      []string
+	IsDaemon         bool
 }
 
 // ToProto parses the flags and returns a filled in Job_RunConfig struct.
@@ -56,23 +57,24 @@ func (f *CreateJobCmdFlags) ToProto() (*scheduler_proto.Job, error) {
 			Entrypoint:           f.Entrypoint,
 			UploadPathsExclude:   f.UploadExclude,
 			DownloadPathsExclude: f.DownloadExclude,
+			RestartPolicy:        scheduler_proto.Job_RunConfig_RestartPolicy(f.RestartPolicy),
 		},
-		CpuLimit:       f.CpuLimit,
-		CpuClass:       scheduler_proto.CPUClass(f.CpuClass),
-		GpuLimit:       f.GpuLimit,
-		GpuClass:       scheduler_proto.GPUClass(f.GpuClass),
-		DiskLimit:      f.DiskLimit,
-		DiskClass:      scheduler_proto.DiskClass(f.DiskClass),
-		MemoryLimit:    f.MemoryLimit,
-		RestartPolicy:  scheduler_proto.Job_RestartPolicy(f.RestartPolicy),
-		CpuLabels:      f.CpuLabels,
-		GpuLabels:      f.GpuLabels,
-		DiskLabels:     f.DiskLabels,
-		MemoryLabels:   f.MemoryLabels,
-		UsernameLabels: f.UsernameLabels,
-		NameLabels:     f.NameLabels,
-		OtherLabels:    f.OtherLabels,
-		IsDaemon:       f.IsDaemon,
+		CpuLimit:         f.CpuLimit,
+		CpuClass:         scheduler_proto.CPUClass(f.CpuClass),
+		GpuLimit:         f.GpuLimit,
+		GpuClass:         scheduler_proto.GPUClass(f.GpuClass),
+		DiskLimit:        f.DiskLimit,
+		DiskClass:        scheduler_proto.DiskClass(f.DiskClass),
+		MemoryLimit:      f.MemoryLimit,
+		ReschedulePolicy: scheduler_proto.Job_ReschedulePolicy(f.ReschedulePolicy),
+		CpuLabels:        f.CpuLabels,
+		GpuLabels:        f.GpuLabels,
+		DiskLabels:       f.DiskLabels,
+		MemoryLabels:     f.MemoryLabels,
+		UsernameLabels:   f.UsernameLabels,
+		NameLabels:       f.NameLabels,
+		OtherLabels:      f.OtherLabels,
+		IsDaemon:         f.IsDaemon,
 	}
 	// Volumes flag.
 	if len(f.Volumes) != 0 {

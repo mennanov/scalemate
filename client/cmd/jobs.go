@@ -90,7 +90,10 @@ func init() {
 		fmt.Sprintf("Disk class, options: %s", enumOptions(scheduler_proto.DiskClass_name)))
 
 	createJobCmd.Flags().Int32Var(&createJobsCmdFlagValues.RestartPolicy, "restart", 0,
-		fmt.Sprintf("Restart policy, options: %s", enumOptions(scheduler_proto.Job_RestartPolicy_name)))
+		fmt.Sprintf("Restart policy, options: %s", enumOptions(scheduler_proto.Job_RunConfig_RestartPolicy_name)))
+
+	createJobCmd.Flags().Int32Var(&createJobsCmdFlagValues.ReschedulePolicy, "reschedule", 0,
+		fmt.Sprintf("Reschedule policy, options: %s", enumOptions(scheduler_proto.Job_ReschedulePolicy_name)))
 
 	createJobCmd.Flags().StringArrayVar(&createJobsCmdFlagValues.CpuLabels, "cpu_label", []string{},
 		"CPU labels")

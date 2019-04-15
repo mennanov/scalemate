@@ -25,7 +25,7 @@ func (s *ModelsTestSuite) SetupSuite() {
 
 	db, err := utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_models_test_suite")
 	s.Require().NoError(err)
-	s.db = db
+	s.db = db.LogMode(s.logger.IsLevelEnabled(logrus.DebugLevel))
 
 	s.Require().NoError(migrations.RunMigrations(s.db))
 }

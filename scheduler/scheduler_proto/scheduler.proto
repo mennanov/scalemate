@@ -10,10 +10,10 @@ import "shared/proto/validator.proto";
 
 service Scheduler {
     // GetNode gets the Node details.
-    rpc GetNode(NodeLookupRequest) returns (Node){
+    rpc GetNode (NodeLookupRequest) returns (Node) {
     }
     // ListNodes lists Nodes that satisfy the given criteria.
-    rpc ListNodes(ListNodesRequest) returns (ListNodesResponse){
+    rpc ListNodes (ListNodesRequest) returns (ListNodesResponse) {
     }
 
     // CreateJob creates a new Job.
@@ -44,7 +44,7 @@ service Scheduler {
     rpc IterateTasksForNode (google.protobuf.Empty) returns (stream Task) {
     }
     // CancelTask cancels a running Task. It also notifies the corresponding Node to stop the Task.
-    rpc CancelTask (TaskLookupRequest) returns (Task){
+    rpc CancelTask (TaskLookupRequest) returns (Task) {
     }
 
     // ListCpuModels lists aggregated CPU models for the currently online Nodes.
@@ -132,6 +132,13 @@ message Job {
         map<string, string> environment_variables = 9;
         // Overwrite the default ENTRYPOINT of the image.
         string entrypoint = 10;
+
+        enum RestartPolicy {
+            RESTART_POLICY_NO = 0;
+            RESTART_POLICY_ON_FAILURE = 1;
+            RESTART_POLICY_UNLESS_STOPPED = 2;
+        }
+        RestartPolicy restart_policy = 11;
     }
     // Docker specific parameters like image name, ports, volumes, etc.
     RunConfig run_config = 3 [(shared.proto.validator.field) = {msg_exists: true}];
@@ -156,15 +163,13 @@ message Job {
     // Readonly.
     google.protobuf.Timestamp updated_at = 13;
 
-    enum RestartPolicy {
-        RESTART_POLICY_NO = 0;
-        RESTART_POLICY_ON_FAILURE = 1;
-        RESTART_POLICY_UNLESS_STOPPED = 2;
-        RESTART_POLICY_RESCHEDULE_ON_FAILURE = 3;
-        RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE = 4;
+    enum ReschedulePolicy {
+        RESCHEDULE_POLICY_NO = 0;
+        RESCHEDULE_POLICY_ON_FAILURE = 1;
+        RESCHEDULE_POLICY_ON_NODE_FAILURE = 2;
     }
 
-    RestartPolicy restart_policy = 15;
+    ReschedulePolicy reschedule_policy = 15;
 
     // Scheduling constraint labels. Multiple label values are "OR"ed.
     // Only the full string match is currently supported.
@@ -323,6 +328,8 @@ message Task {
         // Container finished execution regardless of the result (container exit code: failure or success).
         STATUS_FINISHED = 2;
         // Any non-node related failure: image not found, resources exhausted, container failed, etc.
+        // Agent on a Node will try restarting (if configured so in Job.RunConfig.RestartPolicy) and eventually report
+        // a non-retriable failure.
         STATUS_FAILED = 3;
         // Task failed because the Node failed: connection failed, power outage, etc.
         STATUS_NODE_FAILED = 4;

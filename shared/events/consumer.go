@@ -70,7 +70,11 @@ type NatsConsumer struct {
 // stan.SetManualAckMode() is forcibly appended to the opts as it is required by the message handler behavior to
 // provide data consistency: message is acknowledged only if it was successfully processed by all the handlers.
 func NewNatsConsumer(
-	conn stan.Conn, subject string, logger *logrus.Logger, opts ...stan.SubscriptionOption) *NatsConsumer {
+	conn stan.Conn,
+	subject string,
+	logger *logrus.Logger,
+	opts ...stan.SubscriptionOption,
+) *NatsConsumer {
 	return &NatsConsumer{conn: conn, subject: subject, logger: logger, opts: append(opts, stan.SetManualAckMode())}
 }
 
@@ -100,7 +104,12 @@ type NatsQueueConsumer struct {
 
 // NewNatsQueueConsumer creates a new instance of NatsQueueConsumer. Behavior is identical to the NatsConsumer.
 func NewNatsQueueConsumer(
-	conn stan.Conn, subject string, queueName string, logger *logrus.Logger, opts ...stan.SubscriptionOption) *NatsQueueConsumer {
+	conn stan.Conn,
+	subject string,
+	queueName string,
+	logger *logrus.Logger,
+	opts ...stan.SubscriptionOption,
+) *NatsQueueConsumer {
 	return &NatsQueueConsumer{
 		NatsConsumer: NatsConsumer{
 			conn: conn, subject: subject, logger: logger, opts: append(opts, stan.SetManualAckMode()),

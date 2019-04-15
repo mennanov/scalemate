@@ -49,10 +49,10 @@ func (s *ServerTestSuite) SetupSuite() {
 
 	// Start gRPC server.
 	localAddr := "localhost:50051"
-	var err error
 
-	s.db, err = utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_server_test_suite")
+	db, err := utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_server_test_suite")
 	s.Require().NoError(err)
+	s.db = db.LogMode(s.logger.IsLevelEnabled(logrus.DebugLevel))
 
 	s.sc, err = stan.Connect(
 		conf.AccountsConf.NatsClusterName,

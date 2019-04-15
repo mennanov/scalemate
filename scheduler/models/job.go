@@ -55,8 +55,8 @@ type Job struct {
 	DiskLimit uint32     `gorm:"not null"`
 	DiskClass utils.Enum `gorm:"type:smallint"`
 	// RunConfig is `docker run` specific parameters like ports, volumes, etc.
-	RunConfig     postgres.Jsonb
-	RestartPolicy utils.Enum `gorm:"type:smallint"`
+	RunConfig        postgres.Jsonb
+	ReschedulePolicy utils.Enum `gorm:"type:smallint"`
 	// Constraint labels.
 	CpuLabels      pq.StringArray `gorm:"type:text[]"`
 	GpuLabels      pq.StringArray `gorm:"type:text[]"`
@@ -209,7 +209,7 @@ func (j *Job) FromProto(p *scheduler_proto.Job) error {
 	} else {
 		j.RunConfig = postgres.Jsonb{RawMessage: json.RawMessage([]byte{})}
 	}
-	j.RestartPolicy = utils.Enum(p.GetRestartPolicy())
+	j.ReschedulePolicy = utils.Enum(p.GetReschedulePolicy())
 
 	return nil
 }
@@ -227,7 +227,7 @@ func (j *Job) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Job, er
 	p.GpuClass = scheduler_proto.GPUClass(j.GpuClass)
 	p.DiskLimit = j.DiskLimit
 	p.DiskClass = scheduler_proto.DiskClass(j.DiskClass)
-	p.RestartPolicy = scheduler_proto.Job_RestartPolicy(j.RestartPolicy)
+	p.ReschedulePolicy = scheduler_proto.Job_ReschedulePolicy(j.ReschedulePolicy)
 	p.CpuLabels = j.CpuLabels
 	p.GpuLabels = j.GpuLabels
 	p.DiskLabels = j.DiskLabels
@@ -312,6 +312,11 @@ func (j *Job) LoadFromDB(db *gorm.DB, fields ...string) error {
 	return utils.HandleDBError(query.First(j, j.ID))
 }
 
+// LoadFromDBForUpdate is similar to LoadFromDB(), but locks the Job's row FOR UPDATE.
+func (j *Job) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
+	return j.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
+}
+
 // JobStatusTransitions defined possible Job status transitions.
 var JobStatusTransitions = map[scheduler_proto.Job_Status][]scheduler_proto.Job_Status{
 	scheduler_proto.Job_STATUS_NEW: {
@@ -370,32 +375,6 @@ func (j *Job) Updates(db *gorm.DB, updates map[string]interface{}) (*events_prot
 		return nil, err
 	}
 	return event, nil
-}
-
-// SuitableNodeExists checks if there exists at least one Node which is online and is capable of running this Job
-// regardless of the resources available: they may become available later.
-// This method should be called before `FindSuitableNode` method as `FindSuitableNode` will return the same error
-// "failed to find a suitable Node..." regardless why the Node could not be found: Node does not exist or it does not
-// have sufficient resources.
-// FIXME: this method is not used.
-func (j *Job) SuitableNodeExists(db *gorm.DB) bool {
-	q := db.Model(&Node{}).Where("status = ?", utils.Enum(scheduler_proto.Node_STATUS_ONLINE))
-	q = j.whereNodeCpuClass(q)
-	q = j.whereNodeDiskClass(q)
-	q = j.whereNodeGpuClass(q)
-
-	q = j.whereNodeCpuModel(q)
-	q = j.whereNodeGpuModel(q)
-	q = j.whereNodeDiskModel(q)
-	q = j.whereNodeMemoryModel(q)
-
-	q = j.whereNodeUsername(q)
-	q = j.whereNodeName(q)
-	q = j.whereNodeLabels(q)
-
-	var count uint
-	q.Count(&count)
-	return count > 0
 }
 
 // FindSuitableNode finds the best available Node to schedule this Job on.
@@ -463,9 +442,15 @@ func (j *Job) CreateTask(db *gorm.DB, node *Node) ([]*events_proto.Event, error)
 	}
 	schedulingEvents := []*events_proto.Event{event}
 
-	event, err = node.AllocateJobResources(db, j)
+	allocationUpdates, err := node.AllocateJobResources(j)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to allocate Node resources")
+	}
+	now := time.Now().UTC()
+	allocationUpdates["scheduled_at"] = &now
+	event, err = node.Updates(db, allocationUpdates)
+	if err != nil {
+		return nil, errors.Wrap(err, "node.Updates failed")
 	}
 	schedulingEvents = append(schedulingEvents, event)
 
@@ -496,13 +481,13 @@ func (j *Job) IsTerminated() bool {
 		j.Status == utils.Enum(scheduler_proto.Job_STATUS_CANCELLED)
 }
 
-// NeedsRescheduling returns true if the Job should be rescheduled according to the RestartPolicy.
+// NeedsRescheduling returns true if the Job should be rescheduled according to the ReschedulingPolicy.
 func (j *Job) NeedsRescheduling(taskStatus scheduler_proto.Task_Status) bool {
 	if taskStatus != scheduler_proto.Task_STATUS_FAILED && taskStatus != scheduler_proto.Task_STATUS_NODE_FAILED {
 		return false
 	}
-	return j.RestartPolicy == utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_FAILURE) ||
-		j.RestartPolicy == utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE)
+	return j.ReschedulePolicy == utils.Enum(scheduler_proto.Job_RESCHEDULE_POLICY_ON_FAILURE) ||
+		j.ReschedulePolicy == utils.Enum(scheduler_proto.Job_RESCHEDULE_POLICY_ON_NODE_FAILURE)
 }
 
 // mapKeys returns a slice of map string keys.
@@ -609,50 +594,4 @@ func (jobs *Jobs) FindPendingForNode(db *gorm.DB, node *Node) error {
 		return errors.Wrap(err, "failed to FindPendingForNode for the Node")
 	}
 	return nil
-}
-
-// UpdateStatusForNodeFailedTasks performs a bulk update on Jobs status field for the given Job IDs whose corresponding
-// Tasks have failed due to a Node failure (abrupt disconnect).
-// The status is set to PENDING if the Job needs rescheduling on a Node failure or to FINISHED otherwise.
-// Jobs receiver is populated with the updated Jobs.
-func (jobs *Jobs) UpdateStatusForNodeFailedTasks(db *gorm.DB, jobIDs []uint64) ([]*events_proto.Event, error) {
-	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
-
-	// Set status to PENDING for Jobs that require rescheduling, set status to FINISHED for those that don't.
-	rows, err := db.Raw(
-		`UPDATE jobs SET status = (CASE WHEN restart_policy = ? THEN ?::int ELSE ?::int END), updated_at = ? 
-		WHERE id IN(?) RETURNING jobs.*`,
-		// Set clause.
-		utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE), utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		utils.Enum(scheduler_proto.Job_STATUS_FINISHED), time.Now(),
-		// Where clause.
-		jobIDs).Rows()
-
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to update Jobs status to PENDING")
-	}
-
-	defer rows.Close()
-
-	var updateEvents []*events_proto.Event
-	for rows.Next() {
-		var job Job
-		if err := db.ScanRows(rows, &job); err != nil {
-			return nil, errors.Wrap(err, "db.ScanRows failed")
-		}
-		jobProto, err := job.ToProto(fieldMask)
-		if err != nil {
-			return nil, errors.Wrap(err, "job.ToProto failed")
-		}
-		event, err := events.NewEvent(jobProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
-			fieldMask)
-		if err != nil {
-			return nil, errors.Wrap(err, "NewEvent failed")
-		}
-		updateEvents = append(updateEvents, event)
-
-		*jobs = append(*jobs, job)
-	}
-
-	return updateEvents, nil
 }

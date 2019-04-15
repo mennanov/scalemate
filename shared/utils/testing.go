@@ -88,8 +88,8 @@ func CreateTestingDatabase(dbURL, dbName string) (*gorm.DB, error) {
 		return nil, errors.Wrapf(err, "failed to create a database %s", dbName)
 	}
 
-	newUrl := regexp.MustCompile(`dbname=(\w+)`).ReplaceAllString(dbURL, fmt.Sprintf("dbname=%s", dbName))
-	return ConnectDBFromEnv(newUrl)
+	newURL := regexp.MustCompile(`dbname=(\w+)`).ReplaceAllString(dbURL, fmt.Sprintf("dbname=%s", dbName))
+	return ConnectDBFromEnv(newURL)
 }
 
 // TruncateTables truncates the database tables and resets associated sequence generators.

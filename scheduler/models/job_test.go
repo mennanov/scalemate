@@ -44,14 +44,14 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 				UpdatedAt: &timestamp.Timestamp{
 					Seconds: now,
 				},
-				RestartPolicy:  scheduler_proto.Job_RESTART_POLICY_ON_FAILURE,
-				CpuLabels:      []string{"Intel Core i7 @ 2.20GHz", "Intel Core i5 @ 2.20GHz"},
-				GpuLabels:      []string{"Intel Iris Pro 1536MB", "Intel Iris Pro 2000MB"},
-				DiskLabels:     []string{"251GB APPLE SSD SM0256F"},
-				MemoryLabels:   []string{"DDR3-1600MHz"},
-				UsernameLabels: []string{"username1", "username2"},
-				NameLabels:     []string{"node1", "node2"},
-				OtherLabels:    []string{"Europe/Samara", "USA/SF"},
+				ReschedulePolicy: scheduler_proto.Job_RESCHEDULE_POLICY_ON_FAILURE,
+				CpuLabels:        []string{"Intel Core i7 @ 2.20GHz", "Intel Core i5 @ 2.20GHz"},
+				GpuLabels:        []string{"Intel Iris Pro 1536MB", "Intel Iris Pro 2000MB"},
+				DiskLabels:       []string{"251GB APPLE SSD SM0256F"},
+				MemoryLabels:     []string{"DDR3-1600MHz"},
+				UsernameLabels:   []string{"username1", "username2"},
+				NameLabels:       []string{"node1", "node2"},
+				OtherLabels:      []string{"Europe/Samara", "USA/SF"},
 			},
 			mask: fieldmask_utils.MaskInverse{"Id": nil},
 		},
@@ -92,21 +92,20 @@ func (s *ModelsTestSuite) TestJob_FromProto_ToProto() {
 
 func (s *ModelsTestSuite) TestJob_CreateTask() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
 
-	now := time.Now()
+	now := time.Now().UTC()
 
 	node := &models.Node{
 		Username:        "node_owner",
@@ -145,282 +144,17 @@ func (s *ModelsTestSuite) TestJob_CreateTask() {
 	s.Equal(uint32(9000), nodeFromDB.DiskAvailable)
 }
 
-func (s *ModelsTestSuite) TestJob_SuitableNodeExistsSuccess() {
-	job := &models.Job{
-		Username:       "username",
-		Status:         utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:       1.5,
-		CpuClass:       utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:    1000,
-		GpuLimit:       2,
-		GpuClass:       utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:      1000,
-		DiskClass:      utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy:  utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-		CpuLabels:      []string{"Intel Core i7 @ 2.20GHz", "Intel Core i5 @ 2.20GHz"},
-		GpuLabels:      []string{"Intel Iris Pro 1536MB"},
-		DiskLabels:     []string{"251GB APPLE SSD SM0256F"},
-		MemoryLabels:   []string{"DDR3-1600MHz"},
-		UsernameLabels: []string{"node_owner"},
-		NameLabels:     []string{"node1", "node2"},
-		OtherLabels:    []string{"sale20"},
-	}
-	_, err := job.Create(s.db)
-	s.Require().NoError(err)
-
-	now := time.Now()
-
-	nodes := []*models.Node{
-		// This node satisfies criteria.
-		{
-			Username:        "node_owner",
-			Name:            "node1",
-			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
-			CpuCapacity:     4,
-			CpuAvailable:    2.5,
-			CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuModel:        "Intel Core i7 @ 2.20GHz",
-			MemoryCapacity:  8000,
-			MemoryAvailable: 4000,
-			MemoryModel:     "DDR3-1600MHz",
-			GpuCapacity:     4,
-			GpuAvailable:    2,
-			GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-			GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
-			GpuModel:        "Intel Iris Pro 1536MB",
-			DiskCapacity:    20000,
-			DiskAvailable:   10000,
-			DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskModel:       "251GB APPLE SSD SM0256F",
-			Labels:          []string{"special_promo_label", "sale20"},
-			ConnectedAt:     &now,
-		},
-		// Offline node.
-		{
-			Username: "node_owner",
-			Name:     "node2",
-			Status:   utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
-		},
-	}
-	for _, node := range nodes {
-		_, err = node.Create(s.db)
-		s.Require().NoError(err)
-	}
-
-	s.True(job.SuitableNodeExists(s.db))
-}
-
-func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByCpuClass() {
-	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ADVANCED),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-	}
-	_, err := job.Create(s.db)
-	s.Require().NoError(err)
-
-	now := time.Now()
-
-	nodes := []*models.Node{
-		{
-			Username:        "node_owner",
-			Name:            "node1",
-			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
-			CpuCapacity:     4,
-			CpuAvailable:    2.5,
-			CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			MemoryCapacity:  8000,
-			MemoryAvailable: 4000,
-			GpuCapacity:     4,
-			GpuAvailable:    2,
-			GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-			GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
-			DiskCapacity:    20000,
-			DiskAvailable:   10000,
-			DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     &now,
-		},
-	}
-	for _, node := range nodes {
-		_, err = node.Create(s.db)
-		s.Require().NoError(err)
-	}
-
-	s.False(job.SuitableNodeExists(s.db))
-}
-
-func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByGpuClass() {
-	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-	}
-	_, err := job.Create(s.db)
-	s.Require().NoError(err)
-
-	now := time.Now()
-
-	nodes := []*models.Node{
-		{
-			Username:        "node_owner",
-			Name:            "node1",
-			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
-			CpuCapacity:     4,
-			CpuAvailable:    2.5,
-			CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			MemoryCapacity:  8000,
-			MemoryAvailable: 4000,
-			GpuCapacity:     4,
-			GpuAvailable:    2,
-			GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-			GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-			DiskCapacity:    20000,
-			DiskAvailable:   10000,
-			DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     &now,
-		},
-	}
-	for _, node := range nodes {
-		_, err = node.Create(s.db)
-		s.Require().NoError(err)
-	}
-
-	s.False(job.SuitableNodeExists(s.db))
-}
-
-func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByDiskClass() {
-	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-	}
-	_, err := job.Create(s.db)
-	s.Require().NoError(err)
-
-	now := time.Now()
-
-	nodes := []*models.Node{
-		{
-			Username:        "node_owner",
-			Name:            "node1",
-			Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
-			CpuCapacity:     4,
-			CpuAvailable:    2.5,
-			CpuClass:        utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuClassMin:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			MemoryCapacity:  8000,
-			MemoryAvailable: 4000,
-			GpuCapacity:     4,
-			GpuAvailable:    2,
-			GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-			GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-			DiskCapacity:    20000,
-			DiskAvailable:   10000,
-			DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			ConnectedAt:     &now,
-		},
-	}
-	for _, node := range nodes {
-		_, err = node.Create(s.db)
-		s.Require().NoError(err)
-	}
-
-	s.False(job.SuitableNodeExists(s.db))
-}
-
-func (s *ModelsTestSuite) TestJob_SuitableNodeExists_NotFoundByLabels() {
-	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_PRO),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_SSD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-		CpuLabels:     []string{"Intel Core i5 @ 2.20GHz"},
-	}
-	_, err := job.Create(s.db)
-	s.Require().NoError(err)
-
-	now := time.Now()
-
-	nodes := []*models.Node{
-		{
-			Username:     "node_owner",
-			Name:         "node1",
-			Status:       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
-			CpuCapacity:  4,
-			CpuAvailable: 2.5,
-			CpuClass:     utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			CpuClassMin:  utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-			// "Intel Core i5 @ 2.20GHz" is requested.
-			CpuModel:        "Intel Core i7 @ 2.20GHz",
-			MemoryCapacity:  8000,
-			MemoryAvailable: 4000,
-			GpuCapacity:     4,
-			GpuAvailable:    2,
-			GpuClass:        utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-			GpuClassMin:     utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ENTRY),
-			GpuModel:        "Intel Iris Pro 1536MB",
-			DiskCapacity:    20000,
-			DiskAvailable:   10000,
-			DiskClass:       utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskClassMin:    utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-			DiskModel:       "251GB APPLE SSD SM0256F",
-			ConnectedAt:     &now,
-		},
-	}
-	for _, node := range nodes {
-		_, err = node.Create(s.db)
-		s.Require().NoError(err)
-	}
-
-	s.False(job.SuitableNodeExists(s.db))
-}
-
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -489,16 +223,15 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_OneAvailable() {
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -561,16 +294,15 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieCPU() {
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -633,16 +365,15 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieMemory() {
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -705,16 +436,15 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieDisk() {
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -777,16 +507,15 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieGPU() {
 
 func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 	job := &models.Job{
-		Username:      "username",
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
-		CpuLimit:      1.5,
-		CpuClass:      utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
-		MemoryLimit:   1000,
-		GpuLimit:      2,
-		GpuClass:      utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
-		DiskLimit:     1000,
-		DiskClass:     utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
+		Username:    "username",
+		Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
+		CpuLimit:    1.5,
+		CpuClass:    utils.Enum(scheduler_proto.CPUClass_CPU_CLASS_ENTRY),
+		MemoryLimit: 1000,
+		GpuLimit:    2,
+		GpuClass:    utils.Enum(scheduler_proto.GPUClass_GPU_CLASS_ADVANCED),
+		DiskLimit:   1000,
+		DiskClass:   utils.Enum(scheduler_proto.DiskClass_DISK_CLASS_HDD),
 	}
 	_, err := job.Create(s.db)
 	s.Require().NoError(err)
@@ -849,41 +578,6 @@ func (s *ModelsTestSuite) TestJob_FindSuitableNode_BreakTieScheduledAt() {
 	node, err := job.FindSuitableNode(s.db)
 	s.Require().NoError(err)
 	s.Equal("node2", node.Name)
-}
-
-func (s *ModelsTestSuite) TestJob_UpdateStatusForNodeFailedTasks() {
-	jobRescheduleOnNodeFailure := &models.Job{
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-	}
-	_, err := jobRescheduleOnNodeFailure.Create(s.db)
-	s.Require().NoError(err)
-
-	jobRestartOnFailure := &models.Job{
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_ON_FAILURE),
-	}
-	_, err = jobRestartOnFailure.Create(s.db)
-	s.Require().NoError(err)
-
-	jobNotListed := &models.Job{
-		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
-		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_RESCHEDULE_ON_NODE_FAILURE),
-	}
-	_, err = jobNotListed.Create(s.db)
-	s.Require().NoError(err)
-
-	var jobs models.Jobs
-	jobsEvents, err := jobs.UpdateStatusForNodeFailedTasks(
-		s.db, []uint64{jobRescheduleOnNodeFailure.ID, jobRestartOnFailure.ID})
-	s.Require().NoError(err)
-	s.Len(jobsEvents, 2)
-	s.Require().NoError(jobRescheduleOnNodeFailure.LoadFromDB(s.db))
-	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_PENDING), jobRescheduleOnNodeFailure.Status)
-	s.Require().NoError(jobRestartOnFailure.LoadFromDB(s.db))
-	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_FINISHED), jobRestartOnFailure.Status)
-	s.Require().NoError(jobNotListed.LoadFromDB(s.db))
-	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED), jobNotListed.Status)
 }
 
 func (s *ModelsTestSuite) TestJobs_FindPendingForNode() {

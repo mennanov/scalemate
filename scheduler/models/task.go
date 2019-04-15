@@ -179,6 +179,11 @@ func (t *Task) LoadJobFromDB(db *gorm.DB, fields ...string) error {
 	return t.Job.LoadFromDB(db, fields...)
 }
 
+// LoadJobFromDBForUpdate is similar to LoadJobFromDB(), but locks the Job's row FOR UPDATE.
+func (t *Task) LoadJobFromDBForUpdate(db *gorm.DB, fields ...string) error {
+	return t.LoadJobFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
+}
+
 // Updates performs an UPDATE SQL query for the Task fields given in the `updates` argument and returns a corresponding
 // event.
 func (t *Task) Updates(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
@@ -237,7 +242,8 @@ func (t *Task) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Task_Status) 
 
 // IsTerminated returns true if the Task has terminated (not running regardless the reason).
 func (t *Task) IsTerminated() bool {
-	return t.Status != utils.Enum(scheduler_proto.Task_STATUS_NEW) && t.Status != utils.Enum(scheduler_proto.Task_STATUS_RUNNING)
+	return t.Status != utils.Enum(scheduler_proto.Task_STATUS_NEW) &&
+		t.Status != utils.Enum(scheduler_proto.Task_STATUS_RUNNING)
 }
 
 // Tasks represent a collection of Tasks with methods working with a collection of Tasks.
@@ -311,13 +317,14 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 	var updateEvents []*events_proto.Event
 	fieldMask := &field_mask.FieldMask{Paths: []string{"status"}}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	rows, err := db.Raw(
 		"UPDATE tasks SET status = ?, updated_at = ? WHERE node_id = ? AND status IN(?) RETURNING tasks.*",
 		// Set clause.
 		utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), &now,
 		// Where clause.
-		nodeID, []utils.Enum{utils.Enum(scheduler_proto.Task_STATUS_NEW), utils.Enum(scheduler_proto.Task_STATUS_RUNNING)}).Rows()
+		nodeID, []utils.Enum{utils.Enum(scheduler_proto.Task_STATUS_NEW),
+			utils.Enum(scheduler_proto.Task_STATUS_RUNNING)}).Rows()
 
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to update Tasks status to NODE_FAILED")
@@ -334,8 +341,7 @@ func (tasks *Tasks) UpdateStatusForDisconnectedNode(db *gorm.DB, nodeID uint64) 
 		if err != nil {
 			return nil, errors.Wrap(err, "task.ToProto failed")
 		}
-		event, err := events.NewEvent(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
-			fieldMask)
+		event, err := events.NewEvent(taskProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask)
 		if err != nil {
 			return nil, errors.Wrap(err, "NewEvent failed")
 		}

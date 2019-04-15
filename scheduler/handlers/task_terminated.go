@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"github.com/jinzhu/gorm"
@@ -11,16 +11,34 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-// HandleTaskTerminated updates the status of the corresponding Job and schedules pending Jobs on that Node.
-func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) error {
-	eventPayload, err := events.NewModelProtoFromEvent(eventProto)
-	if err != nil {
-		return errors.Wrap(err, "events.NewModelProtoFromEvent failed")
+// TaskTerminatedHandler updates the corresponding Job status and the corresponding Node's resources.
+type TaskTerminatedHandler struct {
+	handlerName string
+	db          *gorm.DB
+	producer    events.Producer
+}
+
+// NewTaskTerminatedHandler creates a new instance of TaskTerminatedHandler.
+func NewTaskTerminatedHandler(handlerName string, db *gorm.DB, producer events.Producer) *TaskTerminatedHandler {
+	return &TaskTerminatedHandler{handlerName: handlerName, db: db, producer: producer}
+}
+
+// Handle updates the status of the corresponding Job and the corresponding Node's available resources.
+func (s *TaskTerminatedHandler) Handle(eventProto *events_proto.Event) error {
+	if eventProto.Type != events_proto.Event_UPDATED {
+		return nil
 	}
-	taskProto, ok := eventPayload.(*scheduler_proto.Task)
+	taskPayload, ok := eventProto.Payload.(*events_proto.Event_SchedulerTask)
 	if !ok {
-		return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Task")
+		return nil
 	}
+	if eventProto.PayloadMask == nil {
+		return nil
+	}
+	if !in("status", eventProto.PayloadMask.Paths) {
+		return nil
+	}
+	taskProto := taskPayload.SchedulerTask
 	task := &models.Task{}
 	if err := task.FromProto(taskProto); err != nil {
 		return errors.Wrap(err, "task.FromProto failed")
@@ -29,14 +47,25 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		// Disregard the Task that is not terminated (no actions are needed in this case).
 		return nil
 	}
+	processedEvent := models.NewProcessedEvent(s.handlerName, eventProto)
+	exists, err := processedEvent.Exists(s.db)
+	if err != nil {
+		return errors.Wrap(err, "processedEvent.Exists failed")
+	}
+	if exists {
+		// Event has been already processed.
+		return nil
+	}
+
 	// Populate the task struct fields from DB.
 	if err := task.LoadFromDB(s.db); err != nil {
 		return errors.Wrap(err, "task.LoadFromDB failed")
 	}
 
+	tx := s.db.Begin()
 	// Load the corresponding Job to check if it needs to be rescheduled.
-	if err := task.LoadJobFromDB(s.db); err != nil {
-		return errors.Wrap(err, "task.LoadJobFromDB failed")
+	if err := task.LoadJobFromDBForUpdate(s.db); err != nil {
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "task.LoadJobFromDBForUpdate failed"))
 	}
 
 	newJobStatus := scheduler_proto.Job_STATUS_FINISHED
@@ -46,14 +75,14 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 		newJobStatus = scheduler_proto.Job_STATUS_PENDING
 	}
 
-	tx := s.db.Begin()
 	jobStatusUpdatedEvent, err := task.Job.UpdateStatus(tx, newJobStatus)
 	if err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Job status"))
 	}
 
 	node := &models.Node{Model: utils.Model{ID: task.NodeID}}
-	nodeUpdates := make(map[string]interface{})
+	// Deallocate the Job's resources from the Node.
+	nodeUpdates := node.DeallocateJobResources(task.Job)
 	if task.Status == utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED) {
 		nodeUpdates["tasks_failed"] = gorm.Expr("tasks_failed + 1")
 	} else {
@@ -63,8 +92,10 @@ func (s *SchedulerServer) HandleTaskTerminated(eventProto *events_proto.Event) e
 	if err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "failed to update Node statistics"))
 	}
-
-	if err := events.CommitAndPublish(s.producer, jobStatusUpdatedEvent, nodeUpdatedEvent); err != nil {
+	if err := processedEvent.Create(tx); err != nil {
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "processedEvent.Create failed"))
+	}
+	if err := events.CommitAndPublish(tx, s.producer, jobStatusUpdatedEvent, nodeUpdatedEvent); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

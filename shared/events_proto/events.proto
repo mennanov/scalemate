@@ -16,6 +16,10 @@ enum Service {
 }
 
 message Event {
+    // Unique event's ID generated at the moment the event is created.
+    // A UUID is a 16 byte (128 bit) array. See: https://godoc.org/github.com/google/uuid
+    bytes uuid = 12;
+
     enum Type {
         UNKNOWN = 0;
         CREATED = 1;

@@ -55,11 +55,12 @@ func TestNatsProducer_Send(t *testing.T) {
 		assert.NoError(t, err)
 		expectedMessageKeys[i] = key
 	}
-	// Wait for the expected messages to be received.
-	received, err := events.WaitForMessages(consumer, logger, expectedMessageKeys...)
+	messagesHandler := &events.MessagesTestingHandler{}
+	subscription, err := consumer.Consume(messagesHandler)
 	require.NoError(t, err)
+	defer utils.Close(subscription, logger)
 
 	err = producer.Send(eventsToSend...)
 	require.NoError(t, err)
-	assert.NoError(t, <-received)
+	assert.NoError(t, messagesHandler.ExpectMessages(expectedMessageKeys...))
 }

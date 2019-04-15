@@ -344,9 +344,14 @@ func (n *Node) LoadFromDB(db *gorm.DB, fields ...string) error {
 	return utils.HandleDBError(query.First(n, n.ID))
 }
 
-// AllocateJobResources is a wrapper around the `Updates` method above to conveniently update the Node's available
-// resources that are going to be used by the given Job.
-func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event, error) {
+// LoadFromDBForUpdate is similar to LoadFromDB(), but locks the Node's row FOR UPDATE.
+func (n *Node) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
+	return n.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
+}
+
+// AllocateJobResources allocates the necessary resources on the Node for the given Job.
+// This function returns a map that can be passed to the Node.Updates() method.
+func (n *Node) AllocateJobResources(job *Job) (map[string]interface{}, error) {
 	if n.CpuAvailable < job.CpuLimit {
 		return nil, errors.
 			Errorf("failed to allocate Node CPU: %f requested, %f available", job.CpuLimit, n.CpuAvailable)
@@ -360,12 +365,10 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 		return nil, errors.
 			Errorf("failed to allocate Node disk: %d requested, %d available", job.DiskLimit, n.DiskAvailable)
 	}
-	now := time.Now()
 	nodeUpdates := map[string]interface{}{
 		"cpu_available":    n.CpuAvailable - job.CpuLimit,
 		"memory_available": n.MemoryAvailable - job.MemoryLimit,
 		"disk_available":   n.DiskAvailable - job.DiskLimit,
-		"scheduled_at":     &now,
 	}
 	if job.GpuLimit > 0 {
 		if n.GpuAvailable < job.GpuLimit {
@@ -374,7 +377,23 @@ func (n *Node) AllocateJobResources(db *gorm.DB, job *Job) (*events_proto.Event,
 		}
 		nodeUpdates["gpu_available"] = n.GpuAvailable - job.GpuLimit
 	}
-	return n.Updates(db, nodeUpdates)
+	return nodeUpdates, nil
+}
+
+// DeallocateJobResources deallocates the Job's resources on the Node.
+// No check if performed whether this Job was actually scheduled on this Node. This is a caller's responsibility to
+// check that.
+// This function returns a map that can be passed to the Node.Updates() method.
+func (n *Node) DeallocateJobResources(job *Job) map[string]interface{} {
+	nodeUpdates := map[string]interface{}{
+		"cpu_available":    n.CpuAvailable + job.CpuLimit,
+		"memory_available": n.MemoryAvailable + job.MemoryLimit,
+		"disk_available":   n.DiskAvailable + job.DiskLimit,
+	}
+	if job.GpuLimit > 0 {
+		nodeUpdates["gpu_available"] = n.GpuAvailable + job.GpuLimit
+	}
+	return nodeUpdates
 }
 
 // SchedulePendingJobs finds suitable Jobs that can be scheduled on the given Node and selects the best combination of
@@ -399,19 +418,19 @@ func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
 	}
 	// selectedJobs is a bitarray.BitArray of the selected for scheduling Jobs.
 	selectedJobs := SelectJobs(jobs, res)
-	allEvents := make([]*events_proto.Event, 0)
+	var taskCreatedEvents []*events_proto.Event
 	for i, job := range jobs {
 		if !selectedJobs.GetBit(uint64(i)) {
 			// This Job has not been selected for scheduling: disregard it.
 			continue
 		}
-		schedulerEvents, err := job.CreateTask(db, n)
+		taskCreatedEvent, err := job.CreateTask(db, n)
 		if err != nil {
 			return nil, errors.Wrapf(err, "job.CreateTask failed for Job: %s", job.String())
 		}
-		allEvents = append(allEvents, schedulerEvents...)
+		taskCreatedEvents = append(taskCreatedEvents, taskCreatedEvent...)
 	}
-	return allEvents, nil
+	return taskCreatedEvents, nil
 }
 
 // Nodes represents a collection of Nodes.

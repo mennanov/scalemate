@@ -9,7 +9,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
@@ -91,99 +90,70 @@ func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
 }
 
 func (s *ModelsTestSuite) TestNode_AllocateJobResources() {
-	scheduledAtOld := time.Date(2018, 10, 30, 21, 59, 0, 0, time.FixedZone("t", 0))
 	node := &models.Node{
-		Username:        "node_owner",
-		Name:            "node1",
-		Status:          utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		CpuAvailable:    3,
 		MemoryAvailable: 6000,
 		GpuAvailable:    4,
 		DiskAvailable:   10000,
-		ScheduledAt:     &scheduledAtOld,
 	}
-	_, err := node.Create(s.db)
-	s.Require().NoError(err)
 
-	job1 := &models.Job{
+	job := &models.Job{
 		CpuLimit:    2,
 		MemoryLimit: 4000,
 		GpuLimit:    4,
 		DiskLimit:   7000,
 	}
-	event1, err := node.AllocateJobResources(s.db, job1)
+	updates, err := node.AllocateJobResources(job)
 	s.Require().NoError(err)
-	s.NotNil(event1)
-	s.Require().NoError(node.LoadFromDB(s.db))
-	s.Equal(float32(1), node.CpuAvailable)
-	s.Equal(uint32(2000), node.MemoryAvailable)
-	s.Equal(uint32(0), node.GpuAvailable)
-	s.Equal(uint32(3000), node.DiskAvailable)
-	s.True(node.ScheduledAt.After(scheduledAtOld))
-
-	// Second consecutive job takes all remaining resources.
-	job2 := &models.Job{
-		CpuLimit:    1,
-		MemoryLimit: 2000,
-		GpuLimit:    0,
-		DiskLimit:   3000,
-	}
-	event2, err := node.AllocateJobResources(s.db, job2)
-	s.Require().NoError(err)
-	s.NotNil(event2)
-	s.NotEqual(event1, event2)
-	s.Require().NoError(node.LoadFromDB(s.db))
-	s.Equal(float32(0), node.CpuAvailable)
-	s.Equal(uint32(0), node.MemoryAvailable)
-	s.Equal(uint32(0), node.GpuAvailable)
-	s.Equal(uint32(0), node.DiskAvailable)
+	s.Equal(map[string]interface{}{
+		"cpu_available":    node.CpuAvailable - job.CpuLimit,
+		"memory_available": node.MemoryAvailable - job.MemoryLimit,
+		"gpu_available":    node.GpuAvailable - job.GpuLimit,
+		"disk_available":   node.DiskAvailable - job.DiskLimit,
+	}, updates)
 }
 
 func (s *ModelsTestSuite) TestNode_AllocateJobResources_Fails() {
-	scheduledAtOld := time.Date(2018, 10, 30, 21, 59, 0, 0, time.FixedZone("t", 0))
 	node := &models.Node{
 		CpuAvailable:    3,
 		MemoryAvailable: 6000,
 		GpuAvailable:    4,
 		DiskAvailable:   10000,
-		ScheduledAt:     &scheduledAtOld,
 	}
-	_, err := node.Create(s.db)
-	s.Require().NoError(err)
 
 	s.T().Run("CpuLimit fails", func(t *testing.T) {
 		job := &models.Job{
 			CpuLimit: 3.5,
 		}
-		event, err := node.AllocateJobResources(s.db, job)
+		updates, err := node.AllocateJobResources(job)
 		s.Error(err)
-		s.Nil(event)
+		s.Nil(updates)
 	})
 
 	s.T().Run("GpuLimit fails", func(t *testing.T) {
 		job := &models.Job{
 			GpuLimit: 5,
 		}
-		event, err := node.AllocateJobResources(s.db, job)
+		updates, err := node.AllocateJobResources(job)
 		s.Error(err)
-		s.Nil(event)
+		s.Nil(updates)
 	})
 
 	s.T().Run("MemoryLimit fails", func(t *testing.T) {
 		job := &models.Job{
 			MemoryLimit: 7000,
 		}
-		event, err := node.AllocateJobResources(s.db, job)
+		updates, err := node.AllocateJobResources(job)
 		s.Error(err)
-		s.Nil(event)
+		s.Nil(updates)
 	})
 
 	s.T().Run("DiskLimit fails", func(t *testing.T) {
 		job := &models.Job{
 			DiskLimit: 20000,
 		}
-		event, err := node.AllocateJobResources(s.db, job)
+		updates, err := node.AllocateJobResources(job)
 		s.Error(err)
-		s.Nil(event)
+		s.Nil(updates)
 	})
 }

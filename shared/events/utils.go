@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
+	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
@@ -34,7 +35,7 @@ func CommitAndPublish(tx *gorm.DB, producer Producer, events ...*events_proto.Ev
 		}
 	}
 	// TODO: messages sent to NATS may be processed earlier than they are committed to DB. Need to add a delay in all
-	//  the event handlers.
+	//  consumers that query the same database as the corresponding producers.
 	if err := utils.HandleDBError(tx.Commit()); err != nil {
 		return errors.Wrap(err, "failed to commit transaction")
 	}
@@ -53,7 +54,9 @@ func NewEvent(
 		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 	}
 
+	eventUUID := uuid.New()
 	event := &events_proto.Event{
+		Uuid:        eventUUID[:],
 		Type:        eventType,
 		Service:     service,
 		PayloadMask: fieldMask,

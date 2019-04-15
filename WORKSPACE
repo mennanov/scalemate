@@ -124,12 +124,6 @@ go_repository(
 )
 
 go_repository(
-    name = "com_github_khaiql_dbcleaner",
-    commit = "bcdf5e508ebbc7cfffb0e8e1a93e9d01db4824a7",
-    importpath = "github.com/khaiql/dbcleaner",
-)
-
-go_repository(
     name = "com_github_lib_pq",
     commit = "7aad666537ab32b76f0966145530335f1fed51fd",
     importpath = "github.com/lib/pq",
@@ -157,12 +151,6 @@ go_repository(
     name = "com_github_spf13_pflag",
     commit = "24fa6976df40757dce6aea913e7b81ade90530e1",
     importpath = "github.com/spf13/pflag",
-)
-
-go_repository(
-    name = "in_gopkg_khaiql_dbcleaner_v2",
-    commit = "3485a1ee4b01c233d640dc163757f60a77df9bf8",
-    importpath = "gopkg.in/khaiql/dbcleaner.v2",
 )
 
 go_repository(
