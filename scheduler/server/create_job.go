@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-// CreateJob creates a new Job.
+// CreateJob creates a new Container.
 func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) (*scheduler_proto.Job, error) {
 	logger := ctxlogrus.Extract(ctx)
 	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
@@ -26,7 +26,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
 	if claims.Username != r.Username {
-		msg := "Job username does not match currently authenticated user"
+		msg := "Container username does not match currently authenticated user"
 		logger.WithFields(logrus.Fields{
 			"job":    r,
 			"claims": claims,
@@ -66,7 +66,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 		return nil, status.Errorf(codes.InvalidArgument, "invalid upload paths: %s", err.Error())
 	}
 
-	job := &models.Job{}
+	job := &models.Container{}
 	if err := job.FromProto(r); err != nil {
 		return nil, errors.Wrap(err, "job.FromProto failed")
 	}
@@ -76,7 +76,7 @@ func (s SchedulerServer) CreateJob(ctx context.Context, r *scheduler_proto.Job) 
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "job.Create failed"))
 	}
-	if err := events.CommitAndPublish(s.producer, event); err != nil {
+	if err := utils2.CommitAndPublish(s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 	jobProto, err := job.ToProto(nil)

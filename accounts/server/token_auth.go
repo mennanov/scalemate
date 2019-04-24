@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -19,17 +20,18 @@ func (s AccountsServer) TokenAuth(
 ) (*accounts_proto.AuthTokens, error) {
 	claims, err := auth.NewClaimsFromStringVerified(r.GetRefreshToken(), s.jwtSecretKey)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "failed to parse JWT")
 	}
 
 	if claims.TokenType != auth.TokenTypeRefresh {
 		return nil, status.Errorf(codes.InvalidArgument, "refresh token type is expected", claims.TokenType)
 	}
 
-	user := &models.User{}
-
-	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: claims.Username}); err != nil {
-		return nil, err
+	user, err := models.UserLookUp(s.db, &accounts_proto.UserLookupRequest{
+		Request: &accounts_proto.UserLookupRequest_Username{Username: claims.Username},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
 
 	if err := user.IsAllowedToAuthenticate(); err != nil {
@@ -37,10 +39,9 @@ func (s AccountsServer) TokenAuth(
 	}
 
 	// Generate auth tokens.
-	response, err := user.
-		GenerateAuthTokensResponse(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, claims.NodeName)
+	response, err := user.GenerateAuthTokens(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, claims.NodeName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "GenerateAuthTokens failed")
 	}
 
 	return response, nil

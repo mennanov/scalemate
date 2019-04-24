@@ -13,7 +13,7 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-// ListJobs lists Jobs owned by the User.
+// ListJobs lists Containers owned by the User.
 func (s SchedulerServer) ListJobs(
 	ctx context.Context,
 	r *scheduler_proto.ListJobsRequest,
@@ -25,10 +25,10 @@ func (s SchedulerServer) ListJobs(
 
 	if claims.Username != r.Username && claims.Role != accounts_proto.User_ADMIN {
 		return nil, status.
-			Errorf(codes.PermissionDenied, "you can only view Jobs for user '%s'", claims.Username)
+			Errorf(codes.PermissionDenied, "you can only view Containers for user '%s'", claims.Username)
 	}
 
-	var jobs models.Jobs
+	var jobs models.Containers
 	totalCount, err := jobs.List(s.db, r)
 	if err != nil {
 		return nil, err

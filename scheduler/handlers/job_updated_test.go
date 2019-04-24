@@ -29,7 +29,7 @@ func (s *HandlersTestSuite) TestJobUpdatedHandler_SchedulesPendingJob() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		CpuLimit:    2,
 		MemoryLimit: 4000,
 		DiskLimit:   10000,
@@ -49,7 +49,7 @@ func (s *HandlersTestSuite) TestJobUpdatedHandler_SchedulesPendingJob() {
 	s.Require().NoError(job.LoadTasksFromDB(s.db))
 	s.Require().Len(job.Tasks, 1)
 	s.Equal(job.ID, job.Tasks[0].JobID)
-	// Verify that the Job status is now SCHEDULED.
+	// Verify that the Container status is now SCHEDULED.
 	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)
 	// Verify that the Node's resources are updated.
@@ -77,14 +77,14 @@ func (s *HandlersTestSuite) TestJobUpdatedHandler_EventsIgnored() {
 		},
 		{
 			Type: events_proto.Event_UPDATED,
-			// Non-Job related event is ignored.
+			// Non-Container related event is ignored.
 			Payload: &events_proto.Event_SchedulerNode{
 				SchedulerNode: &scheduler_proto.Node{Id: 42},
 			},
 		},
 		{
 			Type: events_proto.Event_UPDATED,
-			// Non-pending Job event is ignored.
+			// Non-pending Container event is ignored.
 			Payload: &events_proto.Event_SchedulerJob{
 				SchedulerJob: &scheduler_proto.Job{
 					Id:     42,

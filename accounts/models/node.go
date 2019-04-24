@@ -1,17 +1,8 @@
 package models
 
 import (
-	"github.com/golang/protobuf/protoc-gen-go/generator"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/jinzhu/gorm"
-	"github.com/mennanov/fieldmask-utils"
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
-	"google.golang.org/genproto/protobuf/field_mask"
-
-	"github.com/mennanov/scalemate/shared/events"
 
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -22,83 +13,36 @@ import (
 // The data in this DB table is populated by listening to the Scheduler service events when a new Node is created.
 type Node struct {
 	utils.Model
-	Username    string `gorm:"not null;unique_index:idx_node_username_name"`
-	Name        string `gorm:"not null;unique_index:idx_node_username_name"`
-	CpuModel    string
-	MemoryModel string
-	GpuModel    string
-	DiskModel   string
+	Username    string
+	Name        string
+	Fingerprint []byte
 }
 
-// FromSchedulerProto populates the Node struct with values from `scheduler_proto.Node`.
-func (node *Node) FromSchedulerProto(p *scheduler_proto.Node) {
-	node.ID = p.Id
-	node.Username = p.Username
-	node.Name = p.Name
-	node.CpuModel = p.CpuModel
-	node.MemoryModel = p.MemoryModel
-	node.GpuModel = p.GpuModel
-	node.DiskModel = p.DiskModel
-}
-
-// ToProto creates an accounts_proto.Node instance from the Node.
-func (node *Node) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.Node, error) {
-	p := &accounts_proto.Node{
-		Id:          uint64(node.ID),
-		Username:    node.Username,
-		Name:        node.Name,
-		CpuModel:    node.CpuModel,
-		GpuModel:    node.GpuModel,
-		MemoryModel: node.MemoryModel,
-		DiskModel:   node.DiskModel,
+// NewNodeFromSchedulerProto creates a new Node instance from `scheduler_proto.Node`.
+func NewNodeFromSchedulerProto(p *scheduler_proto.Node) *Node {
+	return &Node{
+		Model: utils.Model{
+			ID: p.Id,
+		},
+		Username:    p.Username,
+		Name:        p.Name,
+		Fingerprint: p.Fingerprint,
 	}
-
-	if !node.CreatedAt.IsZero() {
-		createdAt, err := ptypes.TimestampProto(node.CreatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
-		}
-		p.CreatedAt = createdAt
-	}
-
-	if node.UpdatedAt != nil {
-		scheduledAt, err := ptypes.TimestampProto(*node.UpdatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
-		}
-		p.UpdatedAt = scheduledAt
-	}
-
-	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
-		if err != nil {
-			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
-		}
-		// Always include ID regardless of the field mask.
-		pFiltered := &accounts_proto.Node{Id: uint64(node.ID)}
-		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered); err != nil {
-			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
-		}
-		return pFiltered, nil
-	}
-
-	return p, nil
 }
 
 // Create creates a new Node in DB.
-func (node *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
-	if err := utils.HandleDBError(db.Create(node)); err != nil {
-		return nil, err
-	}
-
-	nodeProto, err := node.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "node.ToProto failed")
-	}
-	return events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+func (n *Node) Create(db utils.SqlxGetter) error {
+	return utils.HandleDBError(db.Get(n,
+		"INSERT INTO nodes (id, username, name, fingerprint) VALUES ($1, $2, $3, $4) RETURNING *",
+		n.ID, n.Username, n.Name, n.Fingerprint))
 }
 
-// Get gets the Node from DB by a username and a Node name.
-func (node *Node) Get(db *gorm.DB, username, name string) error {
-	return utils.HandleDBError(db.Where("username = ? AND name = ?", username, name).First(node))
+// NodeLookUp gets the Node from DB by a username and a Node name.
+func NodeLookUp(db utils.SqlxGetter, username, name string) (*Node, error) {
+	node := &Node{}
+	if err := utils.HandleDBError(
+		db.Get(node, "SELECT * FROM nodes WHERE username = $1 AND name = $2", username, name)); err != nil {
+		return nil, errors.Wrap(err, "failed to find Node in DB")
+	}
+	return node, nil
 }

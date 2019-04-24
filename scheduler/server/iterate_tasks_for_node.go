@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -69,12 +69,12 @@ func (s SchedulerServer) IterateTasksForNode(
 			return
 		}
 		now := time.Now()
-		connectEvent, err := node.Updates(tx, map[string]interface{}{
+		connectEvent, err := node.Update(tx, map[string]interface{}{
 			"connected_at": &now,
 			"status":       utils.Enum(scheduler_proto.Node_STATUS_ONLINE),
 		})
 		if err != nil {
-			e <- errors.Wrap(err, "node.Updates failed")
+			e <- errors.Wrap(err, "node.Update failed")
 			return
 		}
 		s.tasksForNodes[node.ID] = make(chan *scheduler_proto.Task)
@@ -83,7 +83,7 @@ func (s SchedulerServer) IterateTasksForNode(
 			e <- utils.RollbackTransaction(tx, errors.Wrap(err, "failed to connectNode"))
 			return
 		}
-		if err := events.CommitAndPublish(s.producer, connectEvent); err != nil {
+		if err := utils2.CommitAndPublish(s.producer, connectEvent); err != nil {
 			e <- errors.Wrap(err, "events.CommitAndPublish failed")
 			return
 		}
@@ -108,12 +108,12 @@ func (s SchedulerServer) IterateTasksForNode(
 			return
 		}
 		now := time.Now()
-		nodeUpdatedEvent, err := node.Updates(tx, map[string]interface{}{
+		nodeUpdatedEvent, err := node.Update(tx, map[string]interface{}{
 			"disconnected_at": &now,
 			"status":          utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 		})
 		if err != nil {
-			logger.WithError(utils.RollbackTransaction(tx, err)).Error("node.Updates failed")
+			logger.WithError(utils.RollbackTransaction(tx, err)).Error("node.Update failed")
 			return
 		}
 
@@ -122,7 +122,7 @@ func (s SchedulerServer) IterateTasksForNode(
 		delete(s.tasksForNodes, node.ID)
 		s.tasksForNodesMux.Unlock()
 
-		if err := events.CommitAndPublish(s.producer, nodeUpdatedEvent); err != nil {
+		if err := utils2.CommitAndPublish(s.producer, nodeUpdatedEvent); err != nil {
 			logger.WithError(err).Error("events.CommitAndPublish failed")
 		}
 	}(tasks)

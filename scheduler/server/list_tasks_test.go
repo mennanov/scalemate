@@ -20,7 +20,7 @@ func (s *ServerTestSuite) TestListTasks() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	jobs := []*models.Job{
+	jobs := []*models.Container{
 		{
 			Username: "username1",
 			Status:   utils.Enum(scheduler_proto.Job_STATUS_PENDING),

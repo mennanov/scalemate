@@ -1,28 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
-
-go_library(
-    name = "go_default_library",
-    srcs = ["migrations.go"],
-    importpath = "github.com/mennanov/scalemate/scheduler/migrations",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//scheduler/models:go_default_library",
-        "@com_github_go_gormigrate_gormigrate//:go_default_library",
-        "@com_github_jinzhu_gorm//:go_default_library",
-    ],
-)
-
-load("@com_github_atlassian_bazel_tools//gorevive:def.bzl", "go_revive_test")
-
-go_revive_test(
-    name = "go_lint",
-    # Go source files to be linted.
-    srcs = glob(["*.go"]),
-    # Revive .toml config.
-    config = "//:revive.toml",  # it can also be a regular Bazel label.
-    formatter = "stylish",
-    # The paths have to be relative to the workspace root.
-    paths = [
-        "./...",
-    ],
+filegroup(
+    name = "migrations",
+    srcs = glob(["*.sql"]),
 )

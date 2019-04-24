@@ -5,7 +5,7 @@ import (
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -22,13 +22,16 @@ const (
 
 // Claims defines a JWT Scalemate.io specific Claims.
 type Claims struct {
+	jwt.StandardClaims
 	Username string
 	// NodeName is used when authenticating Nodes. For clients it will be empty.
 	NodeName string
-	// A role defined in accounts.proto User message.
-	Role      accounts_proto.User_Role
 	TokenType TokenType
-	jwt.StandardClaims
+}
+
+// NewClaims creates a new Claims instance.
+func NewClaims(standardClaims jwt.StandardClaims, username string, nodeName string, tokenType TokenType) *Claims {
+	return &Claims{StandardClaims: standardClaims, Username: username, NodeName: nodeName, TokenType: tokenType}
 }
 
 // NewClaimsFromStringVerified parses the given token string and creates a new Claims struct.
@@ -101,12 +104,12 @@ func NewJWTClaimsInjector(jwtSecretKey []byte) *JWTClaimsInjector {
 func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
 	token, err := grpc_auth.AuthFromMD(ctx, "bearer")
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "grpc_auth.AuthFromMD failed")
 	}
 
 	claims, err := NewClaimsFromStringVerified(token, i.jwtSecretKey)
 	if err != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "invalid auth token: %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid auth token: %v", err)
 	}
 
 	return context.WithValue(ctx, ContextKeyClaims, claims), nil

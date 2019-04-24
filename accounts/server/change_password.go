@@ -6,13 +6,8 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -23,35 +18,24 @@ func (s AccountsServer) ChangePassword(
 	ctx context.Context,
 	r *accounts_proto.ChangePasswordRequest,
 ) (*empty.Empty, error) {
-	ctxClaims := ctx.Value(auth.ContextKeyClaims)
-	if ctxClaims == nil {
-		return nil, status.Error(codes.Unauthenticated, "no JWT claims found")
+	user, err := models.UserLookUp(s.db, &accounts_proto.UserLookupRequest{
+		Request: &accounts_proto.UserLookupRequest_Username{Username: r.Username}})
+	if err != nil {
+		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
-	claims, ok := ctx.Value(auth.ContextKeyClaims).(*auth.Claims)
-	if !ok {
-		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
-	}
-
-	if claims.Username != r.GetUsername() && claims.Role != accounts_proto.User_ADMIN {
-		logrus.WithFields(logrus.Fields{
-			"claimsUsername": claims.Username,
-			"username":       r.Username,
-		}).Warn("ChangePassword permission denied")
-		return nil, status.Error(
-			codes.PermissionDenied, "method 'ChangePassword' is allowed for admins or owners only")
-	}
-
-	user := &models.User{}
-	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
+	if err := checkUserPermissions(ctx, user.Username); err != nil {
 		return nil, err
 	}
-	tx := s.db.Begin()
-	event, err := user.ChangePassword(tx, r.GetPassword(), s.bCryptCost)
+	tx, err := s.db.Beginx()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to start transaction")
+	}
+	event, err := user.ChangePassword(tx, r.Password, s.bCryptCost)
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.ChangePassword failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
-		return nil, err
+	if err := utils.CommitAndPublish(tx, s.producer, event); err != nil {
+		return nil, errors.Wrap(err, "CommitAndPublish failed")
 	}
 
 	return &empty.Empty{}, nil

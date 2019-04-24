@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/jinzhu/gorm"
-	"github.com/lib/pq"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
@@ -22,47 +21,55 @@ import (
 )
 
 const (
-	// ListNodesMaxLimit is a maximum allowed limit in the SQL query that lists Nodes.
+	// ListNodesMaxLimit is a maximum allowed limit in the SqlxGetter query that lists Nodes.
 	ListNodesMaxLimit = 300
 )
 
-// Node represents a physical machine that runs Tasks (scheduled Jobs).
+// Node represents a physical machine that runs Tasks (scheduled Containers).
 type Node struct {
 	utils.Model
 	Username     string `gorm:"not null;unique_index:idx_username_name"`
 	Name         string `gorm:"not null;unique_index:idx_username_name"`
 	Status       utils.Enum
 	CpuCapacity  uint32     `gorm:"type:smallint;not null;"`
-	CpuAvailable float32    `gorm:"not null;"`
+	CpuAvailable uint32     `gorm:"not null;"`
 	CpuClass     utils.Enum `gorm:"type:smallint;not null;"`
-	CpuClassMin  utils.Enum `gorm:"type:smallint;not null;"`
-	CpuModel     string     `gorm:"index:idx_cpu_model"`
 
 	MemoryCapacity  uint32 `gorm:"not null;"`
 	MemoryAvailable uint32 `gorm:"not null;"`
-	MemoryModel     string `gorm:"index:idx_memory_model"`
 
 	GpuCapacity  uint32     `gorm:"type:smallint;not null;"`
 	GpuAvailable uint32     `gorm:"type:smallint;not null;"`
 	GpuClass     utils.Enum `gorm:"type:smallint;not null;"`
-	GpuClassMin  utils.Enum `gorm:"type:smallint;not null;"`
-	GpuModel     string     `gorm:"index:idx_gpu_model"`
 
 	DiskCapacity  uint32     `gorm:"not null;"`
 	DiskAvailable uint32     `gorm:"not null;"`
 	DiskClass     utils.Enum `gorm:"type:smallint;not null;"`
-	DiskClassMin  utils.Enum `gorm:"type:smallint;not null;"`
-	DiskModel     string     `gorm:"index:idx_disk_model"`
 
-	// User defined labels.
-	Labels pq.StringArray `gorm:"type:text[]"`
+	NetworkIngressCapacity uint32
+	NetworkEgressCapacity  uint32
 
-	TasksFinished uint64 `gorm:"not null;"`
-	TasksFailed   uint64 `gorm:"not null;"`
+	ContainersFinished uint64 `gorm:"not null;"`
+	ContainersFailed   uint64 `gorm:"not null;"`
 
-	ConnectedAt    *time.Time
-	DisconnectedAt *time.Time
-	ScheduledAt    *time.Time
+	ConnectedAt     *time.Time
+	DisconnectedAt  *time.Time
+	LastScheduledAt *time.Time
+
+	Ipv4Address []byte
+
+	Labels []*NodeLabel
+}
+
+// NodeLabel is a Node label.
+type NodeLabel struct {
+	NodeID uint64 `gorm:"primary_key" sql:"type:integer REFERENCES nodes(id)"`
+	Label  string `gorm:"primary_key"`
+}
+
+// Create inserts a new NodeLabel in DB.
+func (l *NodeLabel) Create(db *gorm.DB) error {
+	return utils.HandleDBError(db.Create(l))
 }
 
 func (n *Node) String() string {
@@ -73,93 +80,31 @@ func (n *Node) String() string {
 	return nodeProto.String()
 }
 
-func (n *Node) whereJobCpuClass(q *gorm.DB) *gorm.DB {
-	return q.Where("cpu_class = 0 OR cpu_class BETWEEN ? AND ?", n.CpuClassMin, n.CpuClass)
-}
-
-func (n *Node) whereJobCpuLimit(q *gorm.DB) *gorm.DB {
-	return q.Where("cpu_limit <= ?", n.CpuAvailable)
-}
-
-func (n *Node) whereJobCpuLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("cpu_labels IS NULL OR ? = ANY(cpu_labels)", n.CpuModel)
-}
-
-func (n *Node) whereJobGpuClass(q *gorm.DB) *gorm.DB {
-	return q.Where("gpu_class = 0 OR gpu_class BETWEEN ? AND ?", n.GpuClassMin, n.GpuClass)
-}
-
-func (n *Node) whereJobGpuLimit(q *gorm.DB) *gorm.DB {
-	return q.Where("gpu_limit <= ?", n.GpuAvailable)
-}
-
-func (n *Node) whereJobGpuLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("gpu_labels IS NULL OR ? = ANY(gpu_labels)", n.GpuModel)
-}
-
-func (n *Node) whereJobDiskClass(q *gorm.DB) *gorm.DB {
-	return q.Where("disk_class = 0 OR disk_class BETWEEN ? AND ?", n.DiskClassMin, n.DiskClass)
-}
-
-func (n *Node) whereJobDiskLimit(q *gorm.DB) *gorm.DB {
-	return q.Where("disk_limit <= ?", n.DiskAvailable)
-}
-
-func (n *Node) whereJobDiskLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("disk_labels IS NULL OR ? = ANY(disk_labels)", n.DiskModel)
-}
-
-func (n *Node) whereJobMemoryLimit(q *gorm.DB) *gorm.DB {
-	return q.Where("memory_limit <= ?", n.MemoryAvailable)
-}
-
-func (n *Node) whereJobMemoryLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("memory_labels IS NULL OR ? = ANY(memory_labels)", n.MemoryModel)
-}
-
-func (n *Node) whereJobUsernameLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("username_labels IS NULL OR ? = ANY(username_labels)", n.Username)
-}
-
-func (n *Node) whereJobNameLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("name_labels IS NULL OR ? = ANY(name_labels)", n.Name)
-}
-
-func (n *Node) whereJobOtherLabels(q *gorm.DB) *gorm.DB {
-	return q.Where("other_labels IS NULL OR ARRAY[?] && other_labels", []string(n.Labels))
-}
-
 // ToProto populates the given `*scheduler_proto.Node` with the contents of the Node.
 func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, error) {
-	p := &scheduler_proto.Node{}
-	p.Id = n.ID
-	p.Username = n.Username
-	p.Name = n.Name
-	p.Status = scheduler_proto.Node_Status(n.Status)
-
-	p.CpuCapacity = n.CpuCapacity
-	p.CpuAvailable = n.CpuAvailable
-	p.CpuClass = scheduler_proto.CPUClass(n.CpuClass)
-	p.CpuClassMin = scheduler_proto.CPUClass(n.CpuClassMin)
-	p.CpuModel = n.CpuModel
-
-	p.MemoryCapacity = n.MemoryCapacity
-	p.MemoryAvailable = n.MemoryAvailable
-	p.MemoryModel = n.MemoryModel
-
-	p.GpuCapacity = n.GpuCapacity
-	p.GpuAvailable = n.GpuAvailable
-	p.GpuClass = scheduler_proto.GPUClass(n.GpuClass)
-	p.GpuClassMin = scheduler_proto.GPUClass(n.GpuClassMin)
-	p.GpuModel = n.GpuModel
-
-	p.DiskCapacity = n.DiskCapacity
-	p.DiskAvailable = n.DiskAvailable
-	p.DiskClass = scheduler_proto.DiskClass(n.DiskClass)
-	p.DiskClassMin = scheduler_proto.DiskClass(n.DiskClassMin)
-	p.DiskModel = n.DiskModel
-	p.TasksFinished = n.TasksFinished
-	p.TasksFailed = n.TasksFailed
+	p := &scheduler_proto.Node{
+		Id:                     n.ID,
+		Username:               n.Username,
+		Name:                   n.Name,
+		Status:                 scheduler_proto.Node_Status(n.Status),
+		CpuCapacity:            n.CpuCapacity,
+		CpuAvailable:           n.CpuAvailable,
+		CpuClass:               scheduler_proto.CPUClass(n.CpuClass),
+		MemoryCapacity:         n.MemoryCapacity,
+		MemoryAvailable:        n.MemoryAvailable,
+		GpuCapacity:            n.GpuCapacity,
+		GpuAvailable:           n.GpuAvailable,
+		GpuClass:               scheduler_proto.GPUClass(n.GpuClass),
+		DiskCapacity:           n.DiskCapacity,
+		DiskAvailable:          n.DiskAvailable,
+		DiskClass:              scheduler_proto.DiskClass(n.DiskClass),
+		NetworkIngressCapacity: n.NetworkIngressCapacity,
+		NetworkEgressCapacity:  n.NetworkEgressCapacity,
+		Labels:                 make([]string, len(n.Labels)),
+		ContainersFinished:     n.ContainersFinished,
+		ContainersFailed:       n.ContainersFailed,
+		Ipv4Address:            n.Ipv4Address,
+	}
 
 	if n.ConnectedAt != nil {
 		connectedAt, err := ptypes.TimestampProto(*n.ConnectedAt)
@@ -177,12 +122,12 @@ func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, 
 		p.DisconnectedAt = disconnectedAt
 	}
 
-	if n.ScheduledAt != nil {
-		scheduledAt, err := ptypes.TimestampProto(*n.ScheduledAt)
+	if n.LastScheduledAt != nil {
+		scheduledAt, err := ptypes.TimestampProto(*n.LastScheduledAt)
 		if err != nil {
 			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
-		p.ScheduledAt = scheduledAt
+		p.LastScheduledAt = scheduledAt
 	}
 
 	if !n.CreatedAt.IsZero() {
@@ -216,77 +161,79 @@ func (n *Node) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Node, 
 	return p, nil
 }
 
-// FromProto populates the Node from the given `scheduler_proto.Node`.
-func (n *Node) FromProto(p *scheduler_proto.Node) error {
-	n.ID = p.GetId()
-	n.Username = p.GetUsername()
-	n.Name = p.GetName()
-	n.Status = utils.Enum(p.GetStatus())
+// NewNodeFromProto create a new Node instance from a proto message.
+func NewNodeFromProto(p *scheduler_proto.Node) (*Node, error) {
+	node := &Node{
+		Model: utils.Model{
+			ID: p.Id,
+		},
+		Username:               p.Username,
+		Name:                   p.Name,
+		Status:                 utils.Enum(p.Status),
+		CpuCapacity:            p.CpuCapacity,
+		CpuAvailable:           p.CpuAvailable,
+		CpuClass:               utils.Enum(p.CpuClass),
+		MemoryCapacity:         p.MemoryCapacity,
+		MemoryAvailable:        p.MemoryAvailable,
+		GpuCapacity:            p.GpuCapacity,
+		GpuAvailable:           p.GpuAvailable,
+		GpuClass:               utils.Enum(p.GpuClass),
+		DiskCapacity:           p.DiskCapacity,
+		DiskAvailable:          p.DiskAvailable,
+		DiskClass:              utils.Enum(p.DiskClass),
+		NetworkIngressCapacity: p.NetworkIngressCapacity,
+		NetworkEgressCapacity:  p.NetworkEgressCapacity,
+		ContainersFinished:     p.ContainersFinished,
+		ContainersFailed:       p.ContainersFailed,
+		Ipv4Address:            p.Ipv4Address,
+		Labels:                 make([]*NodeLabel, len(p.Labels)),
+	}
 
-	n.CpuCapacity = p.GetCpuCapacity()
-	n.CpuAvailable = p.GetCpuAvailable()
-	n.CpuClass = utils.Enum(p.GetCpuClass())
-	n.CpuClassMin = utils.Enum(p.GetCpuClassMin())
-	n.CpuModel = p.CpuModel
-
-	n.MemoryCapacity = p.GetMemoryCapacity()
-	n.MemoryAvailable = p.GetMemoryAvailable()
-	n.MemoryModel = p.GetMemoryModel()
-
-	n.GpuCapacity = p.GetGpuCapacity()
-	n.GpuAvailable = p.GetGpuAvailable()
-	n.GpuClass = utils.Enum(p.GetGpuClass())
-	n.GpuClassMin = utils.Enum(p.GetGpuClassMin())
-	n.GpuModel = p.GetGpuModel()
-
-	n.DiskCapacity = p.GetDiskCapacity()
-	n.DiskAvailable = p.GetDiskAvailable()
-	n.DiskClass = utils.Enum(p.GetDiskClass())
-	n.DiskClassMin = utils.Enum(p.GetDiskClassMin())
-	n.DiskModel = p.GetDiskModel()
-	n.TasksFinished = p.GetTasksFinished()
-	n.TasksFailed = p.GetTasksFailed()
-
-	if p.CreatedAt != nil {
+	if p.ConnectedAt != nil {
 		connectedAt, err := ptypes.Timestamp(p.ConnectedAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.ConnectedAt = &connectedAt
+		node.ConnectedAt = &connectedAt
 	}
 
 	if p.DisconnectedAt != nil {
 		disconnectedAt, err := ptypes.Timestamp(p.DisconnectedAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.DisconnectedAt = &disconnectedAt
+		node.DisconnectedAt = &disconnectedAt
 	}
 
-	if p.ScheduledAt != nil {
-		scheduledAt, err := ptypes.Timestamp(p.ScheduledAt)
+	if p.LastScheduledAt != nil {
+		scheduledAt, err := ptypes.Timestamp(p.LastScheduledAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.ScheduledAt = &scheduledAt
+		node.LastScheduledAt = &scheduledAt
 	}
 
 	if p.CreatedAt != nil {
 		createdAt, err := ptypes.Timestamp(p.CreatedAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.CreatedAt = createdAt
+		node.CreatedAt = createdAt
 	}
 
 	if p.UpdatedAt != nil {
 		updatedAt, err := ptypes.Timestamp(p.UpdatedAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
-		n.UpdatedAt = &updatedAt
+		node.UpdatedAt = &updatedAt
 	}
-	return nil
+
+	for _, label := range p.Labels {
+		node.Labels = append(node.Labels, &NodeLabel{NodeID: node.ID, Label: label})
+	}
+
+	return node, nil
 }
 
 // Create inserts a new Node in DB and returns a corresponding event.
@@ -305,9 +252,9 @@ func (n *Node) Create(db *gorm.DB) (*events_proto.Event, error) {
 	return event, nil
 }
 
-// Updates performs an UPDATE SQL query for the Node fields given in the `updates` argument and returns a corresponding
+// Update performs an UPDATE SqlxGetter query for the Node fields given in the `updates` argument and returns a corresponding
 // event.
-func (n *Node) Updates(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
+func (n *Node) Update(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
 	if n.ID == 0 {
 		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Node"))
 	}
@@ -349,95 +296,124 @@ func (n *Node) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
 	return n.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
 }
 
-// AllocateJobResources allocates the necessary resources on the Node for the given Job.
-// This function returns a map that can be passed to the Node.Updates() method.
-func (n *Node) AllocateJobResources(job *Job) (map[string]interface{}, error) {
-	if n.CpuAvailable < job.CpuLimit {
-		return nil, errors.
-			Errorf("failed to allocate Node CPU: %f requested, %f available", job.CpuLimit, n.CpuAvailable)
+// AllocateContainerLimit allocates resources requested by the newLimit on the Node.
+// If the oldLimit provided, then the current Node's resources are adjusted accordingly.
+// This function returns a map that can be passed to the Node.Update() method.
+func (n *Node) AllocateContainerLimit(newLimit, oldLimit *Limit) (map[string]interface{}, error) {
+	if newLimit == nil {
+		return nil, errors.New("new limit can not be nil")
 	}
-	if n.MemoryAvailable < job.MemoryLimit {
-		return nil, errors.
-			Errorf("failed to allocate Node memory: %d requested, %d available", job.MemoryLimit,
-				n.MemoryAvailable)
+	cpuAvailable := n.CpuAvailable
+	memoryAvailable := n.MemoryAvailable
+	diskAvailable := n.DiskAvailable
+	gpuAvailable := n.GpuAvailable
+
+	if oldLimit != nil {
+		cpuAvailable += oldLimit.Cpu
+		memoryAvailable += oldLimit.Memory
+		diskAvailable += oldLimit.Disk
+		gpuAvailable += oldLimit.Gpu
 	}
-	if n.DiskAvailable < job.DiskLimit {
+
+	if cpuAvailable < newLimit.Cpu {
 		return nil, errors.
-			Errorf("failed to allocate Node disk: %d requested, %d available", job.DiskLimit, n.DiskAvailable)
+			Errorf("failed to allocate Node CPU: %f requested, %f available", newLimit.Cpu, cpuAvailable)
+	}
+	if memoryAvailable < newLimit.Memory {
+		return nil, errors.
+			Errorf("failed to allocate Node memory: %d requested, %d available", newLimit.Memory, memoryAvailable)
+	}
+	if diskAvailable < newLimit.Disk {
+		return nil, errors.
+			Errorf("failed to allocate Node disk: %d requested, %d available", newLimit.Disk, diskAvailable)
+	}
+	if gpuAvailable < newLimit.Gpu {
+		return nil, errors.
+			Errorf("failed to allocate Node GPU: %d requested, %d available", newLimit.Gpu, gpuAvailable)
 	}
 	nodeUpdates := map[string]interface{}{
-		"cpu_available":    n.CpuAvailable - job.CpuLimit,
-		"memory_available": n.MemoryAvailable - job.MemoryLimit,
-		"disk_available":   n.DiskAvailable - job.DiskLimit,
-	}
-	if job.GpuLimit > 0 {
-		if n.GpuAvailable < job.GpuLimit {
-			return nil, errors.
-				Errorf("failed to allocate Node GPU: %d requested, %d available", job.GpuLimit, n.GpuAvailable)
-		}
-		nodeUpdates["gpu_available"] = n.GpuAvailable - job.GpuLimit
+		"cpu_available":    cpuAvailable - newLimit.Cpu,
+		"memory_available": memoryAvailable - newLimit.Memory,
+		"disk_available":   diskAvailable - newLimit.Disk,
+		"gpu_available":    gpuAvailable - newLimit.Gpu,
 	}
 	return nodeUpdates, nil
 }
 
-// DeallocateJobResources deallocates the Job's resources on the Node.
-// No check if performed whether this Job was actually scheduled on this Node. This is a caller's responsibility to
-// check that.
-// This function returns a map that can be passed to the Node.Updates() method.
-func (n *Node) DeallocateJobResources(job *Job) map[string]interface{} {
+// DeallocateContainerLimit deallocates resources requested by the limit on the Node.
+// This function returns a map that can be passed to the Node.Update() method.
+func (n *Node) DeallocateContainerLimit(limit *Limit) map[string]interface{} {
 	nodeUpdates := map[string]interface{}{
-		"cpu_available":    n.CpuAvailable + job.CpuLimit,
-		"memory_available": n.MemoryAvailable + job.MemoryLimit,
-		"disk_available":   n.DiskAvailable + job.DiskLimit,
+		"cpu_available":    n.CpuAvailable + limit.Cpu,
+		"memory_available": n.MemoryAvailable + limit.Memory,
+		"disk_available":   n.DiskAvailable + limit.Disk,
+		"gpu_available":    n.GpuAvailable + limit.Gpu,
 	}
-	if job.GpuLimit > 0 {
-		nodeUpdates["gpu_available"] = n.GpuAvailable + job.GpuLimit
-	}
+
 	return nodeUpdates
 }
 
-// SchedulePendingJobs finds suitable Jobs that can be scheduled on the given Node and selects the best combination of
-// these Jobs so that they all fit into the Node.
-// If no pending Jobs are found that can fit into the Node, then returned events are empty (nil slice) and error is nil.
-// Each Job is then scheduled to the receiver Node.
-// Node resources are updated, Tasks are created, Job statuses are updated to SCHEDULED.
-func (n *Node) SchedulePendingJobs(db *gorm.DB) ([]*events_proto.Event, error) {
-	var jobs Jobs
-	if err := jobs.FindPendingForNode(db, n); err != nil {
-		return nil, errors.Wrap(err, "jobs.FindPendingForNode failed")
-	}
-	if len(jobs) == 0 {
-		return nil, nil
-	}
+// SchedulePendingJobs finds suitable Containers that can be scheduled on the given Node and selects the best combination of
+// these Containers so that they all fit into the Node.
+// If no pending Containers are found that can fit into the Node, then returned events are empty (nil slice) and error is nil.
+// Each Container is then scheduled to the receiver Node.
+// Node resources are updated, Tasks are created, Container statuses are updated to SCHEDULED.
+//func (n *Node) SchedulePendingJobs(gormDB *gorm.DB) ([]*events_proto.Event, error) {
+//	var jobs Containers
+//	if err := jobs.FindPendingForNode(gormDB, n); err != nil {
+//		return nil, errors.Wrap(err, "jobs.FindPendingForNode failed")
+//	}
+//	if len(jobs) == 0 {
+//		return nil, nil
+//	}
+//
+//	res := AvailableResources{
+//		Cpu:    n.CpuAvailable,
+//		Memory: n.MemoryAvailable,
+//		Gpu:    n.GpuAvailable,
+//		Disk:   n.DiskAvailable,
+//	}
+//	// selectedJobs is a bitarray.BitArray of the selected for scheduling Containers.
+//	selectedJobs := SelectJobs(jobs, res)
+//	var taskCreatedEvents []*events_proto.Event
+//	for i, job := range jobs {
+//		if !selectedJobs.GetBit(uint64(i)) {
+//			// This Container has not been selected for scheduling: disregard it.
+//			continue
+//		}
+//		taskCreatedEvent, err := job.Schedule(gormDB, n)
+//		if err != nil {
+//			return nil, errors.Wrapf(err, "job.Schedule failed for Container: %s", job.String())
+//		}
+//		taskCreatedEvents = append(taskCreatedEvents, taskCreatedEvent...)
+//	}
+//	return taskCreatedEvents, nil
+//}
 
-	res := AvailableResources{
-		CpuAvailable:    n.CpuAvailable,
-		MemoryAvailable: n.MemoryAvailable,
-		GpuAvailable:    n.GpuAvailable,
-		DiskAvailable:   n.DiskAvailable,
+// PendingContainers returns Containers in the PENDING status that can be scheduled on this Node.
+func (n *Node) PendingContainers(db *gorm.DB) ([]Container, error) {
+	q := db.Set("gorm:query_option", "FOR UPDATE").
+		Where("status = ?", utils.Enum(scheduler_proto.Container_PENDING)).
+		Where("? BETWEEN cpu_class_min AND cpu_class_max", n.CpuClass).
+		Where("? BETWEEN gpu_class_min AND gpu_class_max", n.GpuClass).
+		Where("? BETWEEN disk_class_min AND disk_class_max", n.DiskClass).
+		Where("ARRAY[?] @> labels", n.Labels).
+		Joins("INNER JOIN (SELECT container_id, MAX(id) from container_limits WHERE status = ? AND cpu > 0 group by container_id) as t1 on (t1.container_id = containers.id)", utils.Enum(scheduler_proto.Limit_CONFIRMED))
+
+	q = q.Limit(ContainersScheduledForNodeQueryLimit)
+
+	var containers []Container
+	if err := utils.HandleDBError(q.Find(containers)); err != nil {
+		return nil, errors.Wrap(err, "failed to FindPendingForNode for the Node")
 	}
-	// selectedJobs is a bitarray.BitArray of the selected for scheduling Jobs.
-	selectedJobs := SelectJobs(jobs, res)
-	var taskCreatedEvents []*events_proto.Event
-	for i, job := range jobs {
-		if !selectedJobs.GetBit(uint64(i)) {
-			// This Job has not been selected for scheduling: disregard it.
-			continue
-		}
-		taskCreatedEvent, err := job.CreateTask(db, n)
-		if err != nil {
-			return nil, errors.Wrapf(err, "job.CreateTask failed for Job: %s", job.String())
-		}
-		taskCreatedEvents = append(taskCreatedEvents, taskCreatedEvent...)
-	}
-	return taskCreatedEvents, nil
+	return containers, nil
 }
 
 // Nodes represents a collection of Nodes.
 type Nodes []Node
 
-// List selects Jobs from DB by the given filtering request and populates the receiver.
-// Returns the total number of Jobs that satisfy the criteria and an error.
+// List selects Containers from DB by the given filtering request and populates the receiver.
+// Returns the total number of Containers that satisfy the criteria and an error.
 func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest) (uint32, error) {
 	query := db.Model(&Node{})
 	ordering := request.GetOrdering()
@@ -496,40 +472,14 @@ func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest)
 		query = query.Where("disk_class_min <= ? AND disk_class >= ?", enum, enum)
 	}
 
-	if len(request.UsernameLabels) > 0 {
-		query = query.Where("username IN (?)", request.UsernameLabels)
+	// TODO: add labels constraints.
+
+	if request.ContainersFinished > 0 {
+		query = query.Where("container_finished >= ?", request.ContainersFinished)
 	}
 
-	if len(request.NameLabels) > 0 {
-		query = query.Where("name IN (?)", request.NameLabels)
-	}
-
-	if len(request.CpuLabels) > 0 {
-		query = query.Where("cpu_model IN (?)", request.CpuLabels)
-	}
-
-	if len(request.GpuLabels) > 0 {
-		query = query.Where("gpu_model IN (?)", request.GpuLabels)
-	}
-
-	if len(request.DiskLabels) > 0 {
-		query = query.Where("disk_model IN (?)", request.DiskLabels)
-	}
-
-	if len(request.MemoryLabels) > 0 {
-		query = query.Where("memory_model IN (?)", request.MemoryLabels)
-	}
-
-	if len(request.OtherLabels) > 0 {
-		query = query.Where("ARRAY[?] && labels", request.OtherLabels)
-	}
-
-	if request.TasksFinished > 0 {
-		query = query.Where("tasks_finished >= ?", request.TasksFinished)
-	}
-
-	if request.TasksFailed > 0 {
-		query = query.Where("tasks_failed <= ?", request.TasksFailed)
+	if request.ContainersFailed > 0 {
+		query = query.Where("container_failed <= ?", request.ContainersFailed)
 	}
 
 	// Perform a COUNT query with no limit and offset applied.

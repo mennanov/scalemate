@@ -22,14 +22,14 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job1 := &models.Job{
+	job1 := &models.Container{
 		Username: "username_job",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
-	job2 := &models.Job{
+	job2 := &models.Container{
 		Username: "username_job",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
@@ -44,7 +44,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_TerminatedJob() {
 	_, err = taskExistingJob1.Create(s.db)
 	s.Require().NoError(err)
 
-	// This Task should not be returned as it's for a different Job.
+	// This Task should not be returned as it's for a different Container.
 	taskExistingJob2 := &models.Task{
 		NodeID: node.ID,
 		JobID:  job2.ID,
@@ -85,7 +85,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job1 := &models.Job{
+	job1 := &models.Container{
 		Username:      "username_job",
 		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
@@ -93,7 +93,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
-	job2 := &models.Job{
+	job2 := &models.Container{
 		Username: "username_job",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
@@ -143,7 +143,7 @@ func (s *ServerTestSuite) TestIterateTasks_IncludeExisting_NewTaskIsCreatedWhile
 		s.Require().NoError(s.producer.Send(taskCreatedEvent))
 		// Wait for the message to be received.
 		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.created")
-		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
+		// Terminate the Task. The corresponding Container will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
 		s.Require().NoError(s.producer.Send(taskUpdatedEvent))
@@ -178,7 +178,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job1 := &models.Job{
+	job1 := &models.Container{
 		Username:      "username_job",
 		Status:        utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
@@ -186,7 +186,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 	_, err = job1.Create(s.db)
 	s.Require().NoError(err)
 
-	job2 := &models.Job{
+	job2 := &models.Container{
 		Username: "username_job",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}
@@ -201,7 +201,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 	_, err = taskExistingJob1.Create(s.db)
 	s.Require().NoError(err)
 
-	// Another existing Task for a different Job that is not expected to be returned.
+	// Another existing Task for a different Container that is not expected to be returned.
 	taskExistingJob2 := &models.Task{
 		NodeID: node.ID,
 		JobID:  job2.ID,
@@ -239,7 +239,7 @@ func (s *ServerTestSuite) TestIterateTasks_NotIncludeExisting_NewTaskIsCreatedWh
 		// Wait for the message to be received.
 		events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.task.created")
 		// Give the service some time to process this event.
-		// Terminate the Task. The corresponding Job will be marked as finished and the Tasks channel will be closed.
+		// Terminate the Task. The corresponding Container will be marked as finished and the Tasks channel will be closed.
 		taskUpdatedEvent, err := taskNewJob1.UpdateStatus(s.db, scheduler_proto.Task_STATUS_FINISHED)
 		s.Require().NoError(err)
 		s.Require().NoError(s.producer.Send(taskUpdatedEvent))

@@ -8,12 +8,12 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/mennanov/scalemate/client/accounts"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func genericViewsTest(t *testing.T, view func(logger *logrus.Logger, err error)) {
 	t.Run("ErrorIsLogged", func(t *testing.T) {
-		for _, err := range utils.GetAllErrors() {
+		for _, err := range testutils.GetAllErrors() {
 			logger, hook := test.NewNullLogger()
 			view(logger, err)
 			assert.Equal(t, 1, len(hook.Entries))

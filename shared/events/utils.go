@@ -3,19 +3,17 @@ package events
 import (
 	"fmt"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"google.golang.org/genproto/protobuf/field_mask"
-
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 const (
@@ -24,23 +22,6 @@ const (
 	// SchedulerSubjectName is a subject name in NATS for the Scheduler service events.
 	SchedulerSubjectName = "scheduler"
 )
-
-// CommitAndPublish commits the DB transaction and sends the given events with confirmation.
-// It also handles and wraps all the errors if there is any.
-func CommitAndPublish(tx *gorm.DB, producer Producer, events ...*events_proto.Event) error {
-	if len(events) > 0 {
-		if err := producer.Send(events...); err != nil {
-			// Failed to confirm sent events: rollback the transaction.
-			return utils.RollbackTransaction(tx, errors.Wrap(err, "producer.Send failed"))
-		}
-	}
-	// TODO: messages sent to NATS may be processed earlier than they are committed to DB. Need to add a delay in all
-	//  consumers that query the same database as the corresponding producers.
-	if err := utils.HandleDBError(tx.Commit()); err != nil {
-		return errors.Wrap(err, "failed to commit transaction")
-	}
-	return nil
-}
 
 // NewEvent creates a new events_proto.Event instance
 func NewEvent(
@@ -64,49 +45,20 @@ func NewEvent(
 	}
 
 	switch p := payload.(type) {
-	case *scheduler_proto.Job:
-		event.Payload = &events_proto.Event_SchedulerJob{SchedulerJob: p}
+	case *scheduler_proto.Container:
+		event.Payload = &events_proto.Event_SchedulerContainer{SchedulerContainer: p}
 
 	case *scheduler_proto.Node:
 		event.Payload = &events_proto.Event_SchedulerNode{SchedulerNode: p}
 
-	case *scheduler_proto.Task:
-		event.Payload = &events_proto.Event_SchedulerTask{SchedulerTask: p}
-
 	case *accounts_proto.User:
 		event.Payload = &events_proto.Event_AccountsUser{AccountsUser: p}
-
-	case *accounts_proto.Node:
-		event.Payload = &events_proto.Event_AccountsNode{AccountsNode: p}
 
 	default:
 		return nil, errors.Errorf("unexpected payload type %T", payload)
 	}
 
 	return event, nil
-}
-
-// NewModelProtoFromEvent creates a corresponding proto representation of the event's payload.
-func NewModelProtoFromEvent(event *events_proto.Event) (proto.Message, error) {
-	var msg proto.Message
-	switch p := event.Payload.(type) {
-	case *events_proto.Event_AccountsUser:
-		msg = p.AccountsUser
-
-	case *events_proto.Event_SchedulerNode:
-		msg = p.SchedulerNode
-
-	case *events_proto.Event_SchedulerJob:
-		msg = p.SchedulerJob
-
-	case *events_proto.Event_SchedulerTask:
-		msg = p.SchedulerTask
-
-	default:
-		return nil, errors.Errorf("unexpected event payload type %T", event.Payload)
-	}
-
-	return msg, nil
 }
 
 // KeyForEvent returns a key string for the given event.
@@ -119,28 +71,16 @@ func KeyForEvent(event *events_proto.Event) string {
 			key = fmt.Sprintf("%s.%d", key, e.SchedulerNode.Id)
 		}
 
-	case *events_proto.Event_SchedulerJob:
-		key = fmt.Sprintf("scheduler.job.%s", event.Type.String())
-		if e.SchedulerJob.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.SchedulerJob.Id)
-		}
-
-	case *events_proto.Event_SchedulerTask:
-		key = fmt.Sprintf("scheduler.task.%s", event.Type.String())
-		if e.SchedulerTask.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.SchedulerTask.Id)
+	case *events_proto.Event_SchedulerContainer:
+		key = fmt.Sprintf("scheduler.container.%s", event.Type.String())
+		if e.SchedulerContainer.Id != 0 {
+			key = fmt.Sprintf("%s.%d", key, e.SchedulerContainer.Id)
 		}
 
 	case *events_proto.Event_AccountsUser:
 		key = fmt.Sprintf("accounts.user.%s", event.Type.String())
 		if e.AccountsUser.Id != 0 {
 			key = fmt.Sprintf("%s.%d", key, e.AccountsUser.Id)
-		}
-
-	case *events_proto.Event_AccountsNode:
-		key = fmt.Sprintf("accounts.node.%s", event.Type.String())
-		if e.AccountsNode.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.AccountsNode.Id)
 		}
 
 	default:
@@ -155,10 +95,18 @@ const msgWaitTimeout = time.Second
 // MessagesTestingHandler is used in tests to check if all the expected messages have been received.
 type MessagesTestingHandler struct {
 	receivedMessageKeys []string
+	mu                  *sync.RWMutex
+}
+
+// NewMessagesTestingHandler creates a new instance of MessagesTestingHandler.
+func NewMessagesTestingHandler() *MessagesTestingHandler {
+	return &MessagesTestingHandler{mu: &sync.RWMutex{}}
 }
 
 // Handle saves all the received message keys.
 func (h *MessagesTestingHandler) Handle(event *events_proto.Event) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.receivedMessageKeys = append(h.receivedMessageKeys, KeyForEvent(event))
 	return nil
 }
@@ -168,6 +116,8 @@ func (h *MessagesTestingHandler) Handle(event *events_proto.Event) error {
 func (h *MessagesTestingHandler) ExpectMessages(keys ...string) error {
 	defer func() {
 		// Reset the receivedMessageKeys on exit.
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		h.receivedMessageKeys = nil
 	}()
 
@@ -184,12 +134,16 @@ loop:
 			}
 			for _, keyExpected := range keys {
 				re := regexp.MustCompile(keyExpected)
-				for _, keyActual := range h.receivedMessageKeys {
-					if re.MatchString(keyActual) {
-						matchedKeys = append(matchedKeys, keyExpected)
-						break
+				func() {
+					h.mu.RLock()
+					defer h.mu.RUnlock()
+					for _, keyActual := range h.receivedMessageKeys {
+						if re.MatchString(keyActual) {
+							matchedKeys = append(matchedKeys, keyExpected)
+							break
+						}
 					}
-				}
+				}()
 			}
 		}
 	}

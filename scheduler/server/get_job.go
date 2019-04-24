@@ -14,7 +14,7 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-// GetJob gets the Job by its ID. Job can be accessed by its owner (or admin) only.
+// GetJob gets the Container by its ID. Container can be accessed by its owner (or admin) only.
 func (s SchedulerServer) GetJob(
 	ctx context.Context,
 	r *scheduler_proto.JobLookupRequest,
@@ -25,7 +25,7 @@ func (s SchedulerServer) GetJob(
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
 
-	job := &models.Job{}
+	job := &models.Container{}
 	job.ID = r.JobId
 
 	if err := job.LoadFromDB(s.db); err != nil {
@@ -38,7 +38,7 @@ func (s SchedulerServer) GetJob(
 			"request": r,
 			"claims":  claims,
 		}).Warn("permission denied in GetJob")
-		return nil, status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
+		return nil, status.Error(codes.PermissionDenied, "Container username does not match currently authenticated user")
 	}
 
 	jobProto, err := job.ToProto(nil)

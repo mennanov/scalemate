@@ -73,12 +73,12 @@ func (s *ModelsTestSuite) TestNode_FromProtoToProto() {
 		s.Equal(testCase.nodeProto, nodeProto)
 
 		// Create the node in DB.
-		_, err = node.Create(s.db)
+		_, err = node.Create(s.gormDB)
 		s.Require().NoError(err)
 
 		// Retrieve the same Node from DB.
 		nodeFromDB := &models.Node{}
-		s.db.First(nodeFromDB, node.ID)
+		s.gormDB.First(nodeFromDB, node.ID)
 		nodeFromDBProto, err := nodeFromDB.ToProto(nil)
 		s.Require().NoError(err)
 
@@ -97,13 +97,13 @@ func (s *ModelsTestSuite) TestNode_AllocateJobResources() {
 		DiskAvailable:   10000,
 	}
 
-	job := &models.Job{
+	job := &models.Container{
 		CpuLimit:    2,
 		MemoryLimit: 4000,
 		GpuLimit:    4,
 		DiskLimit:   7000,
 	}
-	updates, err := node.AllocateJobResources(job)
+	updates, err := node.AllocateContainerLimit(job)
 	s.Require().NoError(err)
 	s.Equal(map[string]interface{}{
 		"cpu_available":    node.CpuAvailable - job.CpuLimit,
@@ -122,37 +122,37 @@ func (s *ModelsTestSuite) TestNode_AllocateJobResources_Fails() {
 	}
 
 	s.T().Run("CpuLimit fails", func(t *testing.T) {
-		job := &models.Job{
+		job := &models.Container{
 			CpuLimit: 3.5,
 		}
-		updates, err := node.AllocateJobResources(job)
+		updates, err := node.AllocateContainerLimit(job)
 		s.Error(err)
 		s.Nil(updates)
 	})
 
 	s.T().Run("GpuLimit fails", func(t *testing.T) {
-		job := &models.Job{
+		job := &models.Container{
 			GpuLimit: 5,
 		}
-		updates, err := node.AllocateJobResources(job)
+		updates, err := node.AllocateContainerLimit(job)
 		s.Error(err)
 		s.Nil(updates)
 	})
 
 	s.T().Run("MemoryLimit fails", func(t *testing.T) {
-		job := &models.Job{
+		job := &models.Container{
 			MemoryLimit: 7000,
 		}
-		updates, err := node.AllocateJobResources(job)
+		updates, err := node.AllocateContainerLimit(job)
 		s.Error(err)
 		s.Nil(updates)
 	})
 
 	s.T().Run("DiskLimit fails", func(t *testing.T) {
-		job := &models.Job{
+		job := &models.Container{
 			DiskLimit: 20000,
 		}
-		updates, err := node.AllocateJobResources(job)
+		updates, err := node.AllocateContainerLimit(job)
 		s.Error(err)
 		s.Nil(updates)
 	})

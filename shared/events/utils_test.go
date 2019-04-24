@@ -13,7 +13,7 @@ import (
 	"github.com/mennanov/scalemate/shared/events"
 )
 
-func TestNatsSubjectFromEvent(t *testing.T) {
+func TestKeyForEvent(t *testing.T) {
 	testCases := []struct {
 		event       *events_proto.Event
 		expectedKey string
@@ -22,19 +22,27 @@ func TestNatsSubjectFromEvent(t *testing.T) {
 			event: &events_proto.Event{
 				Type:    events_proto.Event_CREATED,
 				Service: events_proto.Service_SCHEDULER,
-				Payload: &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{Id: 1}},
+				Payload: &events_proto.Event_SchedulerContainer{SchedulerContainer: &scheduler_proto.Container{Id: 1}},
 			},
-			expectedKey: "scheduler.job.CREATED.1",
+			expectedKey: "scheduler.container.CREATED.1",
 		},
 		{
 			event: &events_proto.Event{
-				Type:    events_proto.Event_UPDATED,
-				Service: events_proto.Service_SCHEDULER,
-				// The actual payload does not affect the routing subject, only the mask.
-				Payload:     &events_proto.Event_SchedulerJob{SchedulerJob: &scheduler_proto.Job{Id: 2}},
+				Type:        events_proto.Event_UPDATED,
+				Service:     events_proto.Service_SCHEDULER,
+				Payload:     &events_proto.Event_SchedulerNode{SchedulerNode: &scheduler_proto.Node{Id: 2}},
+				// PayloadMask does not affect the event key.
 				PayloadMask: &field_mask.FieldMask{Paths: []string{"status", "connected_at"}},
 			},
-			expectedKey: "scheduler.job.UPDATED.2",
+			expectedKey: "scheduler.node.UPDATED.2",
+		},
+		{
+			event: &events_proto.Event{
+				Type:        events_proto.Event_DELETED,
+				Service:     events_proto.Service_ACCOUNTS,
+				Payload:     &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{Id: 2}},
+			},
+			expectedKey: "accounts.user.DELETED.2",
 		},
 		{
 			event: &events_proto.Event{
@@ -58,19 +66,4 @@ func TestNewEvent(t *testing.T) {
 	payload, ok := event.Payload.(*events_proto.Event_AccountsUser)
 	require.True(t, ok)
 	assert.Equal(t, userProto.Id, payload.AccountsUser.Id)
-}
-
-func TestNewModelProtoFromEvent(t *testing.T) {
-	event := &events_proto.Event{
-		Payload: &events_proto.Event_AccountsUser{
-			AccountsUser: &accounts_proto.User{
-				Id: 1,
-			},
-		},
-	}
-	m, err := events.NewModelProtoFromEvent(event)
-	require.NoError(t, err)
-	userMsg, ok := m.(*accounts_proto.User)
-	require.True(t, ok)
-	assert.Equal(t, uint64(1), userMsg.Id)
 }

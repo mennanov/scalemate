@@ -1,0 +1,1 @@
+drop index node_scheduling_idx;

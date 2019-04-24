@@ -7,7 +7,6 @@ import (
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
@@ -22,72 +21,85 @@ import (
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-// stringEye is a string identity function used to create field masks.
-func stringEye(s string) string {
-	return s
-}
-
 // User defines a User model in DB.
 type User struct {
 	utils.Model
-	Username string                   `gorm:"type:varchar(32);unique_index"`
-	Email    string                   `gorm:"type:varchar(100);unique_index"`
-	Role     accounts_proto.User_Role `gorm:"not null"`
-	// Banned indicates whether the user is banned (deactivated).
-	Banned            bool `gorm:"not null;default:false"`
-	PasswordHash      string
+	Username          string
+	Email             string
+	Banned            bool
+	PasswordHash      []byte
 	PasswordChangedAt *time.Time
 }
 
-// FromProto populates the User fields from accounts_proto.User protobuf.
-// Fields `CreatedAt` and `UpdatedAt` are not populated.
-func (user *User) FromProto(p *accounts_proto.User) error {
-	user.ID = p.GetId()
-	user.Username = p.GetUsername()
-	user.Email = p.GetEmail()
-	user.Role = p.GetRole()
-	user.Banned = p.GetBanned()
+// NewUserFromProto creates a new User instance from a proto message.
+func NewUserFromProto(p *accounts_proto.User) (*User, error) {
+	user := &User{
+		Model: utils.Model{
+			ID: p.Id,
+		},
+		Username: p.Username,
+		Email:    p.Email,
+		Banned:   p.Banned,
+	}
+
+	if p.CreatedAt != nil {
+		createdAt, err := ptypes.Timestamp(p.CreatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
+		}
+		user.CreatedAt = createdAt
+	}
+
+	if p.UpdatedAt != nil {
+		updatedAt, err := ptypes.Timestamp(p.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
+		}
+		user.UpdatedAt = &updatedAt
+	}
 
 	if p.PasswordChangedAt != nil {
 		passwordChangedAt, err := ptypes.Timestamp(p.PasswordChangedAt)
 		if err != nil {
-			return errors.Wrap(err, "ptypes.Timestamp failed")
+			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
 		}
 		user.PasswordChangedAt = &passwordChangedAt
 	}
-	return nil
+	return user, nil
 }
 
 // ToProto creates a proto message `*accounts_proto.User` and populates it with the User struct contents.
 // Only fields that are mentioned in the `fieldMask` are populated. `User.ID` and `User.Username` are always populated
 // regardless of the `fieldmask`. If `fieldmask` is nil then all fields are populated.
-func (user *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User, error) {
-	createdAt, err := ptypes.TimestampProto(user.CreatedAt)
-	if err != nil {
-		return nil, status.Errorf(codes.Internal, err.Error())
-	}
+func (u *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User, error) {
 
 	p := &accounts_proto.User{
-		Id:        user.ID,
-		Username:  user.Username,
-		Email:     user.Email,
-		Role:      user.Role,
-		Banned:    user.Banned,
-		CreatedAt: createdAt,
+		Id:       u.ID,
+		Username: u.Username,
+		Email:    u.Email,
+		Banned:   u.Banned,
 	}
 
-	if user.UpdatedAt != nil {
-		updatedAt, err := ptypes.TimestampProto(*user.UpdatedAt)
+	if !u.CreatedAt.IsZero() {
+		createdAt, err := ptypes.TimestampProto(u.CreatedAt)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
+		}
+		p.CreatedAt = createdAt
+	}
+
+	if u.UpdatedAt != nil {
+		updatedAt, err := ptypes.TimestampProto(*u.UpdatedAt)
+		if err != nil {
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
 		p.UpdatedAt = updatedAt
 	}
 
-	if user.PasswordChangedAt != nil {
-		passwordChangedAt, err := ptypes.TimestampProto(*user.PasswordChangedAt)
+	if u.PasswordChangedAt != nil {
+		passwordChangedAt, err := ptypes.TimestampProto(*u.PasswordChangedAt)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, err.Error())
+			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
 		}
 		p.PasswordChangedAt = passwordChangedAt
 	}
@@ -98,7 +110,7 @@ func (user *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
 		// Always include ID and username regardless of the field mask.
-		pFiltered := &accounts_proto.User{Id: uint64(user.ID), Username: user.Username}
+		pFiltered := &accounts_proto.User{Id: u.ID, Username: u.Username}
 		if err := fieldmask_utils.StructToStruct(mask, p, pFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
@@ -109,7 +121,7 @@ func (user *User) ToProto(fieldMask *field_mask.FieldMask) (*accounts_proto.User
 }
 
 // SetPasswordHash generates a password hash from the given string and populates User.PasswordHash with it.
-func (user *User) SetPasswordHash(password string, bcryptCost int) error {
+func (u *User) SetPasswordHash(password string, bcryptCost int) error {
 	if password == "" {
 		return status.Error(codes.InvalidArgument, "password can't be empty")
 	}
@@ -120,277 +132,130 @@ func (user *User) SetPasswordHash(password string, bcryptCost int) error {
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
-		return status.Error(codes.Internal, err.Error())
+		return errors.Wrap(err, "bcrypt.GenerateFromPassword failed")
 	}
 
-	user.PasswordHash = string(hash[:])
-
+	u.PasswordHash = hash
 	return nil
 }
 
 // ComparePassword compares the given password with the stored user's password hash.
 // Returns nil on success, or an error on failure.
-func (user *User) ComparePassword(password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+func (u *User) ComparePassword(password string) error {
+	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(password))
 }
 
 // IsAllowedToAuthenticate checks if the user is allowed to authenticate.
 // Currently it only checks if the user is banned or not. May become more complicated in future.
-func (user *User) IsAllowedToAuthenticate() error {
-	if user.Banned {
-		return status.Error(codes.PermissionDenied, "user is blocked")
+func (u *User) IsAllowedToAuthenticate() error {
+	if u.Banned {
+		return status.Error(codes.PermissionDenied, "user is banned")
 	}
 	return nil
 }
 
-// NewJWTSigned creates a new JWT and signs it with a secret key.
-// When authenticating Nodes `nodeName` argument must not be empty.
-// It returns an encoded JWT string to be used over the wire.
-func (user *User) NewJWTSigned(
-	ttl time.Duration,
-	tokenType auth.TokenType,
-	jwtSecretKey []byte,
-	nodeName string,
-) (string, error) {
-	now := time.Now().UTC()
-	expiresAt := now.Add(ttl).Unix()
-
-	claims := &auth.Claims{
-		Username:  user.Username,
-		NodeName:  nodeName,
-		Role:      user.Role,
-		TokenType: tokenType,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expiresAt,
-			Issuer:    "Scalemate.io",
-			IssuedAt:  now.Unix(),
-			Id:        uuid.New().String(),
-		},
-	}
-
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(jwtSecretKey)
-	if err != nil {
-		return "", status.Errorf(codes.Internal, "could not sign a JWT: %s", err.Error())
-	}
-
-	return token, nil
-}
-
-// GenerateAuthTokensResponse creates a new `accounts_proto.AuthTokens` response with access and refresh tokens
-// for the given user. When authenticating a Node `nodeName` must not be empty.
-func (user *User) GenerateAuthTokensResponse(
+// GenerateAuthTokens creates a new `accounts_proto.AuthTokens` proto message with access and refresh tokens
+// for the given user. When authenticating a Node `nodeName` must be provided.
+func (u *User) GenerateAuthTokens(
 	ttlAccessToken,
 	ttlRefreshToken time.Duration,
 	jwtSecretKey []byte,
 	nodeName string,
 ) (*accounts_proto.AuthTokens, error) {
-	accessToken, err := user.NewJWTSigned(ttlAccessToken, auth.TokenTypeAccess, jwtSecretKey, nodeName)
+	now := time.Now().UTC()
+
+	claims := auth.NewClaims(jwt.StandardClaims{
+		ExpiresAt: now.Add(ttlAccessToken).Unix(),
+		Id:        uuid.New().String(),
+		IssuedAt:  now.Unix(),
+	}, u.Username, nodeName, auth.TokenTypeAccess)
+	accessToken, err := claims.SignedString(jwtSecretKey)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "claims.SignedString failed")
 	}
 
-	refreshToken, err := user.NewJWTSigned(ttlRefreshToken, auth.TokenTypeRefresh, jwtSecretKey, nodeName)
-	if err != nil {
-		return nil, err
-	}
+	claims = auth.NewClaims(jwt.StandardClaims{
+		ExpiresAt: now.Add(ttlRefreshToken).Unix(),
+		Id:        uuid.New().String(),
+		IssuedAt:  now.Unix(),
+	}, u.Username, nodeName, auth.TokenTypeRefresh)
 
+	if err != nil {
+		return nil, errors.Wrap(err, "claims.SignedString failed")
+	}
+	refreshToken, err := claims.SignedString(jwtSecretKey)
 	return &accounts_proto.AuthTokens{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }
 
-// Create creates a new user.
-func (user *User) Create(db *gorm.DB) (*events_proto.Event, error) {
-	if user.ID != 0 {
-		return nil, status.Error(codes.InvalidArgument, "can't create existing user")
+// Create creates a new User.
+func (u *User) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
+	if u.ID != 0 {
+		return nil, status.Error(codes.FailedPrecondition, "can't create existing user")
 	}
-	if err := utils.HandleDBError(db.Create(user)); err != nil {
-		return nil, err
+	if err := utils.HandleDBError(db.Get(u,
+		"INSERT INTO users (username, email, banned, password_hash) VALUES ($1, $2, $3, $4) RETURNING *",
+		u.Username, u.Email, u.Banned, u.PasswordHash)); err != nil {
+		return nil, errors.Wrap(err, "db.Get failed")
 	}
-	userProto, err := user.ToProto(nil)
+	userProto, err := u.ToProto(nil)
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
-	event, err := events.
-		NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
+	event, err := events.NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "events.NewEvent failed")
 	}
 	return event, nil
 }
 
-// LookUp gets a user by UserLookupRequest.
-func (user *User) LookUp(db *gorm.DB, req *accounts_proto.UserLookupRequest) error {
-	if req.GetId() != 0 {
-		return utils.HandleDBError(db.First(user, req.GetId()))
-	} else if req.GetUsername() != "" {
-		return utils.HandleDBError(db.Where("username = ?", req.GetUsername()).First(user))
-	} else if req.GetEmail() != "" {
-		return utils.HandleDBError(db.Where("email = ?", req.GetEmail()).First(user))
-	}
-	return status.Error(codes.InvalidArgument, "invalid UserLookupRequest: all fields are empty")
-}
+// UserLookUp gets a User by UserLookupRequest.
+func UserLookUp(db utils.SqlxGetter, req *accounts_proto.UserLookupRequest) (*User, error) {
+	var err error
+	user := &User{}
+	switch r := req.Request.(type) {
+	case *accounts_proto.UserLookupRequest_Id:
+		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE id = $1", r.Id))
 
-// Delete soft-deletes a user.
-func (user *User) Delete(db *gorm.DB) (*events_proto.Event, error) {
-	if user.ID == 0 {
-		// gorm will delete all records if PK is zero.
-		return nil, status.Error(codes.InvalidArgument, "can't delete a user without a primary key")
-	}
-	if err := utils.HandleDBError(db.Delete(user)); err != nil {
-		return nil, err
-	}
-	userProto, err := user.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "user.ToProto failed")
-	}
-	event, err := events.
-		NewEvent(userProto, events_proto.Event_DELETED, events_proto.Service_ACCOUNTS, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a new accounts_user.delete event")
-	}
-	return event, nil
-}
+	case *accounts_proto.UserLookupRequest_Username:
+		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE username = $1", r.Username))
 
-// Update updates the user data by the given payload and field mask.
-func (user *User) Update(
-	db *gorm.DB,
-	payload *accounts_proto.User,
-	fieldMask *field_mask.FieldMask,
-) (*events_proto.Event, error) {
-	u := &User{}
-	if err := u.FromProto(payload); err != nil {
-		return nil, errors.Wrap(err, "failed to populate user from proto")
+	case *accounts_proto.UserLookupRequest_Email:
+		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE email = $1", r.Email))
 	}
-	mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, errors.Wrap(err, "failed to perform a select request")
 	}
-	// Update the `user` struct field values.
-	if err := fieldmask_utils.StructToStruct(mask, u, user); err != nil {
-		return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
-	}
-
-	// Prepare the UPDATE query map.
-	data := make(map[string]interface{})
-	if err := fieldmask_utils.StructToMap(mask, u, data); err != nil {
-		return nil, errors.Wrap(err, "fieldmask_utils.StructToMap failed")
-	}
-	if err := utils.HandleDBError(db.Model(user).Updates(data)); err != nil {
-		return nil, err
-	}
-	userProto, err := user.ToProto(fieldMask)
-	if err != nil {
-		return nil, errors.Wrap(err, "user.ToProto failed")
-	}
-	event, err := events.
-		NewEvent(userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a new account_users.updated event")
-	}
-	return event, nil
+	return user, nil
 }
 
 // ChangePassword sets and updates the user's password.
-func (user *User) ChangePassword(db *gorm.DB, password string, bcryptCost int) (*events_proto.Event, error) {
-	if err := user.SetPasswordHash(password, bcryptCost); err != nil {
+func (u *User) ChangePassword(db utils.SqlxGetter, password string, bcryptCost int) (*events_proto.Event, error) {
+	if u.ID == 0 {
+		return nil, status.Error(codes.FailedPrecondition, "user not saved in DB")
+	}
+	if err := u.SetPasswordHash(password, bcryptCost); err != nil {
 		return nil, errors.Wrap(err, "failed to set password hash")
 	}
-	now := time.Now().UTC()
-	user.PasswordChangedAt = &now
 
-	if err := utils.HandleDBError(db.Model(user).
-		Updates(map[string]interface{}{
-			"password_hash":       user.PasswordHash,
-			"password_changed_at": user.PasswordChangedAt,
-		})); err != nil {
-		return nil, err
+	if err := utils.HandleDBError(
+		db.Get(u, "UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2 RETURNING *",
+			u.PasswordHash, u.ID));
+		err != nil {
+		return nil, errors.Wrap(err, "failed to update user's password")
 	}
+
 	fieldMask := &field_mask.FieldMask{Paths: []string{"password_changed_at", "updated_at"}}
-	userProto, err := user.ToProto(fieldMask)
+	userProto, err := u.ToProto(fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "user.ToProto failed")
 	}
 	event, err := events.NewEvent(
 		userProto, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to create a new account_users.updated.password event")
+		return nil, errors.Wrap(err, "events.NewEvent failed")
 	}
 	return event, nil
-}
-
-// Users represent a slice of `User`s.
-// Some specific methods are defined on that type to manipulate a slice of `User`s.
-type Users []User
-
-// List queries DB for Users by the given constraints in accounts_proto.ListUsersRequest.
-func (users *Users) List(db *gorm.DB, r *accounts_proto.ListUsersRequest) (uint32, error) {
-	query := db.Model(&User{})
-	ordering := r.GetOrdering()
-
-	if len(ordering) == 0 {
-		query = query.Order("created_at DESC")
-	}
-
-	var orderBySQL string
-	for _, orderBy := range ordering {
-		switch orderBy {
-		case accounts_proto.ListUsersRequest_CREATED_AT_ASC:
-			orderBySQL = "created_at"
-		case accounts_proto.ListUsersRequest_CREATED_AT_DESC:
-			orderBySQL = "created_at DESC"
-		case accounts_proto.ListUsersRequest_UPDATED_AT_ASC:
-			orderBySQL = "updated_at"
-		case accounts_proto.ListUsersRequest_UPDATED_AT_DESC:
-			orderBySQL = "updated_at DESC"
-		case accounts_proto.ListUsersRequest_USERNAME_ASC:
-			orderBySQL = "username"
-		case accounts_proto.ListUsersRequest_USERNAME_DESC:
-			orderBySQL = "username DESC"
-		case accounts_proto.ListUsersRequest_EMAIL_ASC:
-			orderBySQL = "email"
-		case accounts_proto.ListUsersRequest_EMAIL_DESC:
-			orderBySQL = "email DESC"
-		}
-		query = query.Order(orderBySQL)
-	}
-
-	roles := r.GetRole()
-
-	if len(roles) != 0 {
-		query = query.Where("role in (?)", roles)
-	}
-
-	if r.GetBannedOnly() {
-		query = query.Where("banned = ?", true)
-	} else if r.GetActiveOnly() {
-		query = query.Where("banned = ?", false)
-	}
-
-	// Perform a COUNT query with no limit and offset applied.
-	var count uint32
-	if err := utils.HandleDBError(query.Count(&count)); err != nil {
-		return 0, err
-	}
-
-	// Apply offset.
-	if r.GetOffset() != 0 {
-		query = query.Offset(r.GetOffset())
-	}
-
-	// Apply limit.
-	var limit uint32
-	if r.GetLimit() != 0 {
-		limit = r.GetLimit()
-	} else {
-		limit = 50
-	}
-	query = query.Limit(limit)
-
-	// Perform a SELECT query.
-	if err := utils.HandleDBError(query.Find(&users)); err != nil {
-		return 0, err
-	}
-	return count, nil
 }

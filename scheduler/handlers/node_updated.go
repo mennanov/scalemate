@@ -7,13 +7,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/utils"
 
 	"github.com/mennanov/scalemate/shared/events"
 )
 
-// NodeUpdatedHandler schedules all pending Jobs to be run on the Node if it is online.
+// NodeUpdatedHandler schedules all pending Containers to be run on the Node if it is online.
 type NodeUpdatedHandler struct {
 	handlerName string
 	db          *gorm.DB
@@ -40,7 +41,7 @@ func in(what string, where []string) bool {
 	return false
 }
 
-// Handle schedules pending Jobs on the connected Node.
+// Handle schedules pending Containers on the connected Node.
 func (s *NodeUpdatedHandler) Handle(eventProto *events_proto.Event) error {
 	if eventProto.Type != events_proto.Event_UPDATED {
 		return nil
@@ -87,7 +88,7 @@ func (s *NodeUpdatedHandler) Handle(eventProto *events_proto.Event) error {
 	if err := processedEvent.Create(tx); err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "processedEvent.Create failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
+	if err := utils2.CommitAndPublish(tx, s.producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "failed to send and commit events")
 	}
 	return nil

@@ -33,9 +33,9 @@ func NewAppConfFromEnv() (*AppConf, error) {
 	conf := &AppConf{
 		NatsAddr:        os.Getenv("NATS_ADDR"),
 		NatsClusterName: os.Getenv("NATS_CLUSTER"),
-		TLSCertFile:     os.Getenv("ACCOUNTS_TLS_CERT_FILE"),
-		TLSKeyFile:      os.Getenv("ACCOUNTS_TLS_KEY_FILE"),
-		DBUrl:           os.Getenv("ACCOUNTS_DB_URL"),
+		TLSCertFile:     os.Getenv("SCHEDULER_TLS_CERT_FILE"),
+		TLSKeyFile:      os.Getenv("SCHEDULER_TLS_KEY_FILE"),
+		DBUrl:           os.Getenv("SCHEDULER_DB_URL"),
 		JWTSecretKey:    []byte(os.Getenv("JWT_SECRET_KEY")),
 	}
 
@@ -48,11 +48,11 @@ func NewAppConfFromEnv() (*AppConf, error) {
 	}
 
 	if conf.TLSCertFile == "" {
-		return nil, errors.New("ACCOUNTS_TLS_CERT_FILE env variable is not set")
+		return nil, errors.New("SCHEDULER_TLS_CERT_FILE env variable is not set")
 	}
 
 	if conf.TLSKeyFile == "" {
-		return nil, errors.New("ACCOUNTS_TLS_KEY_FILE env variable is not set")
+		return nil, errors.New("SCHEDULER_TLS_KEY_FILE env variable is not set")
 	}
 
 	// Bazel specific path to data files. See https://docs.bazel.build/versions/master/build-ref.html#data
@@ -64,7 +64,7 @@ func NewAppConfFromEnv() (*AppConf, error) {
 	}
 
 	if conf.DBUrl == "" {
-		return nil, errors.New("ACCOUNTS_DB_URL env variable is not set")
+		return nil, errors.New("SCHEDULER_DB_URL env variable is not set")
 	}
 
 	if len(conf.JWTSecretKey) == 0 {

@@ -14,7 +14,7 @@ import (
 )
 
 func (s *ServerTestSuite) TestListJobs() {
-	job1 := &models.Job{
+	job1 := &models.Container{
 		Username: "username1",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 	}
@@ -22,7 +22,7 @@ func (s *ServerTestSuite) TestListJobs() {
 	s.Require().NoError(err)
 	s.Require().NotNil(job1.ID)
 
-	job2 := &models.Job{
+	job2 := &models.Container{
 		Username: "username1",
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 	}
@@ -30,7 +30,7 @@ func (s *ServerTestSuite) TestListJobs() {
 	s.Require().NoError(err)
 	s.Require().NotNil(job2.ID)
 
-	job3 := &models.Job{
+	job3 := &models.Container{
 		Username: "username2",
 	}
 	_, err = job3.Create(s.db)
@@ -38,7 +38,7 @@ func (s *ServerTestSuite) TestListJobs() {
 	s.Require().NotNil(job3.ID)
 
 	ctx := context.Background()
-	s.T().Run("returns owned Jobs", func(t *testing.T) {
+	s.T().Run("returns owned Containers", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
 		defer restoreClaims()
 		req := &scheduler_proto.ListJobsRequest{
@@ -53,7 +53,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		s.Equal(job1.ID, res.Jobs[1].Id)
 	})
 
-	s.T().Run("returns all Jobs for admin", func(t *testing.T) {
+	s.T().Run("returns all Containers for admin", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(
 			&auth.Claims{Username: "admin", Role: accounts_proto.User_ADMIN})
 		defer restoreClaims()
@@ -80,7 +80,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		s.Nil(res)
 	})
 
-	s.T().Run("returns Jobs for requested status", func(t *testing.T) {
+	s.T().Run("returns Containers for requested status", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
 		defer restoreClaims()
 
@@ -95,7 +95,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		s.Equal(job1.ID, res.Jobs[0].Id)
 	})
 
-	s.T().Run("returns Jobs for requested statuses and order", func(t *testing.T) {
+	s.T().Run("returns Containers for requested statuses and order", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
 		defer restoreClaims()
 
@@ -115,7 +115,7 @@ func (s *ServerTestSuite) TestListJobs() {
 		s.Equal(job2.ID, res.Jobs[1].Id)
 	})
 
-	s.T().Run("returns Jobs with limit and offset", func(t *testing.T) {
+	s.T().Run("returns Containers with limit and offset", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job1.Username})
 		defer restoreClaims()
 

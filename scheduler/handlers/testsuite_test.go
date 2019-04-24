@@ -14,6 +14,7 @@ import (
 	"github.com/mennanov/scalemate/scheduler/migrations"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -32,7 +33,7 @@ func (s *HandlersTestSuite) SetupSuite() {
 	s.logger = logrus.StandardLogger()
 	utils.SetLogrusLevelFromEnv(s.logger)
 
-	db, err := utils.CreateTestingDatabase(conf.SchdulerConf.DBUrl, "scheduler_handlers_test_suite")
+	db, err := testutils.CreateTestingDatabase(conf.SchdulerConf.DBUrl, "scheduler_handlers_test_suite")
 	s.Require().NoError(err)
 	s.db = db.LogMode(s.logger.IsLevelEnabled(logrus.DebugLevel))
 
@@ -50,7 +51,7 @@ func (s *HandlersTestSuite) SetupSuite() {
 }
 
 func (s *HandlersTestSuite) SetupTest() {
-	utils.TruncateTables(s.db, s.logger, models.TableNames...)
+	testutils.TruncateTables(s.db, s.logger, models.TableNames...)
 }
 
 func (s *HandlersTestSuite) TearDownSuite() {

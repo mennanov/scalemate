@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -47,7 +47,7 @@ func (s SchedulerServer) CancelTask(
 			"claims":  claims,
 		}).Warn("permission denied in CancelTask")
 		return nil, status.Error(
-			codes.PermissionDenied, "corresponding Job username does not match currently authenticated user")
+			codes.PermissionDenied, "corresponding Container username does not match currently authenticated user")
 	}
 
 	tx := s.db.Begin()
@@ -56,7 +56,7 @@ func (s SchedulerServer) CancelTask(
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "task.UpdateStatus failed"))
 	}
 
-	if err := events.CommitAndPublish(s.producer, taskStatusEvent); err != nil {
+	if err := utils2.CommitAndPublish(s.producer, taskStatusEvent); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 

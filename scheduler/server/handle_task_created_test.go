@@ -20,7 +20,7 @@ func (s *ServerTestSuite) TestHandleTaskCreated_SendsTaskToAppropriateChannels()
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		// Putting the same username as for the Node above to simplify claims injection.
 		Username: node.Username,
 	}

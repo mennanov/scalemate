@@ -6,6 +6,7 @@ import (
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
@@ -66,7 +67,7 @@ func (s *NodeDisconnectedHandler) Handle(eventProto *events_proto.Event) error {
 	if err := processedEvent.Create(tx); err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "processedEvent.Create failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, tasksEvents...); err != nil {
+	if err := utils2.CommitAndPublish(tx, s.producer, tasksEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

@@ -11,7 +11,7 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 
@@ -44,7 +44,7 @@ var LoggedErrorCodes = []codes.Code{
 
 // AccountsServer implements Accounts gRPC service.
 type AccountsServer struct {
-	db             *gorm.DB
+	db             *sqlx.DB
 	claimsInjector auth.ClaimsInjector
 	producer       events.Producer
 	// bcrypt cost value used to make password hashes. Should be reasonably high in PROD and low in TEST/DEV.

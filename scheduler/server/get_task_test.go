@@ -13,7 +13,7 @@ import (
 )
 
 func (s *ServerTestSuite) TestGetTask() {
-	job := &models.Job{
+	job := &models.Container{
 		Username: "username",
 	}
 	_, err := job.Create(s.db)

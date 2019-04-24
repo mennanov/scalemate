@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mennanov/scalemate/client/scheduler"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func createTestingJob(createdAt, updatedAt *timestamp.Timestamp) *scheduler_proto.Job {
@@ -52,7 +52,7 @@ func createTestingJob(createdAt, updatedAt *timestamp.Timestamp) *scheduler_prot
 
 func TestJsonPbView(t *testing.T) {
 	t.Run("WithError", func(t *testing.T) {
-		for _, err := range utils.GetAllErrors() {
+		for _, err := range testutils.GetAllErrors() {
 			logger, hook := test.NewNullLogger()
 
 			output := new(bytes.Buffer)

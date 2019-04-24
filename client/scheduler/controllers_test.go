@@ -17,7 +17,7 @@ import (
 
 	"github.com/mennanov/scalemate/client/scheduler"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func TestCreateJobController(t *testing.T) {
@@ -37,7 +37,7 @@ func TestCreateJobController(t *testing.T) {
 		schedulerClient := NewMockSchedulerClient(ctrl)
 		schedulerClient.EXPECT().CreateJob(ctx, jobRequestExpected, gomock.Any()).Return(&scheduler_proto.Job{}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
@@ -70,7 +70,7 @@ func TestCreateJobController(t *testing.T) {
 		schedulerClient := NewMockSchedulerClient(ctrl)
 		schedulerClient.EXPECT().CreateJob(ctx, jobRequestExpected, gomock.Any()).Return(&scheduler_proto.Job{}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
@@ -131,7 +131,7 @@ func TestCreateJobController(t *testing.T) {
 		schedulerClient.EXPECT().CreateJob(ctx, jobRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		job, err := scheduler.CreateJobController(NewMockAccountsClient(ctrl), schedulerClient,
@@ -155,7 +155,7 @@ func TestGetJobController(t *testing.T) {
 		schedulerClient.EXPECT().GetJob(ctx, jobLookupRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.Job{Id: jobId}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		job, err := scheduler.GetJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
@@ -186,7 +186,7 @@ func TestGetJobController(t *testing.T) {
 		schedulerClient.EXPECT().GetJob(ctx, jobLookupRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_username")
 		defer deleteTokens()
 
 		job, err := scheduler.GetJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
@@ -210,7 +210,7 @@ func TestListJobsController(t *testing.T) {
 		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.ListJobsResponse{TotalCount: 0}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient, flags)
@@ -243,7 +243,7 @@ func TestListJobsController(t *testing.T) {
 		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.ListJobsResponse{TotalCount: 0}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient, flags)
@@ -274,7 +274,7 @@ func TestListJobsController(t *testing.T) {
 		schedulerClient.EXPECT().ListJobs(ctx, listJobsRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListJobsController(NewMockAccountsClient(ctrl), schedulerClient,
@@ -298,7 +298,7 @@ func TestCancelJobController(t *testing.T) {
 		schedulerClient.EXPECT().CancelJob(ctx, jobLookupRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.Job{Id: jobId}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		job, err := scheduler.CancelJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
@@ -329,7 +329,7 @@ func TestCancelJobController(t *testing.T) {
 		schedulerClient.EXPECT().CancelJob(ctx, jobLookupRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		job, err := scheduler.CancelJobController(NewMockAccountsClient(ctrl), schedulerClient, jobId)
@@ -352,7 +352,7 @@ func TestGetTaskController(t *testing.T) {
 		schedulerClient.EXPECT().GetTask(ctx, taskLookupRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.Task{Id: taskID}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		task, err := scheduler.GetTaskController(NewMockAccountsClient(ctrl), schedulerClient, taskID)
@@ -383,7 +383,7 @@ func TestGetTaskController(t *testing.T) {
 		schedulerClient.EXPECT().GetTask(ctx, taskLookupRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_username")
 		defer deleteTokens()
 
 		task, err := scheduler.GetTaskController(NewMockAccountsClient(ctrl), schedulerClient, taskID)
@@ -408,7 +408,7 @@ func TestListTasksController(t *testing.T) {
 		schedulerClient.EXPECT().ListTasks(ctx, listTasksRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.ListTasksResponse{TotalCount: 0}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobIDs, flags)
@@ -443,7 +443,7 @@ func TestListTasksController(t *testing.T) {
 		schedulerClient.EXPECT().ListTasks(ctx, listJobsRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.ListTasksResponse{TotalCount: 0}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobIDs, flags)
@@ -474,7 +474,7 @@ func TestListTasksController(t *testing.T) {
 		schedulerClient.EXPECT().ListTasks(ctx, listTasksRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, username)
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, username)
 		defer deleteTokens()
 
 		response, err := scheduler.ListTasksController(NewMockAccountsClient(ctrl), schedulerClient,
@@ -498,7 +498,7 @@ func TestCancelTaskController(t *testing.T) {
 		schedulerClient.EXPECT().CancelTask(ctx, taskLookupRequestExpected, gomock.Any()).
 			Return(&scheduler_proto.Task{Id: taskID}, nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		task, err := scheduler.CancelTaskController(NewMockAccountsClient(ctrl), schedulerClient, taskID)
@@ -529,7 +529,7 @@ func TestCancelTaskController(t *testing.T) {
 		schedulerClient.EXPECT().CancelTask(ctx, taskLookupRequestExpected, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_username")
 		defer deleteTokens()
 
 		task, err := scheduler.CancelTaskController(NewMockAccountsClient(ctrl), schedulerClient, taskID)
@@ -592,7 +592,7 @@ func TestIterateTasksController(t *testing.T) {
 		schedulerClient.EXPECT().IterateTasks(ctx, iterateTasksRequest, gomock.Any()).
 			Return(new(tasksStreamingFakeClient), nil)
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_user")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_user")
 		defer deleteTokens()
 
 		client, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobID, false)
@@ -623,7 +623,7 @@ func TestIterateTasksController(t *testing.T) {
 		schedulerClient.EXPECT().IterateTasks(ctx, iterateTasksRequest, gomock.Any()).
 			Return(nil, status.Error(codes.PermissionDenied, "permission denied"))
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "test_username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "test_username")
 		defer deleteTokens()
 
 		task, err := scheduler.IterateTasksController(NewMockAccountsClient(ctrl), schedulerClient, jobID, false)

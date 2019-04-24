@@ -9,7 +9,7 @@ import (
 	"github.com/mennanov/scalemate/shared/events"
 )
 
-// HandleJobTerminated closes the corresponding Tasks channel when the Job is terminated.
+// HandleJobTerminated closes the corresponding Tasks channel when the Container is terminated.
 func (s *SchedulerServer) HandleJobTerminated(eventProto *events_proto.Event) error {
 	eventPayload, err := events.NewModelProtoFromEvent(eventProto)
 	if err != nil {
@@ -17,13 +17,13 @@ func (s *SchedulerServer) HandleJobTerminated(eventProto *events_proto.Event) er
 	}
 	jobProto, ok := eventPayload.(*scheduler_proto.Job)
 	if !ok {
-		return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Job")
+		return errors.Wrap(err, "failed to convert message event proto to *scheduler_proto.Container")
 	}
-	job := &models.Job{}
+	job := &models.Container{}
 	if err := job.FromProto(jobProto); err != nil {
 		return errors.Wrap(err, "job.FromProto failed")
 	}
-	// Verify that the Job has terminated.
+	// Verify that the Container has terminated.
 	if !job.IsTerminated() {
 		return nil
 	}
@@ -32,7 +32,7 @@ func (s *SchedulerServer) HandleJobTerminated(eventProto *events_proto.Event) er
 	ch, ok := s.tasksForClients[job.ID]
 	s.tasksForClientsMux.RUnlock()
 	if ok {
-		// Close the corresponding Tasks channel as there can't be any future Tasks for this terminated Job.
+		// Close the corresponding Tasks channel as there can't be any future Tasks for this terminated Container.
 		close(ch)
 	}
 	return nil

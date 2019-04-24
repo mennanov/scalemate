@@ -39,7 +39,7 @@ func (j *JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) 
 		return nil, errors.Wrap(err, "failed to parse access token")
 	}
 
-	if err := claimsAccess.Valid(); err != nil {
+	if claimsAccess.Valid() != nil {
 		// Obtain a new access token using the refresh token.
 		logrus.Debugf("Access token is invalid: %s", err)
 
@@ -59,7 +59,7 @@ func (j *JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) 
 
 		// Save refreshed tokens.
 		if err := j.save(tokens); err != nil {
-			return nil, errors.Wrap(err, "failed to save new tokens pair")
+			return nil, errors.Wrap(err, "failed to save new auth tokens")
 		}
 		j.tokens = tokens
 	}
@@ -71,5 +71,27 @@ func (j *JWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) 
 
 // RequireTransportSecurity requires TLS for gRPC connection.
 func (j *JWTCredentials) RequireTransportSecurity() bool {
+	return true
+}
+
+// SimpleJWTCredentials implements PerRpcCredentials interface by passing JWT access token in request headers.
+type SimpleJWTCredentials struct {
+	accessToken string
+}
+
+// NewSimpleJWTCredentials creates a new instance of SimpleJWTCredentials.
+func NewSimpleJWTCredentials(accessToken string) *SimpleJWTCredentials {
+	return &SimpleJWTCredentials{accessToken: accessToken}
+}
+
+// GetRequestMetadata returns per-request meta data with the JWT access token.
+func (c *SimpleJWTCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + c.accessToken,
+	}, nil
+}
+
+// RequireTransportSecurity sets the transport security.
+func (c *SimpleJWTCredentials) RequireTransportSecurity() bool {
 	return true
 }

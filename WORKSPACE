@@ -2,31 +2,34 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 http_archive(
     name = "io_bazel_rules_go",
-    url = "https://github.com/bazelbuild/rules_go/releases/download/0.18.1/rules_go-0.18.1.tar.gz",
-    sha256 = "77dfd303492f2634de7a660445ee2d3de2960cbd52f97d8c0dffa9362d3ddef9",
+    urls = ["https://github.com/bazelbuild/rules_go/releases/download/0.18.3/rules_go-0.18.3.tar.gz"],
+    sha256 = "86ae934bd4c43b99893fc64be9d9fc684b81461581df7ea8fc291c816f5ee8c5",
 )
-load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
-go_rules_dependencies()
-go_register_toolchains()
 
-http_archive(
-    name = "bazel_gazelle",
-    urls = ["https://github.com/bazelbuild/bazel-gazelle/releases/download/0.17.0/bazel-gazelle-0.17.0.tar.gz"],
-    sha256 = "3c681998538231a2d24d0c07ed5a7658cb72bfb5fd4bf9911157c0e9ac6a2687",
-)
+load("@io_bazel_rules_go//go:deps.bzl", "go_rules_dependencies", "go_register_toolchains")
+
+go_rules_dependencies()
+
+go_register_toolchains()
 
 load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
+# TODO: replace with http_archive rule once the new release (>0.17.0) is available.
+git_repository(
+    name = "bazel_gazelle",
+    remote = "https://github.com/bazelbuild/bazel-gazelle.git",
+    commit = "99f7bcae18d0c84524eca529384723979ce473bc",
+)
+
+load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
+
+gazelle_dependencies()
 
 http_archive(
     name = "com_github_atlassian_bazel_tools",
     strip_prefix = "bazel-tools-7d296003f478325b4a933c2b1372426d3a0926f0",
     urls = ["https://github.com/atlassian/bazel-tools/archive/7d296003f478325b4a933c2b1372426d3a0926f0.zip"],
 )
-
-load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies", "go_repository")
-
-gazelle_dependencies()
 
 load("@com_github_atlassian_bazel_tools//gorevive:deps.bzl", "go_revive_dependencies")
 
@@ -49,6 +52,7 @@ http_archive(
 # This is NOT needed when going through the language lang_image
 # "repositories" function(s).
 load("@io_bazel_rules_docker//repositories:repositories.bzl", container_repositories = "repositories")
+
 container_repositories()
 
 load("@io_bazel_rules_docker//go:image.bzl", _go_image_repos = "repositories")
@@ -242,4 +246,35 @@ go_repository(
     name = "com_github_nats_io_nkeys",
     commit = "1546a3320a8f195a5b5c84aef8309377c2e411d5",
     importpath = "github.com/nats-io/nkeys",
+)
+
+go_repository(
+    name = "com_github_jmoiron_sqlx",
+    commit = "1d3423c595d749e4613fce663591b44ae539d377",
+    importpath = "github.com/jmoiron/sqlx",
+)
+
+go_repository(
+    name = "com_github_golang_migrate_migrate",
+    importpath = "github.com/golang-migrate/migrate/v4",
+    sum = "h1:ad8npPhXfv4DV5RFdlpXSz8TQQnjQHBwh28YTfmYmrU=",
+    version = "v4.3.0",
+)
+
+go_repository(
+    name = "com_github_iancoleman_strcase",
+    commit = "3605ed457bf7f8caa1371b4fafadadc026673479",
+    importpath = "github.com/iancoleman/strcase",
+)
+
+go_repository(
+    name = "com_github_hashicorp_go_multierror",
+    commit = "886a7fbe3eb1c874d46f623bfa70af45f425b3d1",
+    importpath = "github.com/hashicorp/go-multierror",
+)
+
+go_repository(
+    name = "com_github_hashicorp_errwrap",
+    commit = "8a6fb523712970c966eefc6b39ed2c5e74880354",
+    importpath = "github.com/hashicorp/errwrap",
 )

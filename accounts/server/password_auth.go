@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -16,13 +18,26 @@ func (s AccountsServer) PasswordAuth(
 	ctx context.Context,
 	r *accounts_proto.PasswordAuthRequest,
 ) (*accounts_proto.AuthTokens, error) {
-	user := &models.User{}
+	var username, password, nodeName string
+	var fingerprint []byte
+	switch req := r.Request.(type) {
+	case *accounts_proto.PasswordAuthRequest_UserAuth:
+		username, password = req.UserAuth.Username, req.UserAuth.Password
 
-	if err := user.LookUp(s.db, &accounts_proto.UserLookupRequest{Username: r.GetUsername()}); err != nil {
-		return nil, err
+	case *accounts_proto.PasswordAuthRequest_NodeAuth:
+		username, password, nodeName = req.NodeAuth.Username, req.NodeAuth.Password, req.NodeAuth.NodeName
+		fingerprint = req.NodeAuth.NodeFingerprint
+	}
+	user, err := models.UserLookUp(s.db, &accounts_proto.UserLookupRequest{
+		Request: &accounts_proto.UserLookupRequest_Username{
+			Username: username,
+		},
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
 
-	if err := user.ComparePassword(r.GetPassword()); err != nil {
+	if err := user.ComparePassword(password); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "incorrect password")
 	}
 
@@ -31,10 +46,20 @@ func (s AccountsServer) PasswordAuth(
 		return nil, err
 	}
 
+	if nodeName != "" {
+		node, err := models.NodeLookUp(s.db, username, nodeName)
+		if err != nil {
+			return nil, errors.Wrap(err, "NodeLookUp failed")
+		}
+		if !bytes.Equal(node.Fingerprint, fingerprint) {
+			return nil, status.Error(codes.InvalidArgument, "fingerprint is incorrect")
+		}
+	}
+
 	// Generate auth tokens.
-	response, err := user.GenerateAuthTokensResponse(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, "")
+	response, err := user.GenerateAuthTokens(s.accessTokenTTL, s.refreshTokenTTL, s.jwtSecretKey, nodeName)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "GenerateAuthTokens failed")
 	}
 
 	return response, nil

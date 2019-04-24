@@ -23,7 +23,7 @@ func (s *HandlersTestSuite) TestTaskTerminatedHandler_JobFinished() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		Username:         "job1",
 		Status:           utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		ReschedulePolicy: utils.Enum(scheduler_proto.Job_RESCHEDULE_POLICY_NO),
@@ -77,7 +77,7 @@ func (s *HandlersTestSuite) TestTaskTerminatedHandler_JobPending() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		Username:         "job1",
 		Status:           utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 		ReschedulePolicy: utils.Enum(scheduler_proto.Job_RESCHEDULE_POLICY_ON_FAILURE),

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func TestGetRequestMetadataValidToken(t *testing.T) {
@@ -28,8 +28,8 @@ func TestGetRequestMetadataValidToken(t *testing.T) {
 		return nil
 	}
 	authTokens := &accounts_proto.AuthTokens{
-		AccessToken:  utils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
-		RefreshToken: utils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
+		AccessToken:  testutils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
+		RefreshToken: testutils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 	creds := auth.NewJWTCredentials(client, authTokens, tokenSaver)
 	metadata, err := creds.GetRequestMetadata(context.Background())
@@ -46,14 +46,14 @@ func TestGetRequestMetadataInvalidToken(t *testing.T) {
 
 	// Existing AuthTokens.
 	authTokens := &accounts_proto.AuthTokens{
-		AccessToken:  utils.CreateTestingTokenString(-time.Minute, auth.TokenTypeAccess, ""), // Token expired 1 minute ago.
-		RefreshToken: utils.CreateTestingTokenString(5*time.Minute, auth.TokenTypeRefresh, ""),
+		AccessToken:  testutils.CreateTestingTokenString(-time.Minute, auth.TokenTypeAccess, ""), // Token expired 1 minute ago.
+		RefreshToken: testutils.CreateTestingTokenString(5*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 
 	// AuthTokens to be returned by the client mock.
 	newAuthTokens := &accounts_proto.AuthTokens{
-		AccessToken:  utils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
-		RefreshToken: utils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
+		AccessToken:  testutils.CreateTestingTokenString(time.Minute, auth.TokenTypeAccess, ""),
+		RefreshToken: testutils.CreateTestingTokenString(30*time.Minute, auth.TokenTypeRefresh, ""),
 	}
 
 	// TokenAuthRequest to be used to refresh tokens.

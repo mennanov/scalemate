@@ -4,24 +4,29 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file" // keep
 	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/mennanov/scalemate/accounts/conf"
-	"github.com/mennanov/scalemate/accounts/migrations"
-	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-const natsDurableName = "accounts-handlers-tests"
+const (
+	natsDurableName = "accounts-handlers-tests"
+	dbName          = "accounts_handlers_test_suite"
+)
 
 type HandlersTestSuite struct {
 	suite.Suite
-	db              *gorm.DB
+	db              *sqlx.DB
 	logger          *logrus.Logger
 	conn            stan.Conn
 	subscription    events.Subscription
@@ -32,9 +37,9 @@ func (s *HandlersTestSuite) SetupSuite() {
 	s.logger = logrus.StandardLogger()
 	utils.SetLogrusLevelFromEnv(s.logger)
 
-	db, err := utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_handlers_test_suite")
+	db, err := testutils.CreateTestingDatabase(conf.AccountsConf.DBUrl, dbName)
 	s.Require().NoError(err)
-	s.db = db.LogMode(s.logger.IsLevelEnabled(logrus.DebugLevel))
+	s.db = db
 
 	s.conn, err = stan.Connect(
 		conf.AccountsConf.NatsClusterName,
@@ -42,15 +47,23 @@ func (s *HandlersTestSuite) SetupSuite() {
 		stan.NatsURL(conf.AccountsConf.NatsAddr))
 
 	consumer := events.NewNatsConsumer(s.conn, events.AccountsSubjectName, s.logger, stan.DurableName(natsDurableName))
-	s.messagesHandler = &events.MessagesTestingHandler{}
+	s.messagesHandler = events.NewMessagesTestingHandler()
 	s.subscription, err = consumer.Consume(s.messagesHandler)
 	s.Require().NoError(err)
 
-	s.Require().NoError(migrations.RunMigrations(s.db))
+	// Run migrations.
+	driver, err := postgres.WithInstance(db.DB, &postgres.Config{
+		MigrationsTable: "migrations",
+		DatabaseName:    "accounts_models_test_suite",
+		SchemaName:      "",
+	})
+	m, err := migrate.NewWithDatabaseInstance("file://../migrations", dbName, driver)
+	s.Require().NoError(err)
+	s.Require().NoError(m.Up())
 }
 
 func (s *HandlersTestSuite) TearDownTest() {
-	utils.TruncateTables(s.db, s.logger, models.TableNames...)
+	testutils.TruncateTables(s.db)
 }
 
 func (s *HandlersTestSuite) TearDownSuite() {

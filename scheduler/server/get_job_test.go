@@ -13,7 +13,7 @@ import (
 )
 
 func (s *ServerTestSuite) TestGetJob() {
-	job := &models.Job{
+	job := &models.Container{
 		Username: "test_username",
 	}
 	_, err := job.Create(s.db)
@@ -25,7 +25,7 @@ func (s *ServerTestSuite) TestGetJob() {
 		JobId: job.ID,
 	}
 
-	s.T().Run("successful for Job owner", func(t *testing.T) {
+	s.T().Run("successful for Container owner", func(t *testing.T) {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{Username: job.Username})
 		defer restoreClaims()
 

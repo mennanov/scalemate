@@ -1,23 +1,24 @@
-package utils
+// Package testutils provides convenient functions for using in tests.
+package testutils
 
 import (
 	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // CreateTestingTokenString creates a JWT testing string for a given ttl and token type.
@@ -31,7 +32,6 @@ func CreateTestingTokenString(ttl time.Duration, tokenType auth.TokenType, usern
 
 	claims := &auth.Claims{
 		Username:  username,
-		Role:      accounts_proto.User_ADMIN,
 		TokenType: tokenType,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expiresAt,
@@ -74,28 +74,48 @@ func GetAllErrors() []error {
 	return errs
 }
 
+// AssertErrorCode asserts that a given gRPC error has a specific code.
+func AssertErrorCode(t *testing.T, err error, code codes.Code) {
+	require.Error(t, err)
+	statusCode, ok := status.FromError(errors.Cause(err))
+	require.True(t, ok, "Not a status error")
+	assert.Equal(t, code, statusCode.Code())
+}
+
 // CreateTestingDatabase creates a new testing database and returns a connection to it.
 // It drops the existing database with the given name before creating it.
-func CreateTestingDatabase(dbURL, dbName string) (*gorm.DB, error) {
-	db, err := ConnectDBFromEnv(dbURL)
+func CreateTestingDatabase(dbURL, dbName string) (*sqlx.DB, error) {
+	db, err := utils.ConnectDBFromEnv(dbURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "ConnectDBFromEnv failed")
 	}
-	if err := db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)).Error; err != nil {
+	if _, err := db.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName)); err != nil {
 		return nil, errors.Wrapf(err, "failed to drop a database %s", dbName)
 	}
-	if err := db.Exec(fmt.Sprintf("CREATE DATABASE %s", dbName)).Error; err != nil {
+	if _, err := db.Exec(fmt.Sprintf("CREATE DATABASE %s", dbName)); err != nil {
 		return nil, errors.Wrapf(err, "failed to create a database %s", dbName)
 	}
 
 	newURL := regexp.MustCompile(`dbname=(\w+)`).ReplaceAllString(dbURL, fmt.Sprintf("dbname=%s", dbName))
-	return ConnectDBFromEnv(newURL)
+	return utils.ConnectDBFromEnv(newURL)
 }
 
 // TruncateTables truncates the database tables and resets associated sequence generators.
-func TruncateTables(db *gorm.DB, logger *logrus.Logger, tableNames ...string) {
-	if err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE",
-		strings.Join(tableNames, ","))).Error; err != nil {
-		logger.WithError(err).Errorf("failed to truncate tables %s", tableNames)
+func TruncateTables(db sqlx.Ext) {
+	rows, err := db.Queryx("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'")
+	if err != nil {
+		panic(err)
 	}
+	for rows.Next() {
+		var tableName string
+		err = rows.Scan(&tableName)
+		if err != nil {
+			panic(err)
+		}
+		if _, err := db.Exec(fmt.Sprintf("TRUNCATE TABLE %s RESTART IDENTITY CASCADE", tableName)); err != nil {
+			panic(err)
+		}
+	}
+
 }
+

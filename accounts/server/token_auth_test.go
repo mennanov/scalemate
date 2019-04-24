@@ -2,150 +2,88 @@ package server_test
 
 import (
 	"context"
-	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func (s *ServerTestSuite) TestTokenAuth() {
-	user := s.createTestUserQuick("password")
-
 	ctx := context.Background()
-
-	// Obtain auth tokens first.
-	req := &accounts_proto.PasswordAuthRequest{
-		Username: user.Username,
+	// Register a new user.
+	registerRequest := &accounts_proto.RegisterRequest{
+		Username: "username",
+		Email:    "email@mail.com",
 		Password: "password",
 	}
-
-	res, err := s.client.PasswordAuth(ctx, req)
+	registeredUser, err := s.client.Register(ctx, registerRequest)
 	s.Require().NoError(err)
 
-	s.assertAuthTokensValid(res, user, time.Now(), "")
-
-	req2 := &accounts_proto.TokenAuthRequest{
-		RefreshToken: res.GetRefreshToken(),
-	}
-
-	res2, err := s.client.TokenAuth(ctx, req2)
+	// Get the auth tokens.
+	authTokens, err := s.client.PasswordAuth(ctx, &accounts_proto.PasswordAuthRequest{
+		Request: &accounts_proto.PasswordAuthRequest_UserAuth{
+			UserAuth: &accounts_proto.PasswordAuthRequest_UserAuthRequest{
+				Username: registerRequest.Username,
+				Password: registerRequest.Password,
+			},
+		},
+	})
 	s.Require().NoError(err)
 
-	s.assertAuthTokensValid(res2, user, time.Now(), "")
+	s.Run("succeeds", func() {
+		s.T().Parallel()
+		newAuthTokens, err := s.client.TokenAuth(ctx, &accounts_proto.TokenAuthRequest{
+			RefreshToken: authTokens.RefreshToken,
+		})
+		s.Require().NoError(err)
+		// Verify that these tokens can be used for subsequent RPCs.
+		user, err := s.client.Get(ctx, &accounts_proto.UserLookupRequest{
+			Request: &accounts_proto.UserLookupRequest_Id{
+				Id: registeredUser.Id,
+			},
+		}, grpc.PerRPCCredentials(auth.NewSimpleJWTCredentials(newAuthTokens.AccessToken)))
+		s.Require().NoError(err)
+		s.Equal(registeredUser, user)
+	})
 
-	s.NotEqual(res.AccessToken, res2.AccessToken)
-	s.NotEqual(res.RefreshToken, res2.RefreshToken)
+	s.Run("invalid argument for invalid token", func() {
+		s.T().Parallel()
+		newAuthTokens, err := s.client.TokenAuth(ctx, &accounts_proto.TokenAuthRequest{
+			RefreshToken: "invalid token",
+		})
+		testutils.AssertErrorCode(s.T(), err, codes.InvalidArgument)
+		s.Nil(newAuthTokens)
+	})
 }
 
-func (s *ServerTestSuite) TestTokenAuth_WithNodeName() {
-	user := s.createTestUserQuick("password")
-
-	node := &models.Node{
-		Username:    user.Username,
-		Name:        "node_name",
-		CpuModel:    "Intel Core i7 @ 2.20GHz",
-		GpuModel:    "Intel Iris Pro 1536MB",
-		MemoryModel: "DDR3-1600MHz",
-		DiskModel:   "251GB APPLE SSD SM0256F",
-	}
-	_, err := node.Create(s.db)
-	s.Require().NoError(err)
-
+func (s *ServerTestSuite) TestTokenAuth_Banned() {
 	ctx := context.Background()
-	req := &accounts_proto.PasswordNodeAuthRequest{
-		Username:    node.Username,
-		Password:    "password",
-		NodeName:    node.Name,
-		CpuModel:    node.CpuModel,
-		GpuModel:    node.GpuModel,
-		MemoryModel: node.MemoryModel,
-		DiskModel:   node.DiskModel,
-	}
-
-	res, err := s.client.PasswordNodeAuth(ctx, req)
-	s.Require().NoError(err)
-
-	s.assertAuthTokensValid(res, user, time.Now(), node.Name)
-
-	req2 := &accounts_proto.TokenAuthRequest{
-		RefreshToken: res.GetRefreshToken(),
-	}
-
-	res2, err := s.client.TokenAuth(ctx, req2)
-	s.Require().NoError(err)
-
-	s.assertAuthTokensValid(res2, user, time.Now(), node.Name)
-
-	s.NotEqual(res.AccessToken, res2.AccessToken)
-	s.NotEqual(res.RefreshToken, res2.RefreshToken)
-}
-
-func (s *ServerTestSuite) TestTokenAuthInvalidTokenFormat() {
-	s.createTestUserQuick("password")
-
-	ctx := context.Background()
-
-	req := &accounts_proto.TokenAuthRequest{
-		RefreshToken: "invalid token",
-	}
-
-	res, err := s.client.TokenAuth(ctx, req)
-	s.Nil(res)
-	s.assertGRPCError(err, codes.InvalidArgument)
-}
-
-func (s *ServerTestSuite) TestTokenAuthBannedUser() {
-	user := s.createTestUserQuick("password")
-
-	ctx := context.Background()
-
-	// Obtain auth tokens first for a valid (not banned) user.
-	req := &accounts_proto.PasswordAuthRequest{
-		Username: user.Username,
+	// Register a new user.
+	registerRequest := &accounts_proto.RegisterRequest{
+		Username: "username",
+		Email:    "email@mail.com",
 		Password: "password",
 	}
-
-	res, err := s.client.PasswordAuth(ctx, req)
+	registeredUser, err := s.client.Register(ctx, registerRequest)
 	s.Require().NoError(err)
-
-	s.assertAuthTokensValid(res, user, time.Now(), "")
-
-	// Mark user as banned.
-	user.Banned = true
-	s.db.Save(user)
-
-	req2 := &accounts_proto.TokenAuthRequest{
-		RefreshToken: res.GetRefreshToken(),
-	}
-
-	res2, err := s.client.TokenAuth(ctx, req2)
-	s.Nil(res2)
-	s.assertGRPCError(err, codes.PermissionDenied)
-}
-
-func (s *ServerTestSuite) TestTokenAuthUseAccessTokenInsteadOfRefresh() {
-	user := s.createTestUserQuick("password")
-
-	ctx := context.Background()
-
-	// Obtain auth tokens first.
-	req := &accounts_proto.PasswordAuthRequest{
-		Username: user.Username,
-		Password: "password",
-	}
-
-	res, err := s.client.PasswordAuth(ctx, req)
-	s.Require().NoError(err)
-
-	s.assertAuthTokensValid(res, user, time.Now(), "")
-
-	req2 := &accounts_proto.TokenAuthRequest{
-		RefreshToken: res.GetAccessToken(),
-	}
-
-	res2, err := s.client.TokenAuth(ctx, req2)
-	s.Nil(res2)
-	s.assertGRPCError(err, codes.InvalidArgument)
+	// Get auth tokens before the user is banned.
+	authTokens, err := s.client.PasswordAuth(ctx, &accounts_proto.PasswordAuthRequest{
+		Request: &accounts_proto.PasswordAuthRequest_UserAuth{
+			UserAuth: &accounts_proto.PasswordAuthRequest_UserAuthRequest{
+				Username: registerRequest.Username,
+				Password: registerRequest.Password,
+			},
+		},
+	})
+	// Ban the user.
+	s.db.MustExec("UPDATE users SET banned = true WHERE id = $1", registeredUser.Id)
+	// Authenticate using the refresh token after the user is banned.
+	newAuthTokens, err := s.client.TokenAuth(ctx, &accounts_proto.TokenAuthRequest{
+		RefreshToken: authTokens.RefreshToken,
+	})
+	testutils.AssertErrorCode(s.T(), err, codes.PermissionDenied)
+	s.Nil(newAuthTokens)
 }

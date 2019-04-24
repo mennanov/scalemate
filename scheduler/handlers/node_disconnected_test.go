@@ -21,7 +21,7 @@ func (s *HandlersTestSuite) TestNodeDisconnectedHandler_MarksRunningTasksAsFaile
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{}
+	job := &models.Container{}
 	_, err = job.Create(s.db)
 
 	task := &models.Task{
@@ -32,7 +32,7 @@ func (s *HandlersTestSuite) TestNodeDisconnectedHandler_MarksRunningTasksAsFaile
 	_, err = task.Create(s.db)
 
 	now := time.Now()
-	nodeUpdatedEvent, err := node.Updates(s.db, map[string]interface{}{
+	nodeUpdatedEvent, err := node.Update(s.db, map[string]interface{}{
 		"disconnected_at": &now,
 		"status":          utils.Enum(scheduler_proto.Node_STATUS_OFFLINE),
 	})

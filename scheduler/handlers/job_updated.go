@@ -9,12 +9,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-// JobUpdatedHandler schedules a pending Job on any available node.
+// JobUpdatedHandler schedules a pending Container on any available node.
 type JobUpdatedHandler struct {
 	handlerName string
 	db          *gorm.DB
@@ -32,7 +33,7 @@ func NewJobUpdatedHandler(
 	return &JobUpdatedHandler{handlerName: handlerName, db: db, producer: producer, logger: logger}
 }
 
-// Handle schedules the pending Job.
+// Handle schedules the pending Container.
 func (h *JobUpdatedHandler) Handle(eventProto *events_proto.Event) error {
 	if eventProto.Type != events_proto.Event_UPDATED {
 		return nil
@@ -55,7 +56,7 @@ func (h *JobUpdatedHandler) Handle(eventProto *events_proto.Event) error {
 		return nil
 	}
 
-	job := &models.Job{}
+	job := &models.Container{}
 	if err := job.FromProto(jobProto); err != nil {
 		return errors.Wrap(err, "job.FromProto failed")
 	}
@@ -64,25 +65,25 @@ func (h *JobUpdatedHandler) Handle(eventProto *events_proto.Event) error {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "job.LoadFromDB failed"))
 	}
 
-	node, err := job.FindSuitableNode(tx)
+	node, err := job.NodesAvailable(tx)
 	if err != nil {
-		wrappedErr := errors.Wrap(err, "job.FindSuitableNode failed")
+		wrappedErr := errors.Wrap(err, "job.NodesAvailable failed")
 		if st, ok := status.FromError(errors.Cause(err)); ok {
 			if st.Code() == codes.NotFound {
-				h.logger.WithField("job", job).Info("no suitable Node could be found for a new Job")
+				h.logger.WithField("job", job).Info("no suitable Node could be found for a new Container")
 				wrappedErr = nil
 			}
 		}
 		return utils.RollbackTransaction(tx, wrappedErr)
 	}
-	schedulingEvents, err := job.CreateTask(tx, node)
+	schedulingEvents, err := job.Schedule(tx, node)
 	if err != nil {
-		return utils.RollbackTransaction(tx, errors.Wrap(err, "job.CreateTask failed"))
+		return utils.RollbackTransaction(tx, errors.Wrap(err, "job.Schedule failed"))
 	}
 	if err := processedEvent.Create(tx); err != nil {
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "processedEvent.Create failed"))
 	}
-	if err := events.CommitAndPublish(tx, h.producer, schedulingEvents...); err != nil {
+	if err := utils2.CommitAndPublish(tx, h.producer, schedulingEvents...); err != nil {
 		return errors.Wrap(err, "events.CommitAndPublish failed")
 	}
 	return nil

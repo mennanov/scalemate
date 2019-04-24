@@ -142,7 +142,7 @@ func (s *ServerTestSuite) TearDownSuite() {
 	fmt.Println("ServerTestSuite.TearDownSuite complete.")
 }
 
-// newJob creates a minimal valid Job and applies the given options to it.
+// newJob creates a minimal valid Container and applies the given options to it.
 func (s *ServerTestSuite) newJob(options ...func(*scheduler_proto.Job)) *scheduler_proto.Job {
 	job := &scheduler_proto.Job{
 		Username: s.claimsInjector.Claims.Username,

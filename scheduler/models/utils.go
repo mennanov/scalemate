@@ -1,14 +1,16 @@
 package models
 
-import (
-	"github.com/jinzhu/gorm"
-)
-
 // TableNames is a list of all the registered table names that is used in tests to clean up database.
-var TableNames = []string{"tasks", "jobs", "nodes", "processed_events"}
+var TableNames = []string{"container_labels", "containers", "node_labels", "nodes", "processed_events"}
 
-func init() {
-	// Remove default gorm callbacks on Create as it populates the `UpdatedAt` field which is undesirable.
-	gorm.DefaultCallback.Create().Remove("gorm:update_time_stamp")
-	gorm.DefaultCallback.Create().Remove("gorm:update_time_stamp_when_create")
+// mapKeys returns a slice of map string keys.
+func mapKeys(m map[string]interface{}) []string {
+	keys := make([]string, len(m))
+
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	return keys
 }

@@ -22,13 +22,13 @@ func (s *ServerTestSuite) TestCancelTask() {
 	s.Require().NoError(err)
 
 	for _, testCase := range []struct {
-		job               *models.Job
+		job               *models.Container
 		task              *models.Task
 		claims            *auth.Claims
 		expectedErrorCode codes.Code
 	}{
 		{
-			job: &models.Job{
+			job: &models.Container{
 				Username: "test_username",
 				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
@@ -39,7 +39,7 @@ func (s *ServerTestSuite) TestCancelTask() {
 			expectedErrorCode: 0,
 		},
 		{
-			job: &models.Job{
+			job: &models.Container{
 				Username: "test_username",
 				Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
@@ -50,7 +50,7 @@ func (s *ServerTestSuite) TestCancelTask() {
 			expectedErrorCode: codes.FailedPrecondition,
 		},
 		{
-			job: &models.Job{
+			job: &models.Container{
 				Username: "test_username",
 				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},
@@ -61,7 +61,7 @@ func (s *ServerTestSuite) TestCancelTask() {
 			expectedErrorCode: 0,
 		},
 		{
-			job: &models.Job{
+			job: &models.Container{
 				Username: "test_username",
 				Status:   utils.Enum(scheduler_proto.Job_STATUS_FINISHED),
 			},
@@ -72,7 +72,7 @@ func (s *ServerTestSuite) TestCancelTask() {
 			expectedErrorCode: codes.FailedPrecondition,
 		},
 		{
-			job: &models.Job{
+			job: &models.Container{
 				Username: "test_username",
 				Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 			},

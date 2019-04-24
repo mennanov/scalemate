@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/sirupsen/logrus"
 
 	"github.com/mennanov/scalemate/shared/auth"
@@ -67,7 +67,7 @@ func WithProducer(producer events.Producer) Option {
 }
 
 // WithDBConnection creates an option that sets the DB field to an existing DB connection.
-func WithDBConnection(db *gorm.DB) Option {
+func WithDBConnection(db *sqlx.DB) Option {
 	return func(s *AccountsServer) error {
 		s.db = db
 		return nil

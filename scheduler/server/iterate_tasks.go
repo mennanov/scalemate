@@ -12,7 +12,7 @@ import (
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-// IterateTasks sends a stream of Tasks for a given Job.
+// IterateTasks sends a stream of Tasks for a given Container.
 func (s SchedulerServer) IterateTasks(
 	req *scheduler_proto.IterateTasksRequest,
 	stream scheduler_proto.Scheduler_IterateTasksServer,
@@ -23,7 +23,7 @@ func (s SchedulerServer) IterateTasks(
 	if !ok {
 		return status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
-	job := &models.Job{}
+	job := &models.Container{}
 	job.ID = req.JobId
 	if err := job.LoadFromDB(s.db); err != nil {
 		return err
@@ -36,7 +36,7 @@ func (s SchedulerServer) IterateTasks(
 			"claims":  claims,
 		}).Warn("permission denied in IterateTasks")
 		return status.Errorf(codes.PermissionDenied,
-			"Job username '%s' does not match currently authenticated user: '%s'", job.Username, claims.Username)
+			"Container username '%s' does not match currently authenticated user: '%s'", job.Username, claims.Username)
 	}
 
 	if req.IncludeExisting {
@@ -55,7 +55,7 @@ func (s SchedulerServer) IterateTasks(
 	}
 
 	if job.IsTerminated() {
-		// Job has terminated. No new Tasks are possible.
+		// Container has terminated. No new Tasks are possible.
 		return nil
 	}
 

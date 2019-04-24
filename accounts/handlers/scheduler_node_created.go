@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -15,14 +15,14 @@ import (
 
 // SchedulerNodeCreatedHandler handles Node created event from the Scheduler service.
 type SchedulerNodeCreatedHandler struct {
-	db       *gorm.DB
+	db       *sqlx.DB
 	producer events.Producer
 	logger   *logrus.Logger
 }
 
 // NewSchedulerNodeCreatedHandler returns a new instance of SchedulerNodeCreatedHandler.
 func NewSchedulerNodeCreatedHandler(
-	db *gorm.DB, producer events.Producer, logger *logrus.Logger) *SchedulerNodeCreatedHandler {
+	db *sqlx.DB, producer events.Producer, logger *logrus.Logger) *SchedulerNodeCreatedHandler {
 	return &SchedulerNodeCreatedHandler{db: db, producer: producer, logger: logger}
 }
 
@@ -40,12 +40,13 @@ func (s *SchedulerNodeCreatedHandler) Handle(eventProto *events_proto.Event) err
 	}
 	s.logger.WithField("event", eventProto.String()).Info("processing a Node created event")
 
-	node := &models.Node{}
-	node.FromSchedulerProto(eventNode.SchedulerNode)
+	node := models.NewNodeFromSchedulerProto(eventNode.SchedulerNode)
 
-	tx := s.db.Begin()
-	event, err := node.Create(tx)
+	tx, err := s.db.Beginx()
 	if err != nil {
+		return errors.Wrap(err, "failed to start transaction")
+	}
+	if err := node.Create(tx); err != nil {
 		if s, ok := status.FromError(errors.Cause(err)); ok {
 			if s.Code() == codes.AlreadyExists {
 				// Do nothing if the Node already exists.
@@ -55,10 +56,7 @@ func (s *SchedulerNodeCreatedHandler) Handle(eventProto *events_proto.Event) err
 
 		return utils.RollbackTransaction(tx, errors.Wrap(err, "node.Create failed"))
 	}
-	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
-		return errors.Wrap(err, "events.CommitAndPublish failed")
-	}
-	return nil
+	return tx.Commit()
 }
 
 // Compile time interface check.

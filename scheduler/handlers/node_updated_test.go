@@ -30,8 +30,8 @@ func (s *HandlersTestSuite) TestNodeUpdatedHandler_SchedulesPendingJobs() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	// All these Jobs are expected to fit into the Node above.
-	jobs := []*models.Job{
+	// All these Containers are expected to fit into the Node above.
+	jobs := []*models.Container{
 		{
 			Username:    "job1",
 			Status:      utils.Enum(scheduler_proto.Job_STATUS_PENDING),
@@ -74,12 +74,12 @@ func (s *HandlersTestSuite) TestNodeUpdatedHandler_SchedulesPendingJobs() {
 
 	// Reload Node from DB.
 	s.Require().NoError(node.LoadFromDB(s.db))
-	// Jobs are expected to acquire half of the Node's resources.
+	// Containers are expected to acquire half of the Node's resources.
 	s.Equal(float32(2), node.CpuAvailable)
 	s.Equal(uint32(14000), node.DiskAvailable)
 	s.Equal(uint32(0), node.GpuAvailable)
 	s.Equal(uint32(8000), node.MemoryAvailable)
-	// Verify that Jobs now have a status "SCHEDULED".
+	// Verify that Containers now have a status "SCHEDULED".
 	for _, job := range jobs {
 		s.Require().NoError(job.LoadFromDB(s.db))
 		s.Equal(utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED), job.Status)

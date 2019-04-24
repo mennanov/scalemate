@@ -19,7 +19,7 @@ func (s *ServerTestSuite) TestHandleJobTerminated_ClientStopsReceivingTasks() {
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		Username: s.claimsInjector.Claims.Username,
 		Status:   utils.Enum(scheduler_proto.Job_STATUS_SCHEDULED),
 	}

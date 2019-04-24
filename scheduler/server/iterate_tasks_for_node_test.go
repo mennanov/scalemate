@@ -74,21 +74,21 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobCreatedAfterNodeConnected()
 	}
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
-	// Manually update the Job's status to PENDING.
-	job := &models.Job{}
+	// Manually update the Container's status to PENDING.
+	job := &models.Container{}
 	s.Require().NoError(job.FromProto(jobProto))
 	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
 	s.Require().NoError(err)
-	// Send the event about the new Job's status.
+	// Send the event about the new Container's status.
 	s.Require().NoError(s.producer.Send(jobUpdatedEvent))
 	events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.updated", "scheduler.task.created")
 	<-taskReceivedByNode
-	// Verify that the Task the Node has received is for the requested Job.
+	// Verify that the Task the Node has received is for the requested Container.
 	s.Equal(jobProto.Id, taskForNode.JobId)
 }
 
 func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated() {
-	// Create an online Node suitable for the Job, but with exhausted resources.
+	// Create an online Node suitable for the Container, but with exhausted resources.
 	nodeOnlineExhausted := &models.Node{
 		Username:        "test_username",
 		Name:            "node_name1",
@@ -136,7 +136,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated()
 
 	ctx := context.Background()
 
-	// Create a Job before the Node is connected.
+	// Create a Container before the Node is connected.
 	jobRequest := &scheduler_proto.Job{
 		Username:    "test_username",
 		CpuLimit:    1,
@@ -154,12 +154,12 @@ func (s *ServerTestSuite) TestIterateTasksForNode_NodeConnectedAfterJobCreated()
 	jobProto, err := s.client.CreateJob(ctx, jobRequest)
 	s.Require().NoError(err)
 
-	// Manually update the Job's status to PENDING.
-	job := &models.Job{}
+	// Manually update the Container's status to PENDING.
+	job := &models.Container{}
 	s.Require().NoError(job.FromProto(jobProto))
 	jobUpdatedEvent, err := job.UpdateStatus(s.db, scheduler_proto.Job_STATUS_PENDING)
 	s.Require().NoError(err)
-	// Send the event about the new Job's status.
+	// Send the event about the new Container's status.
 	s.Require().NoError(s.producer.Send(jobUpdatedEvent))
 	events.WaitForMessages(s.amqpRawConsumer, nil, "scheduler.job.updated")
 	// Claims should contain a Node name.
@@ -236,7 +236,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobsUpdatedForDisconnectedNode
 	_, err := node.Create(s.db)
 	s.Require().NoError(err)
 
-	job := &models.Job{
+	job := &models.Container{
 		CpuLimit:      1,
 		Status:        utils.Enum(scheduler_proto.Job_STATUS_PENDING),
 		RestartPolicy: utils.Enum(scheduler_proto.Job_RESTART_POLICY_NO),
@@ -282,7 +282,7 @@ func (s *ServerTestSuite) TestIterateTasksForNode_JobsUpdatedForDisconnectedNode
 	s.Equal(utils.Enum(scheduler_proto.Task_STATUS_NODE_FAILED), job.Tasks[0].Status)
 
 	events.WaitForMessages(s.amqpRawConsumer, nil, `scheduler.job.updated..*?status`)
-	// Verify that the Job's status is updated.
+	// Verify that the Container's status is updated.
 	s.Require().NoError(job.LoadFromDB(s.db))
 	s.Equal(utils.Enum(scheduler_proto.Job_STATUS_FINISHED), job.Status)
 }

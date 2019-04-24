@@ -8,12 +8,12 @@ import (
 
 func Test_SelectJobs(t *testing.T) {
 	for _, testCase := range []struct {
-		jobs         []Job
+		jobs         []Container
 		res          AvailableResources
 		jobsExpected uint64
 	}{
 		{
-			jobs: []Job{
+			jobs: []Container{
 				{
 					CpuLimit: 2,
 				},
@@ -28,12 +28,12 @@ func Test_SelectJobs(t *testing.T) {
 				},
 			},
 			res: AvailableResources{
-				CpuAvailable: 2.5,
+				Cpu: 2.5,
 			},
 			jobsExpected: 3,
 		},
 		{
-			jobs: []Job{
+			jobs: []Container{
 				{
 					CpuLimit: 2,
 				},
@@ -60,12 +60,12 @@ func Test_SelectJobs(t *testing.T) {
 				},
 			},
 			res: AvailableResources{
-				CpuAvailable: 1.5,
+				Cpu: 1.5,
 			},
 			jobsExpected: 4,
 		},
 		{
-			jobs: []Job{
+			jobs: []Container{
 				{
 					CpuLimit: 2,
 				},
@@ -98,12 +98,12 @@ func Test_SelectJobs(t *testing.T) {
 				},
 			},
 			res: AvailableResources{
-				CpuAvailable: 1.5,
+				Cpu: 1.5,
 			},
 			jobsExpected: 6,
 		},
 		{
-			jobs: []Job{
+			jobs: []Container{
 				{
 					CpuLimit: 2,
 				},
@@ -115,12 +115,12 @@ func Test_SelectJobs(t *testing.T) {
 				},
 			},
 			res: AvailableResources{
-				CpuAvailable: 1,
+				Cpu: 1,
 			},
 			jobsExpected: 0,
 		},
 		{
-			jobs: []Job{
+			jobs: []Container{
 				{
 					CpuLimit: 2,
 				},
@@ -132,12 +132,12 @@ func Test_SelectJobs(t *testing.T) {
 				},
 			},
 			res: AvailableResources{
-				CpuAvailable: 1.5,
+				Cpu: 1.5,
 			},
 			jobsExpected: 1,
 		},
 		{
-			jobs:         []Job{},
+			jobs:         []Container{},
 			res:          AvailableResources{},
 			jobsExpected: 0,
 		},

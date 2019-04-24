@@ -7,7 +7,7 @@ func (s *ModelsTestSuite) TestProcessedEvent_Exists() {
 		HandlerName: "HandlerName",
 		UUID:        []byte{1, 2, 3, 4, 5},
 	}
-	s.False(processedEvent.Exists(s.db))
-	s.Require().NoError(processedEvent.Create(s.db))
-	s.True(processedEvent.Exists(s.db))
+	s.False(processedEvent.Exists(s.gormDB))
+	s.Require().NoError(processedEvent.Create(s.gormDB))
+	s.True(processedEvent.Exists(s.gormDB))
 }

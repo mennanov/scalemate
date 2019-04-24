@@ -18,7 +18,7 @@ enum Service {
 message Event {
     // Unique event's ID generated at the moment the event is created.
     // A UUID is a 16 byte (128 bit) array. See: https://godoc.org/github.com/google/uuid
-    bytes uuid = 12;
+    bytes uuid = 1;
 
     enum Type {
         UNKNOWN = 0;
@@ -27,22 +27,20 @@ message Event {
         DELETED = 3;
     }
     // Even type.
-    Type type = 1;
+    Type type = 2;
     // Service that initiated this event.
-    Service service = 2;
+    Service service = 3;
 
     // Message that represents this event. This message can be filled in only partially according to the
     // `payload_mask` field below as, e.g. it does not make sense to store the entire message for UPDATED Events, but
     // only the fields that were actually updated.
     oneof payload {
-        accounts.accounts_proto.User accounts_user = 3;
-        accounts.accounts_proto.Node accounts_node = 11;
-        scheduler.scheduler_proto.Job scheduler_job = 4;
-        scheduler.scheduler_proto.Node scheduler_node = 5;
-        scheduler.scheduler_proto.Task scheduler_task = 6;
+        accounts.accounts_proto.User accounts_user = 4;
+        scheduler.scheduler_proto.Container scheduler_container = 5;
+        scheduler.scheduler_proto.Node scheduler_node = 6;
     }
     // FieldMask for the payload above.
     google.protobuf.FieldMask payload_mask = 7;
     // Time when this Event was initiated (created).
-    google.protobuf.Timestamp created_at = 10;
+    google.protobuf.Timestamp created_at = 8;
 }

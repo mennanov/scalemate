@@ -14,7 +14,7 @@ import (
 
 	"github.com/mennanov/scalemate/client/accounts"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func TestLoginController(t *testing.T) {
@@ -220,7 +220,7 @@ func TestChangePasswordController(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "username")
 		defer deleteTokens()
 
 		ctx := context.Background()
@@ -237,7 +237,7 @@ func TestChangePasswordController(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		deleteTokens := utils.CreateAndSaveTestingTokens(t, "username")
+		deleteTokens := testutils.CreateAndSaveTestingTokens(t, "username")
 		defer deleteTokens()
 
 		ctx := context.Background()

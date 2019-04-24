@@ -14,6 +14,6 @@ build --test_env=ACCOUNTS_TLS_CERT_FILE=__main__/cert/cert.pem
 build --test_env=ACCOUNTS_TLS_KEY_FILE=__main__/cert/key.pem
 
 # SCHEDULER SERVICE ENV VARIABLES
-build --test_env=SCHEDULER_DB_HOST="host=localhost port=35432 user=postgres dbname=postgres password=postgres sslmode=disable"
+build --test_env=SCHEDULER_DB_URL="host=localhost port=35432 user=postgres dbname=postgres password=postgres sslmode=disable"
 build --test_env=SCHEDULER_TLS_CERT_FILE=__main__/cert/cert.pem
 build --test_env=SCHEDULER_TLS_KEY_FILE=__main__/cert/key.pem

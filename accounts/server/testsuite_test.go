@@ -6,36 +6,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file" // keep
 	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/mennanov/scalemate/accounts/conf"
-	"github.com/mennanov/scalemate/accounts/migrations"
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 
 	"google.golang.org/grpc"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/stretchr/testify/suite"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/accounts/server"
 	"github.com/mennanov/scalemate/shared/auth"
 )
 
-const natsDurableName = "accounts-server-tests"
+const (
+	natsDurableName = "accounts-server-tests"
+	dbName          = "accounts_server_test_suite"
+)
 
 type ServerTestSuite struct {
 	suite.Suite
 	service         *server.AccountsServer
 	client          accounts_proto.AccountsClient
-	db              *gorm.DB
+	db              *sqlx.DB
 	sc              stan.Conn
 	subscription    events.Subscription
 	messagesHandler *events.MessagesTestingHandler
@@ -50,9 +53,9 @@ func (s *ServerTestSuite) SetupSuite() {
 	// Start gRPC server.
 	localAddr := "localhost:50051"
 
-	db, err := utils.CreateTestingDatabase(conf.AccountsConf.DBUrl, "accounts_server_test_suite")
+	db, err := testutils.CreateTestingDatabase(conf.AccountsConf.DBUrl, dbName)
 	s.Require().NoError(err)
-	s.db = db.LogMode(s.logger.IsLevelEnabled(logrus.DebugLevel))
+	s.db = db
 
 	s.sc, err = stan.Connect(
 		conf.AccountsConf.NatsClusterName,
@@ -61,7 +64,7 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	consumer := events.NewNatsConsumer(s.sc, events.AccountsSubjectName, s.logger, stan.DurableName(natsDurableName))
-	s.messagesHandler = &events.MessagesTestingHandler{}
+	s.messagesHandler = events.NewMessagesTestingHandler()
 	s.subscription, err = consumer.Consume(s.messagesHandler)
 
 	s.service, err = server.NewAccountsServer(
@@ -76,8 +79,15 @@ func (s *ServerTestSuite) SetupSuite() {
 	)
 	s.Require().NoError(err)
 
-	// Prepare database.
-	s.Require().NoError(migrations.RunMigrations(s.db))
+	// Run migrations.
+	driver, err := postgres.WithInstance(db.DB, &postgres.Config{
+		MigrationsTable: "migrations",
+		DatabaseName:    dbName,
+		SchemaName:      "",
+	})
+	m, err := migrate.NewWithDatabaseInstance("file://../migrations", dbName, driver)
+	s.Require().NoError(err)
+	s.Require().NoError(m.Up())
 
 	var ctx context.Context
 	ctx, s.ctxCancel = context.WithCancel(context.Background())
@@ -94,14 +104,12 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.client = accounts_proto.NewAccountsClient(newClientConn(localAddr, clientCreds))
 }
 
-func (s *ServerTestSuite) TearDownTest() {
-	utils.TruncateTables(s.db, s.logger, models.TableNames...)
+func (s *ServerTestSuite) SetupTest() {
+	testutils.TruncateTables(s.db)
 }
 
 func (s *ServerTestSuite) TearDownSuite() {
 	s.ctxCancel()
-	// Wait for the service to stop gracefully.
-	time.Sleep(time.Millisecond * 100)
 
 	utils.Close(s.subscription, s.logger)
 	utils.Close(s.sc, s.logger)
@@ -122,83 +130,4 @@ func newClientConn(addr string, creds credentials.TransportCredentials) *grpc.Cl
 	}
 
 	return conn
-}
-
-func (s *ServerTestSuite) createTestUserQuick(password string) *models.User {
-	user := &models.User{
-		Username: "username",
-		Email:    "valid@email.com",
-		Role:     accounts_proto.User_USER,
-		Banned:   false,
-	}
-	s.Require().NoError(user.SetPasswordHash(password, conf.AccountsConf.BCryptCost))
-	s.db.Create(user)
-	return user
-}
-
-func (s *ServerTestSuite) createTestUser(user *models.User, password string) *models.User {
-	s.Require().NoError(user.SetPasswordHash(password, conf.AccountsConf.BCryptCost))
-	s.db.Create(user)
-	return user
-}
-
-func (s *ServerTestSuite) assertGRPCError(err error, code codes.Code) {
-	s.Require().Error(err)
-	if statusCode, ok := status.FromError(err); ok {
-		if !s.Equal(code, statusCode.Code()) {
-			fmt.Println("Error message: ", statusCode.Message())
-		}
-	} else {
-		s.Fail(fmt.Sprintf("Unknown type of returned error: %T: %s", err, err.Error()))
-	}
-}
-
-func (s *ServerTestSuite) assertAuthTokensValid(tokens *accounts_proto.AuthTokens, user *models.User, issuedAt time.Time, nodeName string) {
-	accessTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.AccessToken, conf.AccountsConf.JWTSecretKey)
-	s.Require().NoError(err)
-
-	s.Equal(user.Username, accessTokenClaims.Username)
-	s.Equal(user.Role, accessTokenClaims.Role)
-	s.Equal(issuedAt.Unix(), accessTokenClaims.IssuedAt)
-	s.Equal(auth.TokenTypeAccess, accessTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(conf.AccountsConf.AccessTokenTTL), time.Unix(accessTokenClaims.ExpiresAt, 0),
-		conf.AccountsConf.AccessTokenTTL)
-	s.Equal(nodeName, accessTokenClaims.NodeName)
-
-	refreshTokenClaims, err := auth.NewClaimsFromStringVerified(tokens.RefreshToken, conf.AccountsConf.JWTSecretKey)
-	s.Require().NoError(err)
-
-	s.Equal(user.Username, refreshTokenClaims.Username)
-	s.Equal(user.Role, refreshTokenClaims.Role)
-	s.Equal(issuedAt.Unix(), refreshTokenClaims.IssuedAt)
-	s.Equal(auth.TokenTypeRefresh, refreshTokenClaims.TokenType)
-	s.WithinDuration(issuedAt.Add(conf.AccountsConf.RefreshTokenTTL), time.Unix(refreshTokenClaims.ExpiresAt, 0),
-		conf.AccountsConf.RefreshTokenTTL)
-	s.Equal(nodeName, refreshTokenClaims.NodeName)
-
-	s.True(accessTokenClaims.ExpiresAt < refreshTokenClaims.ExpiresAt)
-	s.NotEqual(accessTokenClaims.Id, refreshTokenClaims.Id)
-}
-
-func (s *ServerTestSuite) accessCredentialsQuick(ttl time.Duration, role accounts_proto.User_Role) grpc.CallOption {
-	adminUser := &models.User{
-		Username: "access_username",
-		Email:    "access@scalemate.io",
-		Role:     role,
-		Banned:   false,
-	}
-
-	return s.userAccessCredentials(adminUser, ttl)
-}
-
-func (s *ServerTestSuite) userAccessCredentials(user *models.User, ttl time.Duration) grpc.CallOption {
-	accessToken, err := user.NewJWTSigned(ttl, auth.TokenTypeAccess, conf.AccountsConf.JWTSecretKey, "")
-	s.Require().NoError(err)
-	refreshToken, err := user.NewJWTSigned(ttl*2, auth.TokenTypeRefresh, conf.AccountsConf.JWTSecretKey, "")
-	s.Require().NoError(err)
-	jwtCredentials := auth.NewJWTCredentials(
-		s.client,
-		&accounts_proto.AuthTokens{AccessToken: accessToken, RefreshToken: refreshToken},
-		func(tokens *accounts_proto.AuthTokens) error { return nil })
-	return grpc.PerRPCCredentials(jwtCredentials)
 }

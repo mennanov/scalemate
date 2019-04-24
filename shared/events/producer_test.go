@@ -34,7 +34,7 @@ func TestNatsProducer_Send(t *testing.T) {
 			Type:    events_proto.Event_CREATED,
 			Service: events_proto.Service_ACCOUNTS,
 			Payload: &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{
-				Id:       rand.Uint64(),
+				Id:       rand.Uint32(),
 				Username: "username",
 			}},
 		},
@@ -42,7 +42,7 @@ func TestNatsProducer_Send(t *testing.T) {
 			Type:    events_proto.Event_UPDATED,
 			Service: events_proto.Service_ACCOUNTS,
 			Payload: &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{
-				Id:     rand.Uint64(),
+				Id:     rand.Uint32(),
 				Banned: true,
 			}},
 			PayloadMask: &field_mask.FieldMask{Paths: []string{"Banned"}},
@@ -55,7 +55,7 @@ func TestNatsProducer_Send(t *testing.T) {
 		assert.NoError(t, err)
 		expectedMessageKeys[i] = key
 	}
-	messagesHandler := &events.MessagesTestingHandler{}
+	messagesHandler := events.NewMessagesTestingHandler()
 	subscription, err := consumer.Consume(messagesHandler)
 	require.NoError(t, err)
 	defer utils.Close(subscription, logger)

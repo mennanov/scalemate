@@ -12,13 +12,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	utils2 "github.com/mennanov/scalemate/accounts/utils"
 	"github.com/mennanov/scalemate/scheduler/models"
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
-// CancelJob cancels the currently running Job. Also cancels the corresponding running Tasks.
+// CancelJob cancels the currently running Container. Also cancels the corresponding running Tasks.
 func (s SchedulerServer) CancelJob(
 	ctx context.Context,
 	r *scheduler_proto.JobLookupRequest,
@@ -29,7 +29,7 @@ func (s SchedulerServer) CancelJob(
 		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
 	}
 
-	job := &models.Job{}
+	job := &models.Container{}
 	job.ID = r.JobId
 
 	if err := job.LoadFromDB(s.db); err != nil {
@@ -42,7 +42,7 @@ func (s SchedulerServer) CancelJob(
 			"request": r,
 			"claims":  claims,
 		}).Warn("permission denied in CancelJob")
-		return nil, status.Error(codes.PermissionDenied, "Job username does not match currently authenticated user")
+		return nil, status.Error(codes.PermissionDenied, "Container username does not match currently authenticated user")
 	}
 
 	tx := s.db.Begin()
@@ -69,7 +69,7 @@ func (s SchedulerServer) CancelJob(
 		updateEvents = append(updateEvents, taskUpdatedEvent)
 	}
 
-	if err := events.CommitAndPublish(s.producer, updateEvents); err != nil {
+	if err := utils2.CommitAndPublish(s.producer, updateEvents); err != nil {
 		return nil, errors.Wrap(err, "failed to send and commit events")
 	}
 
