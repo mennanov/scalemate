@@ -6,14 +6,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gogo/protobuf/types"
+
 	"github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
-	"google.golang.org/genproto/protobuf/field_mask"
 )
 
 const (
@@ -28,20 +28,15 @@ func NewEvent(
 	payload proto.Message,
 	eventType events_proto.Event_Type,
 	service events_proto.Service,
-	fieldMask *field_mask.FieldMask,
+	fieldMask *types.FieldMask,
 ) (*events_proto.Event, error) {
-	createdAt, err := ptypes.TimestampProto(time.Now())
-	if err != nil {
-		return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
-	}
-
 	eventUUID := uuid.New()
 	event := &events_proto.Event{
 		Uuid:        eventUUID[:],
 		Type:        eventType,
 		Service:     service,
 		PayloadMask: fieldMask,
-		CreatedAt:   createdAt,
+		CreatedAt:   time.Now(),
 	}
 
 	switch p := payload.(type) {

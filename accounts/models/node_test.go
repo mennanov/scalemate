@@ -1,7 +1,8 @@
 package models_test
 
 import (
-	"github.com/golang/protobuf/ptypes/timestamp"
+	"time"
+
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/accounts/models"
@@ -9,6 +10,7 @@ import (
 )
 
 func (s *ModelsTestSuite) TestNode_FromSchedulerProto() {
+	updated := time.Now().Add(time.Second)
 	for _, schedulerNodeProto := range []*scheduler_proto.Node{
 		{
 			Id:       1,
@@ -16,17 +18,11 @@ func (s *ModelsTestSuite) TestNode_FromSchedulerProto() {
 			Name:     "node_name",
 		},
 		{
-			Id:       2,
-			Username: "username",
-			Name:     "node_name",
-			CreatedAt: &timestamp.Timestamp{
-				Seconds: 1,
-				Nanos:   0,
-			},
-			UpdatedAt: &timestamp.Timestamp{
-				Seconds: 2,
-				Nanos:   0,
-			},
+			Id:        2,
+			Username:  "username",
+			Name:      "node_name",
+			CreatedAt: time.Now(),
+			UpdatedAt: &updated,
 		},
 	} {
 		node := models.NewNodeFromSchedulerProto(schedulerNodeProto)

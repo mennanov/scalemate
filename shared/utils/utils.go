@@ -131,3 +131,14 @@ func CommitAndPublish(tx driver.Tx, producer events.Producer, events ...*events_
 type SqlxGetter interface {
 	Get(dest interface{}, query string, args ...interface{}) error
 }
+
+// SqlxNamedQuery is a missing interface in sqlx library for the NamedQuery method.
+type SqlxNamedQuery interface {
+	NamedQuery(query string, arg interface{}) (*sqlx.Rows, error)
+}
+
+// SqlxExtGetter is a union interface of sqlx.Ext and SqlxGetter.
+type SqlxExtGetter interface {
+	sqlx.Ext
+	SqlxGetter
+}

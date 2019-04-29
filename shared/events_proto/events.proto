@@ -9,6 +9,8 @@ import "google/protobuf/field_mask.proto";
 import "accounts/accounts_proto/accounts.proto";
 import "scheduler/scheduler_proto/scheduler.proto";
 
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
 enum Service {
     UNKNOWN = 0;
     ACCOUNTS = 1;
@@ -42,5 +44,5 @@ message Event {
     // FieldMask for the payload above.
     google.protobuf.FieldMask payload_mask = 7;
     // Time when this Event was initiated (created).
-    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp created_at = 8 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }

@@ -18,19 +18,14 @@ func (s AccountsServer) Get(ctx context.Context, r *accounts_proto.UserLookupReq
 	if err != nil {
 		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
-	if err := checkUserPermissions(ctx, user.Username); err != nil {
+	if err := claimsUsernameEqual(ctx, user.Username); err != nil {
 		return nil, err
 	}
 
-	response, err := user.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "user.ToProto failed")
-	}
-
-	return response, nil
+	return &user.User, nil
 }
 
-func checkUserPermissions(ctx context.Context, username string) error {
+func claimsUsernameEqual(ctx context.Context, username string) error {
 	ctxClaims := ctx.Value(auth.ContextKeyClaims)
 	if ctxClaims == nil {
 		return status.Error(codes.Unauthenticated, "no JWT claims found")

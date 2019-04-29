@@ -1,31 +1,32 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
 
+# gazelle:go_grpc_compilers @io_bazel_rules_go//proto:gogo_grpc
+# gazelle:go_proto_compilers @io_bazel_rules_go//proto:gogo_proto
+# gazelle:resolve proto proto github.com/gogo/protobuf/gogoproto/gogo.proto @gogo_special_proto//github.com/gogo/protobuf/gogoproto
+
+# TODO: figure out how to NOT ignore this file for Gazelle (fix deps for go_proto_library below).
+# gazelle:ignore
+
 proto_library(
     name = "accounts_proto_proto",
     srcs = ["accounts.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        "//shared/proto:validator_proto",
         "@com_google_protobuf//:empty_proto",
-        "@com_google_protobuf//:field_mask_proto",
         "@com_google_protobuf//:timestamp_proto",
+        "@gogo_special_proto//github.com/gogo/protobuf/gogoproto",
     ],
 )
 
 go_proto_library(
     name = "accounts_go_proto",
     compilers = [
-        "@io_bazel_rules_go//proto:go_grpc",
-        "@io_bazel_rules_go//proto:go_proto_validate",  # keep
+        "@io_bazel_rules_go//proto:gogo_grpc",
     ],
     importpath = "github.com/mennanov/scalemate/accounts/accounts_proto",
     proto = ":accounts_proto_proto",
     visibility = ["//visibility:public"],
-    deps = [
-        "//shared/proto:go_default_library",
-        "@com_github_mwitkow_go_proto_validators//:go_default_library",  # keep
-    ],
 )
 
 go_library(

@@ -1,41 +1,33 @@
 load("@io_bazel_rules_go//go:def.bzl", "go_library")
 load("@io_bazel_rules_go//proto:def.bzl", "go_proto_library")
-load("@bazel_gomock//:gomock.bzl", "gomock")
+
+# gazelle:go_grpc_compilers @io_bazel_rules_go//proto:gogo_grpc
+# gazelle:go_proto_compilers @io_bazel_rules_go//proto:gogo_proto
+# gazelle:resolve proto proto github.com/gogo/protobuf/gogoproto/gogo.proto @gogo_special_proto//github.com/gogo/protobuf/gogoproto
+
+# TODO: figure out how to NOT ignore this file for Gazelle (fix deps for go_proto_library below).
+# gazelle:ignore
 
 proto_library(
     name = "scheduler_proto_proto",
     srcs = ["scheduler.proto"],
     visibility = ["//visibility:public"],
     deps = [
-        "//shared/proto:validator_proto",
         "@com_google_protobuf//:empty_proto",
         "@com_google_protobuf//:field_mask_proto",
         "@com_google_protobuf//:timestamp_proto",
+        "@gogo_special_proto//github.com/gogo/protobuf/gogoproto",
     ],
 )
 
 go_proto_library(
     name = "scheduler_go_proto",
     compilers = [
-        "@io_bazel_rules_go//proto:go_grpc",
-        "@io_bazel_rules_go//proto:go_proto_validate",  # keep
+        "@io_bazel_rules_go//proto:gogo_grpc",
     ],
     importpath = "github.com/mennanov/scalemate/scheduler/scheduler_proto",
     proto = ":scheduler_proto_proto",
     visibility = ["//visibility:public"],
-    deps = [
-        "//shared/proto:go_default_library",
-        "@com_github_mwitkow_go_proto_validators//:go_default_library",  # keep
-    ],
-)
-
-# gazelle:exclude scheduler_mock_test.go
-gomock(
-    name = "scheduler_proto_mock",
-    out = "scheduler_mock_test.go",
-    interfaces = ["SchedulerClient"],
-    library = ":scheduler_go_proto",
-    package = "scheduler",
 )
 
 go_library(

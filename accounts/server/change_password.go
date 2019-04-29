@@ -3,7 +3,11 @@ package server
 import (
 	"context"
 
-	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/go-ozzo/ozzo-validation"
+	"github.com/gogo/protobuf/types"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
 
@@ -17,13 +21,20 @@ import (
 func (s AccountsServer) ChangePassword(
 	ctx context.Context,
 	r *accounts_proto.ChangePasswordRequest,
-) (*empty.Empty, error) {
+) (*types.Empty, error) {
+	if err := validation.ValidateStruct(r,
+		validation.Field(&r.Username, validation.Required, validation.Match(UsernameRegExp)),
+		validation.Field(&r.Password, validation.Required, validation.Length(8, 64)),
+	); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	user, err := models.UserLookUp(s.db, &accounts_proto.UserLookupRequest{
 		Request: &accounts_proto.UserLookupRequest_Username{Username: r.Username}})
 	if err != nil {
 		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
-	if err := checkUserPermissions(ctx, user.Username); err != nil {
+	if err := claimsUsernameEqual(ctx, user.Username); err != nil {
 		return nil, err
 	}
 	tx, err := s.db.Beginx()
@@ -38,5 +49,5 @@ func (s AccountsServer) ChangePassword(
 		return nil, errors.Wrap(err, "CommitAndPublish failed")
 	}
 
-	return &empty.Empty{}, nil
+	return &types.Empty{}, nil
 }

@@ -2,15 +2,16 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
-	"github.com/golang/protobuf/ptypes"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
-	"google.golang.org/genproto/protobuf/field_mask"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -28,130 +29,40 @@ const (
 	ListContainersMaxLimit = 300
 )
 
-// Container defines a Container gorm model.
+// Container defines a Container model.
 type Container struct {
-	utils.Model
-	Node           *Node
-	NodeID         *uint64    `gorm:"index" sql:"type:integer REFERENCES nodes(id)"`
-	Username       string     `gorm:"type:varchar(32);index"`
-	Status         utils.Enum `gorm:"type:smallint;not null"`
-	StatusMessage  string
-	Image          string
-	CpuClassMin    utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	CpuClassMax    utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	GpuClassMin    utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	GpuClassMax    utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	DiskClassMin   utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	DiskClassMax   utils.Enum `gorm:"type:smallint;index:idx_hdw_class"`
-	AgentAuthToken []byte
-	Labels         []*ContainerLabel
+	scheduler_proto.Container
+	Node *Node
 }
 
 // ContainerLabel is a Container's label.
 type ContainerLabel struct {
-	ContainerID uint64 `gorm:"primary_key" sql:"type:integer REFERENCES containers(id)"`
-	Label       string `gorm:"primary_key"`
+	ContainerId uint32
+	Label       string
 }
 
 // Create inserts a new ContainerLabel in DB.
-func (c *ContainerLabel) Create(db *gorm.DB) error {
-	return utils.HandleDBError(db.Create(c))
+func (c *ContainerLabel) Create(db sqlx.Execer) error {
+	_, err := db.Exec("INSERT INTO container_labels (container_id, label) VALUES ($1, $2)", c.ContainerId, c.Label)
+	return utils.HandleDBError(err)
 }
 
 // NewContainerFromProto creates a new instance of Container populated from the given proto message.
-func NewContainerFromProto(p *scheduler_proto.Container) (*Container, error) {
-	container := &Container{
-		Model: utils.Model{
-			ID: p.Id,
-		},
-		Username:       p.Username,
-		Status:         utils.Enum(p.Status),
-		StatusMessage:  p.StatusMessage,
-		Image:          p.Image,
-		CpuClassMin:    utils.Enum(p.CpuClassMin),
-		CpuClassMax:    utils.Enum(p.CpuClassMax),
-		GpuClassMin:    utils.Enum(p.GpuClassMin),
-		GpuClassMax:    utils.Enum(p.GpuClassMax),
-		DiskClassMin:   utils.Enum(p.DiskClassMin),
-		DiskClassMax:   utils.Enum(p.DiskClassMax),
-		AgentAuthToken: p.AgentAuthToken,
-	}
-
-	if p.NodeId != 0 {
-		container.NodeID = &p.NodeId
-	}
-
-	if p.CreatedAt != nil {
-		createdAt, err := ptypes.Timestamp(p.CreatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
-		}
-		container.CreatedAt = createdAt
-	}
-
-	if p.UpdatedAt != nil {
-		updatedAt, err := ptypes.Timestamp(p.UpdatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.Timestamp failed")
-		}
-		container.UpdatedAt = &updatedAt
-	}
-
-	for _, label := range p.Labels {
-		container.Labels = append(container.Labels, &ContainerLabel{ContainerID: container.ID, Label: label})
-	}
-
-	return container, nil
+func NewContainerFromProto(p *scheduler_proto.Container) *Container {
+	return &Container{Container: *p}
 }
 
 // ToProto populates the given `*scheduler_proto.Container` with the contents of the Container.
-func (c *Container) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.Container, error) {
-	p := &scheduler_proto.Container{
-		Id:             c.ID,
-		Username:       c.Username,
-		Status:         scheduler_proto.Container_Status(c.Status),
-		StatusMessage:  c.StatusMessage,
-		Image:          c.Image,
-		CpuClassMin:    scheduler_proto.CPUClass(c.CpuClassMin),
-		CpuClassMax:    scheduler_proto.CPUClass(c.CpuClassMax),
-		GpuClassMin:    scheduler_proto.GPUClass(c.GpuClassMin),
-		GpuClassMax:    scheduler_proto.GPUClass(c.GpuClassMax),
-		DiskClassMin:   scheduler_proto.DiskClass(c.DiskClassMin),
-		DiskClassMax:   scheduler_proto.DiskClass(c.DiskClassMax),
-		AgentAuthToken: c.AgentAuthToken,
-	}
-
-	if c.NodeID != nil {
-		p.NodeId = *c.NodeID
-	}
-
-	if !c.CreatedAt.IsZero() {
-		createdAt, err := ptypes.TimestampProto(c.CreatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
-		}
-		p.CreatedAt = createdAt
-	}
-
-	if c.UpdatedAt != nil {
-		updatedAt, err := ptypes.TimestampProto(*c.UpdatedAt)
-		if err != nil {
-			return nil, errors.Wrap(err, "ptypes.TimestampProto failed")
-		}
-		p.UpdatedAt = updatedAt
-	}
-
-	for _, label := range c.Labels {
-		p.Labels = append(p.Labels, label.Label)
-	}
+func (c *Container) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Container, error) {
+	p := &c.Container
 
 	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask, generator.CamelCase)
+		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask., generator.CamelCase)
 		if err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 		}
 		// Always include Container ID regardless of the mask.
-		protoFiltered := &scheduler_proto.Container{Id: c.ID}
+		protoFiltered := &scheduler_proto.Container{Id: c.Id}
 		if err := fieldmask_utils.StructToStruct(mask, p, protoFiltered); err != nil {
 			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 		}
@@ -162,14 +73,33 @@ func (c *Container) ToProto(fieldMask *field_mask.FieldMask) (*scheduler_proto.C
 }
 
 // Create inserts a new Container in DB and returns the corresponding event.
-func (c *Container) Create(db *gorm.DB) (*events_proto.Event, error) {
-	if err := utils.HandleDBError(db.Create(c)); err != nil {
-		return nil, err
+func (c *Container) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
+	if err := db.Get(c,
+		`INSERT INTO containers (
+	username, 
+	status, 
+	image, 
+	cpu_class_min, cpu_class_max, 
+	gpu_class_min, gpu_class_max, 
+	disk_class_min, disk_class_max, 
+	agent_auth_token) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+		c.Username,
+		fmt.Sprintf("%d", c.Status),
+		c.Image,
+		c.CpuClassMin, c.CpuClassMax,
+		c.GpuClassMin, c.GpuClassMax,
+		c.DiskClassMin, c.DiskClassMax,
+		c.AgentAuthToken,
+	); err != nil {
+		return nil, utils.HandleDBError(err)
 	}
 	for _, label := range c.Labels {
-		fmt.Println("label.Create for:", label)
-		if err := label.Create(db); err != nil {
-			return nil, errors.Wrap(err, "label.Create failed")
+		containerLabel := &ContainerLabel{
+			ContainerId: c.Id,
+			Label:       label,
+		}
+		if err := containerLabel.Create(db); err != nil {
+			return nil, errors.Wrap(err, "containerLabel.Create failed")
 		}
 	}
 	containerProto, err := c.ToProto(nil)
@@ -178,39 +108,49 @@ func (c *Container) Create(db *gorm.DB) (*events_proto.Event, error) {
 	}
 	event, err := events.NewEvent(containerProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "events.NewEvent failed")
 	}
 	return event, nil
 }
 
 // LoadFromDB performs a lookup by ID and populates the struct.
-func (c *Container) LoadFromDB(db *gorm.DB, fields ...string) error {
-	if c.ID == 0 {
+func (c *Container) LoadFromDB(db utils.SqlxExtGetter, logger *logrus.Logger) error {
+	if c.Id == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't lookup Container with no ID"))
 	}
-	if len(fields) > 0 {
-		db = db.Select(fields)
-	}
-	if err := utils.HandleDBError(db.First(c, c.ID)); err != nil {
+	if err := utils.HandleDBError(db.Get(c, "SELECT * FROM containers WHERE id = $1", c.Id)); err != nil {
 		return errors.Wrap(err, "failed to select Container from DB")
 	}
-	if err := c.LoadLabelsFromDB(db); err != nil {
+	if err := c.LoadLabelsFromDB(db, logger); err != nil {
 		return errors.Wrap(err, "container.LoadLabelsFromDB failed")
 	}
 	return nil
 }
 
 // LoadFromDBForUpdate is similar to LoadFromDB(), but locks the Container's row FOR UPDATE.
-func (c *Container) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
-	return c.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
-}
+//func (c *Container) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
+//	return c.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
+//}
 
 // LoadLabelsFromDB loads the corresponding ContainerLabels to the Labels field.
-func (c *Container) LoadLabelsFromDB(db *gorm.DB) error {
-	if c.ID == 0 {
+func (c *Container) LoadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
+	if c.Id == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "Container is not saved in DB"))
 	}
-	return utils.HandleDBError(db.Where("container_id = ?", c.ID).Find(&c.Labels))
+	rows, err := db.Queryx("SELECT label FROM container_labels WHERE container_id = $1", c.Id)
+	if err != nil {
+		return utils.HandleDBError(err)
+	}
+	defer utils.Close(rows, logger)
+
+	var label string
+	for rows.Next() {
+		if err := rows.Scan(&label); err != nil {
+			return errors.Wrap(err, "rows.Scan failed")
+		}
+		c.Labels = append(c.Labels, label)
+	}
+	return nil
 }
 
 // ContainerStatusTransitions defined possible Container status transitions.
@@ -238,19 +178,21 @@ var ContainerStatusTransitions = map[scheduler_proto.Container_Status][]schedule
 }
 
 // UpdateStatus updates the Container's status.
-func (c *Container) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Container_Status) (*events_proto.Event, error) {
-	if c.ID == 0 {
+func (c *Container) UpdateStatus(
+	db utils.SqlxNamedQuery,
+	newStatus scheduler_proto.Container_Status,
+	logger *logrus.Logger,
+) (*events_proto.Event, error) {
+	if c.Id == 0 {
 		return nil, status.Error(codes.FailedPrecondition, "can't update status for an unsaved Container")
 	}
 	// Validate the containerStatus transition.
 	containerStatus := scheduler_proto.Container_Status(c.Status)
 	for _, s := range ContainerStatusTransitions[containerStatus] {
 		if s == newStatus {
-			now := time.Now().UTC()
 			return c.Update(db, map[string]interface{}{
-				"status":     utils.Enum(newStatus),
-				"updated_at": &now,
-			})
+				"status": fmt.Sprintf("%d", newStatus),
+			}, logger)
 		}
 	}
 	return nil, status.Errorf(codes.FailedPrecondition, "container with status %s can't be updated to %s",
@@ -259,14 +201,34 @@ func (c *Container) UpdateStatus(db *gorm.DB, newStatus scheduler_proto.Containe
 
 // Update performs an UPDATE SqlxGetter query for the Container fields given in the `updates` argument and returns a
 // corresponding event.
-func (c *Container) Update(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
-	if c.ID == 0 {
-		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Container"))
+func (c *Container) Update(
+	db utils.SqlxNamedQuery,
+	updates map[string]interface{},
+	logger *logrus.Logger,
+) (*events_proto.Event, error) {
+	if c.Id == 0 {
+		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update unsaved Container"))
 	}
-	if err := utils.HandleDBError(db.Model(c).Updates(updates)); err != nil {
-		return nil, errors.Wrap(err, "failed to update a Container")
+	keys := make([]string, len(updates))
+	i := 0
+	for k := range updates {
+		keys[i] = fmt.Sprintf("%s=:%s", k, k)
+		i++
 	}
-	fieldMask := &field_mask.FieldMask{Paths: mapKeys(updates)}
+	rows, err := db.NamedQuery(fmt.Sprintf(
+		"UPDATE containers SET %s WHERE id = %d RETURNING *", strings.Join(keys, ", "), c.Id), updates)
+	if err != nil {
+		return nil, utils.HandleDBError(err)
+	}
+	defer utils.Close(rows, logger)
+
+	for rows.Next() {
+		if err := rows.StructScan(c); err != nil {
+			return nil, errors.Wrap(err, "rows.StructScan failed")
+		}
+	}
+
+	fieldMask := &types.FieldMask{Paths: mapKeys(updates)}
 	containerProto, err := c.ToProto(fieldMask)
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")

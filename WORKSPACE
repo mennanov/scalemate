@@ -278,3 +278,15 @@ go_repository(
     commit = "8a6fb523712970c966eefc6b39ed2c5e74880354",
     importpath = "github.com/hashicorp/errwrap",
 )
+
+go_repository(
+    name = "com_github_go_ozzo_ozzo_validation",
+    commit = "2f76ea62300c36e72bd56c804484cb6db53b69a5",
+    importpath = "github.com/go-ozzo/ozzo-validation",
+)
+
+go_repository(
+    name = "com_github_asaskevich_govalidator",
+    commit = "f61b66f89f4a311bef65f13e575bcf1a2ffadda6",
+    importpath = "github.com/asaskevich/govalidator",
+)

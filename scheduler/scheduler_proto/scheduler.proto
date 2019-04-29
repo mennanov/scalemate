@@ -6,8 +6,7 @@ option go_package = "github.com/mennanov/scalemate/scheduler/scheduler_proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
-
-import "shared/proto/validator.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 service Scheduler {
     // CreateContainer creates a new Container entity in the service.
@@ -85,9 +84,9 @@ enum DiskClass {
 // Container represents an LXC container on a Node.
 message Container {
     // Readonly.
-    uint32 id = 1 [(shared.proto.validator.field) = {int_lt: 1}];
-    uint32 node_id = 2 [(shared.proto.validator.field) = {int_lt: 1}];
-    string username = 3 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    uint32 id = 1;
+    uint32 node_id = 2;
+    string username = 3;
 
     enum Status {
         // Default status value.
@@ -110,12 +109,12 @@ message Container {
         FAILED = 7;
     }
     // Readonly.
-    Status status = 4 [(shared.proto.validator.field) = {int_lt: 1}];
+    Status status = 4;
     // Readonly.
-    string status_message = 5 [(shared.proto.validator.field) = {length_lt: 1}];
+    string status_message = 5;
 
     // Public LXD image. See https://us.images.linuxcontainers.org for the full list.
-    string image = 6 [(shared.proto.validator.field) = {length_gt: 1}];
+    string image = 6;
 
     // Hardware requirements range.
     CPUClass cpu_class_min = 13;
@@ -126,9 +125,9 @@ message Container {
     DiskClass disk_class_max = 18;
 
     // Readonly.
-    google.protobuf.Timestamp created_at = 19;
+    google.protobuf.Timestamp created_at = 19 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
     // Readonly.
-    google.protobuf.Timestamp updated_at = 20;
+    google.protobuf.Timestamp updated_at = 20 [(gogoproto.stdtime) = true];
 
     // Scheduling constraint labels (regexp supported).
     // The Container will only be scheduled to the Node which labels match these labels.
@@ -140,22 +139,22 @@ message Container {
 // Container resources limit(s).
 message Limit {
     // Readonly.
-    uint32 id = 1 [(shared.proto.validator.field) = {int_lt: 1}];
+    uint32 id = 1;
     // Readonly.
-    uint32 container_id = 2 [(shared.proto.validator.field) = {int_lt: 1}];
+    uint32 container_id = 2;
 
     // Number of CPUs to expose to the container.
-    uint32 cpu = 3 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 cpu = 3;
     // Memory limit in MB.
-    uint32 memory = 4 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 memory = 4;
     // Disk (rootfs) limit in MB.
-    uint32 disk = 5 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 disk = 5;
     // Number of GPUs to expose to the container.
     uint32 gpu = 6;
     // Network incoming traffic speed limit in Mbit/sec.
-    uint32 network_ingress = 7 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 network_ingress = 7;
     // Network outgoing traffic speed limit in Mbit/sec.
-    uint32 network_egress = 8 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 network_egress = 8;
 
     enum Status {
         // Limits are requested to be applied to the container.
@@ -165,14 +164,14 @@ message Limit {
         // Limits are declined (not enough resources, etc...).
         DECLINED = 2;
     }
-    Status status = 9 [(shared.proto.validator.field) = {int_lt: 1}];
+    Status status = 9;
     // Error message for the DECLINED status.
-    string status_message = 10 [(shared.proto.validator.field) = {length_lt: 1}];
+    string status_message = 10;
 
     // Readonly fields.
-    google.protobuf.Timestamp created_at = 11;
-    google.protobuf.Timestamp updated_at = 12;
-    google.protobuf.Timestamp confirmed_at = 13;
+    google.protobuf.Timestamp created_at = 11 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+    google.protobuf.Timestamp updated_at = 12 [(gogoproto.stdtime) = true];
+    google.protobuf.Timestamp confirmed_at = 13 [(gogoproto.stdtime) = true];
 }
 
 message ReceiveContainerLimitsUpdatesRequest {
@@ -182,8 +181,8 @@ message ReceiveContainerLimitsUpdatesRequest {
 // Node represents a physical machine that runs Containers.
 message Node {
     uint32 id = 1;
-    string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
-    string name = 3 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    string username = 2;
+    string name = 3;
 
     enum Status {
         // Node is offline and is not able to run Containers.
@@ -197,27 +196,27 @@ message Node {
     Status status = 4;
 
     // The number of CPUs the node has.
-    uint32 cpu_capacity = 5 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 cpu_capacity = 5;
     // The number of CPUs available for scheduling.
     uint32 cpu_available = 6;
-    CPUClass cpu_class = 7 [(shared.proto.validator.field) = {msg_exists: true}];
+    CPUClass cpu_class = 7;
 
     // Node's RAM capacity in Megabytes available for scheduling.
-    uint32 memory_capacity = 8 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 memory_capacity = 8;
     // Node's RAM in Megabytes available for scheduling.
-    uint32 memory_available = 9 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 memory_available = 9;
 
     // The number of GPU devices the Node has.
     uint32 gpu_capacity = 10;
     // The number of GPU devices available for scheduling.
     uint32 gpu_available = 11;
-    GPUClass gpu_class = 12 [(shared.proto.validator.field) = {msg_exists: true}];
+    GPUClass gpu_class = 12;
 
     // Node's disk capacity in Megabytes available for scheduling.
     uint32 disk_capacity = 13;
     // Node's disk in Megabytes available for scheduling.
     uint32 disk_available = 14;
-    DiskClass disk_class = 15 [(shared.proto.validator.field) = {msg_exists: true}];
+    DiskClass disk_class = 15;
     // Node's max incoming traffic speed in Mbit/sec.
     uint32 network_ingress_capacity = 16;
     // Node's max outgoing traffic speed in Mbit/sec.
@@ -237,11 +236,11 @@ message Node {
     // The most recent disconnect time.
     google.protobuf.Timestamp disconnected_at = 22;
     // The most recent time a Container was scheduled on this Node.
-    google.protobuf.Timestamp last_scheduled_at = 23;
+    google.protobuf.Timestamp last_scheduled_at = 23 [(gogoproto.stdtime) = true];
 
     // Time this Node was initially registered.
-    google.protobuf.Timestamp created_at = 24;
-    google.protobuf.Timestamp updated_at = 25;
+    google.protobuf.Timestamp created_at = 24 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+    google.protobuf.Timestamp updated_at = 25 [(gogoproto.stdtime) = true];
 
     // Public IPv4 address.
     bytes ipv4_address = 26;
@@ -249,7 +248,7 @@ message Node {
 }
 
 message NodeLookupRequest {
-    uint32 node_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 node_id = 1;
 }
 
 message ListNodesRequest {
@@ -267,16 +266,16 @@ message ListNodesRequest {
     Ordering ordering = 2;
 
     // Limit of 50 is used by default.
-    uint32 limit = 3 [(shared.proto.validator.field) = {int_lt: 301}];
+    uint32 limit = 3;
     uint32 offset = 4;
 
     // Matches Nodes with cpu_available >= given value.
-    float cpu_available = 5 [(shared.proto.validator.field) = {float_gte: 0}];
+    float cpu_available = 5;
     // Matches Nodes with cpu_class_min <= given value <= cpu_class.
     CPUClass cpu_class = 6;
 
     // Matches Nodes with memory_available >= given value.
-    uint32 memory_available = 7 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 memory_available = 7;
 
     // Matches Nodes with gpu_available >= given value.
     uint32 gpu_available = 8;
@@ -308,7 +307,7 @@ message ContainerWithLimit {
 }
 
 message ContainerLookupRequest {
-    uint32 container_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 container_id = 1;
 }
 
 message ContainerUpdate {
@@ -329,7 +328,7 @@ message ContainerUpdate {
 }
 
 message ListLimitsRequest {
-    uint32 container_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 container_id = 1;
     repeated Limit.Status status = 2;
 
     enum Ordering {
@@ -342,7 +341,7 @@ message ListLimitsRequest {
     Ordering ordering = 3;
 
     // Limit of 50 is used by default.
-    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 301}];
+    uint32 limit = 4;
     uint32 offset = 5;
 }
 
@@ -352,7 +351,7 @@ message ListLimitsResponse {
 }
 
 message ListContainersRequest {
-    string username = 1 [(shared.proto.validator.field) = {regex: "^([a-z0-9_]{3,32})$"}];
+    string username = 1;
     repeated Container.Status status = 2;
 
     enum Ordering {
@@ -365,12 +364,12 @@ message ListContainersRequest {
     Ordering ordering = 3;
 
     // Limit of 50 is used by default.
-    uint32 limit = 4 [(shared.proto.validator.field) = {int_lt: 301}];
+    uint32 limit = 4;
     uint32 offset = 5;
 }
 
 message AddLimitsRequest {
-    uint32 container_id = 1 [(shared.proto.validator.field) = {int_gt: 0}];
+    uint32 container_id = 1;
     Limit limits = 2;
     google.protobuf.FieldMask updated_fields = 3;
 }

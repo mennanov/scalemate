@@ -4,51 +4,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"google.golang.org/grpc/codes"
 
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 
 	"github.com/mennanov/scalemate/accounts/models"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
-
-func (s *ModelsTestSuite) TestUser_NewUserFromProto_ToProto() {
-	for _, userProtoTest := range []*accounts_proto.User{
-		{
-			Id:       42,
-			Username: "username",
-			Email:    "email@mail.com",
-			Banned:   false,
-			CreatedAt: &timestamp.Timestamp{
-				Seconds: 1,
-				Nanos:   2,
-			},
-			UpdatedAt: &timestamp.Timestamp{
-				Seconds: 2,
-				Nanos:   2,
-			},
-			PasswordChangedAt: &timestamp.Timestamp{
-				Seconds: 3,
-				Nanos:   2,
-			},
-		},
-		{
-			Id:       42,
-			Username: "username",
-			Email:    "email@mail.com",
-			Banned:   true,
-			CreatedAt: &timestamp.Timestamp{
-				Seconds: 1,
-				Nanos:   2,
-			},
-		},
-	} {
-		userFromProto, err := models.NewUserFromProto(userProtoTest)
-		s.Require().NoError(err)
-		userProto, err := userFromProto.ToProto(nil)
-		s.Require().NoError(err)
-		s.Equal(userProtoTest, userProto)
-	}
-}
 
 func (s *ModelsTestSuite) TestUser_SetPasswordHash_ComparePassword() {
 	user := new(models.User)
@@ -60,15 +20,19 @@ func (s *ModelsTestSuite) TestUser_SetPasswordHash_ComparePassword() {
 func (s *ModelsTestSuite) TestUser_Create_Lookup() {
 	for _, userTest := range []*models.User{
 		{
-			Username:     "username",
-			Email:        "email@mail.com",
-			Banned:       false,
+			User: accounts_proto.User{
+				Username: "username",
+				Email:    "email@mail.com",
+				Banned:   false,
+			},
 			PasswordHash: []byte("password"),
 		},
 		{
-			Username:     "username2",
-			Email:        "email2@mail.com",
-			Banned:       true,
+			User: accounts_proto.User{
+				Username: "username2",
+				Email:    "email2@mail.com",
+				Banned:   true,
+			},
 			PasswordHash: []byte("password"),
 		},
 	} {
@@ -89,7 +53,7 @@ func (s *ModelsTestSuite) TestUser_Create_Lookup() {
 			},
 			{
 				Request: &accounts_proto.UserLookupRequest_Id{
-					Id: userTest.ID,
+					Id: userTest.Id,
 				},
 			},
 		} {
@@ -100,7 +64,7 @@ func (s *ModelsTestSuite) TestUser_Create_Lookup() {
 			// A lookup for a non-existing user fails.
 			u, err := models.UserLookUp(s.db, &accounts_proto.UserLookupRequest{
 				Request: &accounts_proto.UserLookupRequest_Id{
-					Id: userTest.ID + 1,
+					Id: userTest.Id + 1,
 				},
 			})
 			testutils.AssertErrorCode(s.T(), err, codes.NotFound)
@@ -110,18 +74,18 @@ func (s *ModelsTestSuite) TestUser_Create_Lookup() {
 		_, err = userTest.Create(s.db)
 		testutils.AssertErrorCode(s.T(), err, codes.FailedPrecondition)
 		// The same user can not be created again (hits the DB).
-		userTest.ID = 0
+		userTest.Id = 0
 		_, err = userTest.Create(s.db)
 		testutils.AssertErrorCode(s.T(), err, codes.AlreadyExists)
 	}
 }
 
 func (s *ModelsTestSuite) TestUser_ChangePassword() {
-	user := &models.User{
+	user := models.NewUserFromProto(&accounts_proto.User{
 		Username: "username",
 		Email:    "email@mail.com",
 		Banned:   false,
-	}
+	})
 	s.Require().NoError(user.SetPasswordHash("password", bcrypt.MinCost))
 	_, err := user.Create(s.db)
 	s.Require().NoError(err)

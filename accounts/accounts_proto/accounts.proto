@@ -5,9 +5,7 @@ option go_package = "github.com/mennanov/scalemate/accounts/accounts_proto";
 
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
-import "google/protobuf/field_mask.proto";
-
-import "shared/proto/validator.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 service Accounts {
     // Register registers a new User account. This method should be used to create a new User account.
@@ -29,17 +27,17 @@ service Accounts {
 
 message User {
     // Readonly.
-    uint32 id = 1 [(shared.proto.validator.field) = {int_lt: 1}];
+    uint32 id = 1;
     // Unique username.
-    string username = 2 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
+    string username = 2;
     // Unique email.
-    string email = 3 [(shared.proto.validator.field) = {regex: "^((.+@.+)|)$", length_lt: 101}];
+    string email = 3;
     // Indicates if the User is banned.
     bool banned = 4;
     // Datetime fields are ignored in CRUD operations requests.
-    google.protobuf.Timestamp created_at = 5;
-    google.protobuf.Timestamp updated_at = 6;
-    google.protobuf.Timestamp password_changed_at = 7;
+    google.protobuf.Timestamp created_at = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+    google.protobuf.Timestamp updated_at = 6 [(gogoproto.stdtime) = true];
+    google.protobuf.Timestamp password_changed_at = 7 [(gogoproto.stdtime) = true];
 }
 
 message UserLookupRequest {
@@ -53,27 +51,27 @@ message UserLookupRequest {
 
 message ChangePasswordRequest {
     // Username must match the username in JWT for this request.
-    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
-    string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+    string username = 1;
+    string password = 2;
 }
 
 message RegisterRequest {
-    string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
-    string email = 2 [(shared.proto.validator.field) = {regex: "^.+@.+$", length_lt: 101}];
-    string password = 3 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+    string username = 1;
+    string email = 2;
+    string password = 3;
 }
 
 message PasswordAuthRequest {
     message UserAuthRequest {
-        string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
-        string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
+        string username = 1;
+        string password = 2;
     }
 
     message NodeAuthRequest {
-        string username = 1 [(shared.proto.validator.field) = {regex: "^[a-z0-9_]{3,32}$"}];
-        string password = 2 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 7}];
-        string node_name = 3 [(shared.proto.validator.field) = {regex: "^(([a-z0-9_]{3,32})|)$"}];
-        bytes node_fingerprint = 4 [(shared.proto.validator.field) = {msg_exists: true, length_gt: 1}];
+        string username = 1;
+        string password = 2;
+        string node_name = 3;
+        bytes node_fingerprint = 4;
     }
 
     oneof request {
@@ -83,10 +81,10 @@ message PasswordAuthRequest {
 }
 
 message TokenAuthRequest {
-    string refresh_token = 2 [(shared.proto.validator.field) = {msg_exists: true}];
+    string refresh_token = 2;
 }
 
 message AuthTokens {
-    string access_token = 1 [(shared.proto.validator.field) = {msg_exists: true}];
-    string refresh_token = 2 [(shared.proto.validator.field) = {msg_exists: true}];
+    string access_token = 1;
+    string refresh_token = 2;
 }
