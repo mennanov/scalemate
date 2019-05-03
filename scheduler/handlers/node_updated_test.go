@@ -64,8 +64,7 @@ func (s *HandlersTestSuite) TestNodeUpdatedHandler_SchedulesPendingJobs() {
 	}
 	nodeProto, err := node.ToProto(mask)
 	s.Require().NoError(err)
-	eventProto, err := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
-	s.Require().NoError(err)
+	eventProto := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, mask)
 
 	producer := events.NewFakeProducer()
 	handler := handlers.NewNodeUpdatedHandler("handlerName", s.db, producer, s.logger)

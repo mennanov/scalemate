@@ -118,4 +118,3 @@ func TruncateTables(db sqlx.Ext) {
 	}
 
 }
-

@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/mennanov/scalemate/scheduler/bitarray"
+	"github.com/mennanov/scalemate/shared/utils/bitarray"
 )
 
 // AvailableResources is a representation of resources constraints used for Containers selection.
@@ -13,7 +13,7 @@ type AvailableResources struct {
 }
 
 type selectLimitsCacheKey struct {
-	index uint64
+	index uint16
 	res   AvailableResources
 }
 
@@ -27,8 +27,8 @@ func SelectLimits(limits []Limit, res AvailableResources) *bitarray.BitArray {
 	return selectLimits(limits, res, 0, make(map[selectLimitsCacheKey]*bitarray.BitArray))
 }
 
-func selectLimits(limits []Limit, res AvailableResources, i uint64, cache selectLimitsCache) *bitarray.BitArray {
-	n := uint64(len(limits))
+func selectLimits(limits []Limit, res AvailableResources, i uint16, cache selectLimitsCache) *bitarray.BitArray {
+	n := uint16(len(limits))
 	if n == 0 {
 		return nil
 	}
@@ -57,7 +57,7 @@ func selectLimits(limits []Limit, res AvailableResources, i uint64, cache select
 		limitsWithoutCurrent = selectLimits(limits, res, i+1, cache)
 	}
 
-	max := bitarray.MaxBitArray(limitsWithCurrent, limitsWithoutCurrent)
+	max := bitarray.Max(limitsWithCurrent, limitsWithoutCurrent)
 	cache[selectLimitsCacheKey{index: i, res: res}] = max
 	return max
 }

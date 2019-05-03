@@ -16,3 +16,4 @@ services:
 
   scheduler-db:
     image: postgres:11
+    command: postgres -c 'log_statement=all'

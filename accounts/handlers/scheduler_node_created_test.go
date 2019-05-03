@@ -50,8 +50,7 @@ func (s *HandlersTestSuite) TestSchedulerNodeCreatedHandler_Handle() {
 		Name:     "node_name",
 		Fingerprint: []byte("fingerprint"),
 	}
-	event, err := events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
-	s.Require().NoError(err)
+	event := events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
 
 	s.Require().NoError(handler.Handle(event))
 

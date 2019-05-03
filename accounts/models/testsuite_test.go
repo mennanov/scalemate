@@ -43,7 +43,7 @@ func (s *ModelsTestSuite) SetupSuite() {
 	s.Require().NoError(m.Up())
 }
 
-func (s *ModelsTestSuite) TearDownTest() {
+func (s *ModelsTestSuite) SetupTest() {
 	testutils.TruncateTables(s.db)
 }
 

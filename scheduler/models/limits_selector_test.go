@@ -3,150 +3,120 @@ package models
 import (
 	"testing"
 
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_SelectJobs(t *testing.T) {
+func Test_SelectLimits(t *testing.T) {
 	for _, testCase := range []struct {
-		jobs         []Container
-		res          AvailableResources
-		jobsExpected uint64
+		limits         []Limit
+		res            AvailableResources
+		limitsExpected []uint16
 	}{
 		{
-			jobs: []Container{
+			limits: []Limit{},
+			res: AvailableResources{
+				Cpu: 2,
+				Gpu: 2,
+			},
+			limitsExpected: []uint16{},
+		},
+		{
+			limits: []Limit{
 				{
-					CpuLimit: 2,
-				},
-				{
-					CpuLimit: 1.5,
-				},
-				{
-					CpuLimit: 0.5,
-				},
-				{
-					CpuLimit: 0.5,
+					Limit: scheduler_proto.Limit{
+						Cpu: 2,
+						Gpu: 2,
+					},
 				},
 			},
 			res: AvailableResources{
-				Cpu: 2.5,
+				Cpu: 2,
+				Gpu: 2,
 			},
-			jobsExpected: 3,
+			limitsExpected: []uint16{0},
 		},
 		{
-			jobs: []Container{
+			limits: []Limit{
 				{
-					CpuLimit: 2,
+					Limit: scheduler_proto.Limit{
+						Cpu: 2,
+						Gpu: 2,
+					},
 				},
 				{
-					CpuLimit: 1.5,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 1,
+					},
 				},
 				{
-					CpuLimit: 0.5,
-				},
-				{
-					CpuLimit: 0.25,
-				},
-				{
-					CpuLimit: 1.0,
-				},
-				{
-					CpuLimit: 0.25,
-				},
-				{
-					CpuLimit: 0.5,
-				},
-				{
-					CpuLimit: 0.1,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 1,
+					},
 				},
 			},
 			res: AvailableResources{
-				Cpu: 1.5,
+				Cpu: 2,
+				Gpu: 2,
 			},
-			jobsExpected: 4,
+			limitsExpected: []uint16{1, 2},
 		},
 		{
-			jobs: []Container{
+			limits: []Limit{
 				{
-					CpuLimit: 2,
+					Limit: scheduler_proto.Limit{
+						Cpu: 2,
+						Gpu: 1,
+					},
 				},
 				{
-					CpuLimit: 1.5,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 2,
+					},
 				},
 				{
-					CpuLimit: 0.5,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 1,
+					},
 				},
 				{
-					CpuLimit: 0.25,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 0,
+					},
 				},
 				{
-					CpuLimit: 1.0,
+					Limit: scheduler_proto.Limit{
+						Cpu: 0,
+						Gpu: 1,
+					},
 				},
 				{
-					CpuLimit: 0.25,
-				},
-				{
-					CpuLimit: 0.5,
-				},
-				{
-					CpuLimit: 0.1,
-				},
-				{
-					CpuLimit: 0.2,
-				},
-				{
-					CpuLimit: 0.2,
+					Limit: scheduler_proto.Limit{
+						Cpu: 1,
+						Gpu: 1,
+					},
 				},
 			},
 			res: AvailableResources{
-				Cpu: 1.5,
+				Cpu: 4,
+				Gpu: 4,
 			},
-			jobsExpected: 6,
-		},
-		{
-			jobs: []Container{
-				{
-					CpuLimit: 2,
-				},
-				{
-					CpuLimit: 1.5,
-				},
-				{
-					CpuLimit: 2.5,
-				},
-			},
-			res: AvailableResources{
-				Cpu: 1,
-			},
-			jobsExpected: 0,
-		},
-		{
-			jobs: []Container{
-				{
-					CpuLimit: 2,
-				},
-				{
-					CpuLimit: 1.5,
-				},
-				{
-					CpuLimit: 2.5,
-				},
-			},
-			res: AvailableResources{
-				Cpu: 1.5,
-			},
-			jobsExpected: 1,
-		},
-		{
-			jobs:         []Container{},
-			res:          AvailableResources{},
-			jobsExpected: 0,
+			limitsExpected: []uint16{2, 3, 4, 5},
 		},
 	} {
-		actualJobs := SelectJobs(testCase.jobs, testCase.res)
-		if testCase.jobsExpected == 0 {
-			assert.Nil(t, actualJobs)
+		actualLimits := SelectLimits(testCase.limits, testCase.res)
+		if len(testCase.limitsExpected) == 0 {
+			assert.Nil(t, actualLimits)
 		} else {
-			assert.Equal(t, testCase.jobsExpected, actualJobs.BitsSet)
+			require.Equal(t, len(testCase.limitsExpected), int(actualLimits.BitsSet))
+			assert.Equal(t, testCase.limitsExpected, actualLimits.SetBits())
+
 		}
 	}
 }

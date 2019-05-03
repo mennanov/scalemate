@@ -62,7 +62,7 @@ func (s *HandlersTestSuite) SetupSuite() {
 	s.Require().NoError(m.Up())
 }
 
-func (s *HandlersTestSuite) TearDownTest() {
+func (s *HandlersTestSuite) SetupTest() {
 	testutils.TruncateTables(s.db)
 }
 

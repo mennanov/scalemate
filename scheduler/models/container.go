@@ -1,10 +1,7 @@
 package models
 
 import (
-	"fmt"
-	"strings"
-	"time"
-
+	sq "github.com/Masterminds/squirrel"
 	"github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	"github.com/jmoiron/sqlx"
@@ -26,71 +23,94 @@ const (
 	// selected to be scheduled on a Node.
 	ContainersScheduledForNodeQueryLimit = 100
 	// ListContainersMaxLimit is a maximum allowed limit in the SqlxGetter query that lists Containers.
-	ListContainersMaxLimit = 300
+	ListContainersMaxLimit uint32 = 300
 )
+
+var psq = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 // Container defines a Container model.
 type Container struct {
 	scheduler_proto.Container
-	Node *Node
 }
 
-// ContainerLabel is a Container's label.
-type ContainerLabel struct {
-	ContainerId uint32
-	Label       string
-}
+// LoadFromDB performs a lookup by ID and populates the struct.
+func NewContainerFromDB(db utils.SqlxExtGetter, containerId int64, forUpdate bool, logger *logrus.Logger) (*Container, error) {
+	query := psq.Select("*").From("containers").Where(sq.Eq{"id": containerId})
+	if forUpdate {
+		query = query.Suffix("FOR UPDATE")
+	}
 
-// Create inserts a new ContainerLabel in DB.
-func (c *ContainerLabel) Create(db sqlx.Execer) error {
-	_, err := db.Exec("INSERT INTO container_labels (container_id, label) VALUES ($1, $2)", c.ContainerId, c.Label)
-	return utils.HandleDBError(err)
-}
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 
-// NewContainerFromProto creates a new instance of Container populated from the given proto message.
-func NewContainerFromProto(p *scheduler_proto.Container) *Container {
-	return &Container{Container: *p}
+	var container Container
+	if err := utils.HandleDBError(db.Get(&container, queryString, args...)); err != nil {
+		return nil, err
+	}
+	if err := container.loadLabelsFromDB(db, logger); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return &container, nil
 }
 
 // ToProto populates the given `*scheduler_proto.Container` with the contents of the Container.
 func (c *Container) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Container, error) {
-	p := &c.Container
-
-	if fieldMask != nil && len(fieldMask.Paths) != 0 {
-		mask, err := fieldmask_utils.MaskFromProtoFieldMask(fieldMask., generator.CamelCase)
-		if err != nil {
-			return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
-		}
-		// Always include Container ID regardless of the mask.
-		protoFiltered := &scheduler_proto.Container{Id: c.Id}
-		if err := fieldmask_utils.StructToStruct(mask, p, protoFiltered); err != nil {
-			return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
-		}
-		return protoFiltered, nil
+	if fieldMask == nil || len(fieldMask.Paths) == 0 {
+		return &c.Container, nil
 	}
 
-	return p, nil
+	mask, err := fieldmask_utils.MaskFromPaths(fieldMask.Paths, generator.CamelCase)
+	if err != nil {
+		return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
+	}
+	// Always include Container ID regardless of the mask.
+	protoFiltered := &scheduler_proto.Container{Id: c.Id}
+	if err := fieldmask_utils.StructToStruct(mask, &c.Container, protoFiltered); err != nil {
+		return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
+	}
+	return protoFiltered, nil
 }
 
 // Create inserts a new Container in DB and returns the corresponding event.
 func (c *Container) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
-	if err := db.Get(c,
-		`INSERT INTO containers (
-	username, 
-	status, 
-	image, 
-	cpu_class_min, cpu_class_max, 
-	gpu_class_min, gpu_class_max, 
-	disk_class_min, disk_class_max, 
-	agent_auth_token) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+	// NOT NULL columns are always used.
+	columns := []string{
+		"username",
+		"status", "status_message",
+		"image",
+		"agent_auth_token",
+		"cpu_class_min", "cpu_class_max",
+		"gpu_class_min", "gpu_class_max",
+		"disk_class_min", "disk_class_max",
+		"network_ingress_min", "network_egress_min",
+	}
+	values := []interface{}{
 		c.Username,
-		fmt.Sprintf("%d", c.Status),
+		int32(c.Status), c.StatusMessage,
 		c.Image,
+		c.AgentAuthToken,
 		c.CpuClassMin, c.CpuClassMax,
 		c.GpuClassMin, c.GpuClassMax,
 		c.DiskClassMin, c.DiskClassMax,
-		c.AgentAuthToken,
-	); err != nil {
+		c.NetworkIngressMin, c.NetworkEgressMin,
+	}
+	if c.Id != 0 {
+		columns = append(columns, "id")
+		values = append(values, c.Id)
+	}
+	if c.NodeId != nil {
+		columns = append(columns, "node_id")
+		values = append(values, *c.NodeId)
+	}
+	queryString, args, err := psq.Insert("containers").Columns(columns...).Values(values...).
+		Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	if err := db.Get(c, queryString, args...); err != nil {
 		return nil, utils.HandleDBError(err)
 	}
 	for _, label := range c.Labels {
@@ -106,43 +126,26 @@ func (c *Container) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) 
 	if err != nil {
 		return nil, errors.Wrap(err, "container.ToProto failed")
 	}
-	event, err := events.NewEvent(containerProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "events.NewEvent failed")
-	}
-	return event, nil
+	return events.NewEvent(containerProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil), nil
 }
 
-// LoadFromDB performs a lookup by ID and populates the struct.
-func (c *Container) LoadFromDB(db utils.SqlxExtGetter, logger *logrus.Logger) error {
-	if c.Id == 0 {
-		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't lookup Container with no ID"))
-	}
-	if err := utils.HandleDBError(db.Get(c, "SELECT * FROM containers WHERE id = $1", c.Id)); err != nil {
-		return errors.Wrap(err, "failed to select Container from DB")
-	}
-	if err := c.LoadLabelsFromDB(db, logger); err != nil {
-		return errors.Wrap(err, "container.LoadLabelsFromDB failed")
-	}
-	return nil
-}
-
-// LoadFromDBForUpdate is similar to LoadFromDB(), but locks the Container's row FOR UPDATE.
-//func (c *Container) LoadFromDBForUpdate(db *gorm.DB, fields ...string) error {
-//	return c.LoadFromDB(db.Set("gorm:query_option", "FOR UPDATE"), fields...)
-//}
-
-// LoadLabelsFromDB loads the corresponding ContainerLabels to the Labels field.
-func (c *Container) LoadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
+// loadLabelsFromDB loads the corresponding ContainerLabels to the Labels field.
+func (c *Container) loadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
 	if c.Id == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "Container is not saved in DB"))
 	}
-	rows, err := db.Queryx("SELECT label FROM container_labels WHERE container_id = $1", c.Id)
+	query, args, err := psq.Select("label").From("container_labels").Where(sq.Eq{"container_id": c.Id}).ToSql()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	rows, err := db.Queryx(query, args...)
 	if err != nil {
 		return utils.HandleDBError(err)
 	}
 	defer utils.Close(rows, logger)
 
+	c.Labels = nil
 	var label string
 	for rows.Next() {
 		if err := rows.Scan(&label); err != nil {
@@ -179,7 +182,7 @@ var ContainerStatusTransitions = map[scheduler_proto.Container_Status][]schedule
 
 // UpdateStatus updates the Container's status.
 func (c *Container) UpdateStatus(
-	db utils.SqlxNamedQuery,
+	db utils.SqlxGetter,
 	newStatus scheduler_proto.Container_Status,
 	logger *logrus.Logger,
 ) (*events_proto.Event, error) {
@@ -191,7 +194,7 @@ func (c *Container) UpdateStatus(
 	for _, s := range ContainerStatusTransitions[containerStatus] {
 		if s == newStatus {
 			return c.Update(db, map[string]interface{}{
-				"status": fmt.Sprintf("%d", newStatus),
+				"status": newStatus,
 			}, logger)
 		}
 	}
@@ -202,30 +205,16 @@ func (c *Container) UpdateStatus(
 // Update performs an UPDATE SqlxGetter query for the Container fields given in the `updates` argument and returns a
 // corresponding event.
 func (c *Container) Update(
-	db utils.SqlxNamedQuery,
+	db utils.SqlxGetter,
 	updates map[string]interface{},
 	logger *logrus.Logger,
 ) (*events_proto.Event, error) {
 	if c.Id == 0 {
 		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update unsaved Container"))
 	}
-	keys := make([]string, len(updates))
-	i := 0
-	for k := range updates {
-		keys[i] = fmt.Sprintf("%s=:%s", k, k)
-		i++
-	}
-	rows, err := db.NamedQuery(fmt.Sprintf(
-		"UPDATE containers SET %s WHERE id = %d RETURNING *", strings.Join(keys, ", "), c.Id), updates)
-	if err != nil {
+	query, args, err := psq.Update("containers").SetMap(updates).Where(sq.Eq{"id": c.Id}).Suffix("RETURNING *").ToSql()
+	if err := db.Get(c, query, args...); err != nil {
 		return nil, utils.HandleDBError(err)
-	}
-	defer utils.Close(rows, logger)
-
-	for rows.Next() {
-		if err := rows.StructScan(c); err != nil {
-			return nil, errors.Wrap(err, "rows.StructScan failed")
-		}
 	}
 
 	fieldMask := &types.FieldMask{Paths: mapKeys(updates)}
@@ -233,144 +222,150 @@ func (c *Container) Update(
 	if err != nil {
 		return nil, errors.Wrap(err, "job.ToProto failed")
 	}
-	event, err := events.NewEvent(containerProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
-		fieldMask)
-	if err != nil {
-		return nil, err
-	}
-	return event, nil
+	return events.NewEvent(containerProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask), nil
 }
 
 // CurrentLimit gets the most recently confirmed Limit for this Container.
-func (c *Container) CurrentLimit(db *gorm.DB) (*Limit, error) {
-	limit := &Limit{
-		Container:   c,
-		ContainerID: c.ID,
-		Status:      utils.Enum(scheduler_proto.Limit_CONFIRMED),
-	}
-	if err := utils.HandleDBError(db.Where(limit).Order("id DESC").First(limit)); err != nil {
-		return nil, errors.Wrap(err, "failed to find Limit")
-	}
-	return limit, nil
-}
+//func (c *Container) CurrentLimit(db *gorm.DB) (*Limit, error) {
+//	limit := &Limit{
+//		Container:   c,
+//		ContainerID: c.ID,
+//		Status:      utils.Enum(scheduler_proto.Limit_CONFIRMED),
+//	}
+//	if err := utils.HandleDBError(db.Where(limit).Order("id DESC").First(limit)); err != nil {
+//		return nil, errors.Wrap(err, "failed to find Limit")
+//	}
+//	return limit, nil
+//}
 
-// NodesAvailable finds the best available Node to schedule this Container on.
-func (c *Container) NodesAvailable(db *gorm.DB) ([]*Node, error) {
-	if c.NodeID != nil {
-		return nil, status.Error(codes.FailedPrecondition, "Container is already scheduled")
-	}
-	q := db.Set("gorm:query_option", "FOR UPDATE OF nodes").
-		Table("nodes").
-		Where("status = ?", utils.Enum(scheduler_proto.Node_ONLINE)).
-		Where("cpu_class BETWEEN ? AND ?", c.CpuClassMin, c.CpuClassMax).
-		Where("gpu_class BETWEEN ? AND ?", c.GpuClassMin, c.GpuClassMax).
-		Where("disk_class BETWEEN ? AND ?", c.DiskClassMin, c.DiskClassMax).
-		// FIXME: add labels constraints.
-		Where("")
-
-	var nodes []*Node
-	if err := utils.HandleDBError(q.Find(&nodes)); err != nil {
-		return nil, errors.Wrap(err, "failed to find Nodes")
-	}
-
-	return nodes, nil
-}
-
-// Schedule allocates resources on the given Node and sets the Container status to SCHEDULED.
-func (c *Container) Schedule(db *gorm.DB, node *Node) ([]*events_proto.Event, error) {
-	if c.ID == 0 {
-		return nil, status.Error(codes.FailedPrecondition, "can't schedule unsaved Container")
-	}
-	if c.NodeID != nil {
-		return nil, status.Error(codes.FailedPrecondition, "Container is already scheduled")
-	}
-
-	currentLimit, err := c.CurrentLimit(db)
-	if err != nil {
-		return nil, errors.Wrap(err, "container.CurrentLimit failed")
-	}
-
-	allocationUpdates, err := node.AllocateContainerLimit(currentLimit, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to allocate Node resources")
-	}
-	now := time.Now().UTC()
-	allocationUpdates["scheduled_at"] = &now
-	nodeUpdatedEvent, err := node.Update(db, allocationUpdates)
-	if err != nil {
-		return nil, errors.Wrap(err, "node.Update failed")
-	}
-
-	// Update the Container status to SCHEDULED.
-	containerUpdatedEvent, err := c.UpdateStatus(db, scheduler_proto.Container_SCHEDULED)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to update Container status")
-	}
-
-	return []*events_proto.Event{nodeUpdatedEvent, containerUpdatedEvent}, nil
-}
+//// NodesAvailable finds the best available Node to schedule this Container on.
+//func (c *Container) NodesAvailable(db *gorm.DB) ([]*Node, error) {
+//	if c.NodeID != nil {
+//		return nil, status.Error(codes.FailedPrecondition, "Container is already scheduled")
+//	}
+//	q := db.Set("gorm:query_option", "FOR UPDATE OF nodes").
+//		Table("nodes").
+//		Where("status = ?", utils.Enum(scheduler_proto.Node_ONLINE)).
+//		Where("cpu_class BETWEEN ? AND ?", c.CpuClassMin, c.CpuClassMax).
+//		Where("gpu_class BETWEEN ? AND ?", c.GpuClassMin, c.GpuClassMax).
+//		Where("disk_class BETWEEN ? AND ?", c.DiskClassMin, c.DiskClassMax).
+//		// FIXME: add labels constraints.
+//		Where("")
+//
+//	var nodes []*Node
+//	if err := utils.HandleDBError(q.Find(&nodes)); err != nil {
+//		return nil, errors.Wrap(err, "failed to find Nodes")
+//	}
+//
+//	return nodes, nil
+//}
+//
+//// Schedule allocates resources on the given Node and sets the Container status to SCHEDULED.
+//func (c *Container) Schedule(db *gorm.DB, node *Node) ([]*events_proto.Event, error) {
+//	if c.ID == 0 {
+//		return nil, status.Error(codes.FailedPrecondition, "can't schedule unsaved Container")
+//	}
+//	if c.NodeID != nil {
+//		return nil, status.Error(codes.FailedPrecondition, "Container is already scheduled")
+//	}
+//
+//	currentLimit, err := c.CurrentLimit(db)
+//	if err != nil {
+//		return nil, errors.Wrap(err, "container.CurrentLimit failed")
+//	}
+//
+//	allocationUpdates, err := node.AllocateContainerLimit(currentLimit, nil)
+//	if err != nil {
+//		return nil, errors.Wrap(err, "failed to allocate Node resources")
+//	}
+//	now := time.Now().UTC()
+//	allocationUpdates["scheduled_at"] = &now
+//	nodeUpdatedEvent, err := node.Update(db, allocationUpdates)
+//	if err != nil {
+//		return nil, errors.Wrap(err, "node.Update failed")
+//	}
+//
+//	// Update the Container status to SCHEDULED.
+//	containerUpdatedEvent, err := c.UpdateStatus(db, scheduler_proto.Container_SCHEDULED)
+//	if err != nil {
+//		return nil, errors.Wrap(err, "failed to update Container status")
+//	}
+//
+//	return []*events_proto.Event{nodeUpdatedEvent, containerUpdatedEvent}, nil
+//}
 
 // IsTerminated returns true if Container is in the final status (terminated).
 func (c *Container) IsTerminated() bool {
-	return c.Status == utils.Enum(scheduler_proto.Container_STOPPED) ||
-		c.Status == utils.Enum(scheduler_proto.Container_FAILED) ||
-		c.Status == utils.Enum(scheduler_proto.Container_CANCELLED) ||
-		c.Status == utils.Enum(scheduler_proto.Container_DECLINED)
+	return c.Status == scheduler_proto.Container_STOPPED ||
+		c.Status == scheduler_proto.Container_FAILED ||
+		c.Status == scheduler_proto.Container_CANCELLED ||
+		c.Status == scheduler_proto.Container_DECLINED
 }
 
 // ListContainers selects Containers from DB by the given filtering request.
 // Returns the Containers slice, a total number of Containers that satisfy the criteria and an error.
-func ListContainers(db *gorm.DB, request *scheduler_proto.ListContainersRequest) ([]Container, uint32, error) {
-	query := db.Model(&Container{})
-	ordering := request.GetOrdering()
+func ListContainers(db *sqlx.DB, request *scheduler_proto.ListContainersRequest) ([]Container, uint32, error) {
+	query := psq.Select().From("containers").Where(sq.Eq{"username": request.Username})
 
-	var orderBySQL string
-	switch ordering {
-	case scheduler_proto.ListContainersRequest_CREATED_AT_ASC:
-		orderBySQL = "created_at"
-	case scheduler_proto.ListContainersRequest_UPDATED_AT_ASC:
-		orderBySQL = "updated_at"
-	case scheduler_proto.ListContainersRequest_UPDATED_AT_DESC:
-		orderBySQL = "updated_at DESC"
-	default:
-		orderBySQL = "created_at DESC"
-	}
-	query = query.Order(orderBySQL)
-
-	// Filter by username.
-	query = query.Where("username = ?", request.Username)
-
-	// Filter by status.
 	if len(request.Status) != 0 {
-		enumStatus := make([]utils.Enum, len(request.Status))
-		for i, s := range request.Status {
-			enumStatus[i] = utils.Enum(s)
-		}
-		query = query.Where("status IN (?)", enumStatus)
+		query = query.Where(sq.Eq{"status": request.Status})
 	}
 
-	// Perform a COUNT query with no limit and offset applied.
 	var count uint32
-	if err := utils.HandleDBError(query.Count(&count)); err != nil {
-		return nil, 0, err
+	if err := query.Columns("COUNT(*)").RunWith(db).Scan(&count); err != nil {
+		return nil, 0, utils.HandleDBError(err)
 	}
 
-	// Apply offset.
-	query = query.Offset(request.GetOffset())
-
-	// Apply limit.
-	var limit uint32
-	if request.GetLimit() <= ListContainersMaxLimit {
-		limit = request.GetLimit()
-	} else {
-		limit = ListContainersMaxLimit
+	if count == 0 {
+		// If the count is already 0 don't bother running the subsequent SELECT query.
+		return []Container{}, 0, nil
 	}
-	query = query.Limit(limit)
 
-	// Perform a SELECT query.
+	limit := ListContainersMaxLimit
+	if request.Limit <= ListContainersMaxLimit {
+		limit = request.Limit
+	}
+
+	var orderBy string
+	switch request.Ordering {
+	case scheduler_proto.ListContainersRequest_CREATED_AT_ASC:
+		orderBy = "created_at"
+	case scheduler_proto.ListContainersRequest_UPDATED_AT_ASC:
+		orderBy = "updated_at"
+	case scheduler_proto.ListContainersRequest_UPDATED_AT_DESC:
+		orderBy = "updated_at DESC"
+	default:
+		orderBy = "created_at DESC"
+	}
+
+	query = query.Columns("*").Limit(uint64(limit)).Offset(uint64(request.Offset)).OrderBy(orderBy)
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, 0, errors.WithStack(err)
+	}
+
 	var containers []Container
-	if err := utils.HandleDBError(query.Find(&containers)); err != nil {
-		return nil, 0, err
+	if err := db.Select(&containers, queryString, args...); err != nil {
+		return nil, 0, utils.HandleDBError(err)
 	}
+
 	return containers, count, nil
+}
+
+// ContainerLabel is a Container's label.
+type ContainerLabel struct {
+	ContainerId int64
+	Label       string
+}
+
+// Create inserts a new ContainerLabel in DB.
+func (c *ContainerLabel) Create(db sqlx.Execer) error {
+	_, err := db.Exec("INSERT INTO container_labels (container_id, label) VALUES ($1, $2)", c.ContainerId, c.Label)
+	return utils.HandleDBError(err)
+}
+
+// NewContainerFromProto creates a new instance of Container populated from the given proto message.
+func NewContainerFromProto(p *scheduler_proto.Container) *Container {
+	return &Container{Container: *p}
 }

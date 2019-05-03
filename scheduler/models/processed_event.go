@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/shared/events_proto"
 
 	"github.com/mennanov/scalemate/shared/utils"
@@ -9,8 +9,8 @@ import (
 
 // ProcessedEvent represents an already processed event by event handlers
 type ProcessedEvent struct {
-	HandlerName string `gorm:"primary_key"`
-	UUID        []byte `gorm:"primary_key"`
+	HandlerName string
+	UUID        []byte
 }
 
 // NewProcessedEvent create a new instance of ProcessedEvent.
@@ -19,17 +19,17 @@ func NewProcessedEvent(handlerName string, event *events_proto.Event) *Processed
 }
 
 // Create inserts a new ProcessedEvent in DB.
-func (e *ProcessedEvent) Create(db *gorm.DB) error {
-	return utils.HandleDBError(db.Create(e))
+func (e *ProcessedEvent) Create(db utils.SqlxExtGetter) error {
+	_, err := db.Exec("INSERT INTO processed_events (handler_name, uuid) VALUES ($1, $2)", e.HandlerName, e.UUID)
+	return utils.HandleDBError(err)
 }
 
 // Exists returns true if the event already exists in DB.
-func (e *ProcessedEvent) Exists(db *gorm.DB) (bool, error) {
+func (e *ProcessedEvent) Exists(db sqlx.Queryer) (bool, error) {
 	var count int
-	if err := utils.HandleDBError(
-		db.Model(e).
-			Where("handler_name = ? AND uuid = ?", e.HandlerName, e.UUID).Count(&count)); err != nil {
-		return false, err
+	if err := db.QueryRowx("SELECT COUNT(*) FROM processed_events WHERE handler_name = $1 AND uuid = $2",
+		e.HandlerName, e.UUID).Scan(&count); err != nil {
+		return false, utils.HandleDBError(err)
 	}
 	return count > 0, nil
 }

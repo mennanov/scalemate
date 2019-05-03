@@ -6,6 +6,7 @@ option go_package = "github.com/mennanov/scalemate/scheduler/scheduler_proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 service Scheduler {
@@ -84,8 +85,8 @@ enum DiskClass {
 // Container represents an LXC container on a Node.
 message Container {
     // Readonly.
-    uint32 id = 1;
-    uint32 node_id = 2;
+    int64 id = 1;
+    google.protobuf.Int64Value node_id = 2 [(gogoproto.wktpointer) = true];
     string username = 3;
 
     enum Status {
@@ -116,6 +117,11 @@ message Container {
     // Public LXD image. See https://us.images.linuxcontainers.org for the full list.
     string image = 6;
 
+    // Network incoming traffic minimum required speed in Mbit/sec.
+    uint32 network_ingress_min = 7;
+    // Network outgoing traffic minimum required speed in Mbit/sec.
+    uint32 network_egress_min = 8;
+
     // Hardware requirements range.
     CPUClass cpu_class_min = 13;
     CPUClass cpu_class_max = 14;
@@ -139,9 +145,9 @@ message Container {
 // Container resources limit(s).
 message Limit {
     // Readonly.
-    uint32 id = 1;
+    int64 id = 1;
     // Readonly.
-    uint32 container_id = 2;
+    int64 container_id = 2;
 
     // Number of CPUs to expose to the container.
     uint32 cpu = 3;
@@ -151,10 +157,6 @@ message Limit {
     uint32 disk = 5;
     // Number of GPUs to expose to the container.
     uint32 gpu = 6;
-    // Network incoming traffic speed limit in Mbit/sec.
-    uint32 network_ingress = 7;
-    // Network outgoing traffic speed limit in Mbit/sec.
-    uint32 network_egress = 8;
 
     enum Status {
         // Limits are requested to be applied to the container.
@@ -175,12 +177,12 @@ message Limit {
 }
 
 message ReceiveContainerLimitsUpdatesRequest {
-    uint32 limit_id = 1;
+    int64 limit_id = 1;
 }
 
 // Node represents a physical machine that runs Containers.
 message Node {
-    uint32 id = 1;
+    int64 id = 1;
     string username = 2;
     string name = 3;
 
@@ -232,9 +234,9 @@ message Node {
     uint32 containers_failed = 20;
 
     // The most recent connection time.
-    google.protobuf.Timestamp connected_at = 21;
+    google.protobuf.Timestamp connected_at = 21 [(gogoproto.stdtime) = true];
     // The most recent disconnect time.
-    google.protobuf.Timestamp disconnected_at = 22;
+    google.protobuf.Timestamp disconnected_at = 22 [(gogoproto.stdtime) = true];
     // The most recent time a Container was scheduled on this Node.
     google.protobuf.Timestamp last_scheduled_at = 23 [(gogoproto.stdtime) = true];
 
@@ -243,12 +245,12 @@ message Node {
     google.protobuf.Timestamp updated_at = 25 [(gogoproto.stdtime) = true];
 
     // Public IPv4 address.
-    bytes ipv4_address = 26;
+    bytes ip = 26;
     bytes fingerprint = 27;
 }
 
 message NodeLookupRequest {
-    uint32 node_id = 1;
+    int64 node_id = 1;
 }
 
 message ListNodesRequest {
@@ -307,7 +309,7 @@ message ContainerWithLimit {
 }
 
 message ContainerLookupRequest {
-    uint32 container_id = 1;
+    int64 container_id = 1;
 }
 
 message ContainerUpdate {
@@ -328,7 +330,7 @@ message ContainerUpdate {
 }
 
 message ListLimitsRequest {
-    uint32 container_id = 1;
+    int64 container_id = 1;
     repeated Limit.Status status = 2;
 
     enum Ordering {
@@ -369,7 +371,7 @@ message ListContainersRequest {
 }
 
 message AddLimitsRequest {
-    uint32 container_id = 1;
+    int64 container_id = 1;
     Limit limits = 2;
     google.protobuf.FieldMask updated_fields = 3;
 }
@@ -381,7 +383,7 @@ message ListContainersResponse {
 }
 
 message LimitLookupRequest {
-    uint32 container_id = 1;
+    int64 container_id = 1;
 }
 
 message ListNodeLabelsResponse {

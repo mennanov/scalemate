@@ -23,20 +23,20 @@ const (
 	SchedulerSubjectName = "scheduler"
 )
 
-// NewEvent creates a new events_proto.Event instance
+// NewEvent creates a new events_proto.Event instance.
 func NewEvent(
 	payload proto.Message,
 	eventType events_proto.Event_Type,
 	service events_proto.Service,
 	fieldMask *types.FieldMask,
-) (*events_proto.Event, error) {
+) *events_proto.Event {
 	eventUUID := uuid.New()
 	event := &events_proto.Event{
 		Uuid:        eventUUID[:],
 		Type:        eventType,
 		Service:     service,
 		PayloadMask: fieldMask,
-		CreatedAt:   time.Now(),
+		CreatedAt:   time.Now().UTC(),
 	}
 
 	switch p := payload.(type) {
@@ -50,10 +50,10 @@ func NewEvent(
 		event.Payload = &events_proto.Event_AccountsUser{AccountsUser: p}
 
 	default:
-		return nil, errors.Errorf("unexpected payload type %T", payload)
+		panic(fmt.Sprintf("unknown event payload type %T", payload))
 	}
 
-	return event, nil
+	return event
 }
 
 // KeyForEvent returns a key string for the given event.

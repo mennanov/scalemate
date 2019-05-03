@@ -1,6 +1,6 @@
 create table nodes
 (
-  id                       serial
+  id                       bigserial
     constraint node_pk primary key,
   username                 text      not null,
   name                     text      not null,
@@ -25,7 +25,8 @@ create table nodes
   last_scheduled_at        timestamp,
   created_at               timestamp not null default now(),
   updated_at               timestamp,
-  ipv4_address             inet,
+  ip                       inet,
+  fingerprint              bytea     not null,
   unique (username, name)
 );
 

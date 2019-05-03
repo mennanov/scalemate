@@ -7,54 +7,54 @@ import (
 
 // BitArray represents an array of bits of a fixed length.
 type BitArray struct {
-	Blocks  []uint64
-	BitsSet uint64
+	BitsSet uint16
+	blocks  []uint64
 }
 
 // NewBitArray creates a new BitArray of a fixed size.
-func NewBitArray(size uint64) *BitArray {
+func NewBitArray(size uint16) *BitArray {
 	return &BitArray{
-		Blocks: make([]uint64, int(math.Ceil(float64(size)/float64(64)))),
+		blocks: make([]uint64, int(math.Ceil(float64(size)/float64(64)))),
 	}
 }
 
 // SetBit sets the i'th bit of the array to true.
-func (b *BitArray) SetBit(i uint64) {
+func (b *BitArray) SetBit(i uint16) {
 	blockIndex := i / 64
 	bitIndex := uint8(i % 64)
-	b.Blocks[blockIndex] = b.Blocks[blockIndex] | (1 << bitIndex)
+	b.blocks[blockIndex] = b.blocks[blockIndex] | (1 << bitIndex)
 	b.BitsSet++
 }
 
 // GetBit gets the bool value of the i'th bit of the array.
-func (b *BitArray) GetBit(i uint64) bool {
+func (b *BitArray) GetBit(i uint16) bool {
 	blockIndex := i / 64
 	bitIndex := uint8(i % 64)
-	return b.Blocks[blockIndex]&(1<<bitIndex) != 0
+	return b.blocks[blockIndex]&(1<<bitIndex) != 0
 }
 
 // Or performs a bitwise OR operation on two arrays of the same size. Returns a new BitArray.
 func (b *BitArray) Or(b2 *BitArray) *BitArray {
-	if len(b.Blocks) != len(b2.Blocks) {
+	if len(b.blocks) != len(b2.blocks) {
 		panic("BitArrays have different blocks length")
 	}
 	ba := &BitArray{
-		Blocks: make([]uint64, len(b.Blocks)),
+		blocks: make([]uint64, len(b.blocks)),
 	}
-	for i := range ba.Blocks {
-		ba.Blocks[i] = b.Blocks[i] | b2.Blocks[i]
-		ba.BitsSet += positiveBits(ba.Blocks[i])
+	for i := range ba.blocks {
+		ba.blocks[i] = b.blocks[i] | b2.blocks[i]
+		ba.BitsSet += positiveBits(ba.blocks[i])
 	}
 	return ba
 }
 
 // SetBits returns a slice of indexes of the bits that are set (true) in this array.
-func (b *BitArray) SetBits() []uint64 {
-	result := make([]uint64, 0)
-	for i, block := range b.Blocks {
-		for j := uint64(0); j < 64; j++ {
+func (b *BitArray) SetBits() []uint16 {
+	result := make([]uint16, 0)
+	for i, block := range b.blocks {
+		for j := uint8(0); j < 64; j++ {
 			if block&(1<<j) != 0 {
-				result = append(result, uint64(i*64)+j)
+				result = append(result, uint16(i*64)+uint16(j))
 			}
 		}
 	}
@@ -62,8 +62,8 @@ func (b *BitArray) SetBits() []uint64 {
 }
 
 // positiveBits counts the number of positive bits in a given number.
-func positiveBits(n uint64) uint64 {
-	c := uint64(0)
+func positiveBits(n uint64) uint16 {
+	c := uint16(0)
 	for n > 0 {
 		n = n & (n - 1)
 		c++
@@ -71,8 +71,8 @@ func positiveBits(n uint64) uint64 {
 	return c
 }
 
-// MaxBitArray returns the BitArray that has the most set bits count.
-func MaxBitArray(b1, b2 *BitArray) *BitArray {
+// Max returns the BitArray that has the most set bits count.
+func Max(b1, b2 *BitArray) *BitArray {
 	if b1 == nil && b2 == nil {
 		return nil
 	}

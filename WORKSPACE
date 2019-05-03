@@ -135,7 +135,7 @@ go_repository(
 
 go_repository(
     name = "com_github_mennanov_fieldmask_utils",
-    commit = "2d5d5cc5d12379d150bf7a5aa2ada879637cdc83",
+    commit = "fd0e78e68e7aa8f7ac6eb2ada059e784831e1fcc",
     importpath = "github.com/mennanov/fieldmask-utils",
 )
 
@@ -289,4 +289,22 @@ go_repository(
     name = "com_github_asaskevich_govalidator",
     commit = "f61b66f89f4a311bef65f13e575bcf1a2ffadda6",
     importpath = "github.com/asaskevich/govalidator",
+)
+
+go_repository(
+    name = "com_github_Masterminds_squirrel",
+    commit = "55303df43ec0bf2b0ce3f9c3d8c3ce07022ef76b",
+    importpath = "github.com/Masterminds/squirrel",
+)
+
+go_repository(
+    name = "com_github_lann_builder",
+    commit = "47ae307949d02aa1f1069fdafc00ca08e1dbabac",
+    importpath = "github.com/lann/builder",
+)
+
+go_repository(
+    name = "com_github_lann_ps",
+    commit = "62de8c46ede02a7675c4c79c84883eb164cb71e3",
+    importpath = "github.com/lann/ps",
 )

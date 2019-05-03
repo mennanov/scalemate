@@ -3,12 +3,12 @@ package events_test
 import (
 	"testing"
 
+	"github.com/gogo/protobuf/types"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/genproto/protobuf/field_mask"
 
 	"github.com/mennanov/scalemate/shared/events"
 )
@@ -32,7 +32,7 @@ func TestKeyForEvent(t *testing.T) {
 				Service:     events_proto.Service_SCHEDULER,
 				Payload:     &events_proto.Event_SchedulerNode{SchedulerNode: &scheduler_proto.Node{Id: 2}},
 				// PayloadMask does not affect the event key.
-				PayloadMask: &field_mask.FieldMask{Paths: []string{"status", "connected_at"}},
+				PayloadMask: &types.FieldMask{Paths: []string{"status", "connected_at"}},
 			},
 			expectedKey: "scheduler.node.UPDATED.2",
 		},
@@ -61,8 +61,7 @@ func TestKeyForEvent(t *testing.T) {
 
 func TestNewEvent(t *testing.T) {
 	userProto := &accounts_proto.User{Id: 42}
-	event, err := events.NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
-	require.NoError(t, err)
+	event := events.NewEvent(userProto, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
 	payload, ok := event.Payload.(*events_proto.Event_AccountsUser)
 	require.True(t, ok)
 	assert.Equal(t, userProto.Id, payload.AccountsUser.Id)

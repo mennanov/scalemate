@@ -110,11 +110,7 @@ func (u *User) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
 		u.Username, u.Email, u.Banned, u.PasswordHash)); err != nil {
 		return nil, errors.Wrap(err, "db.Get failed")
 	}
-	event, err := events.NewEvent(&u.User, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "events.NewEvent failed")
-	}
-	return event, nil
+	return events.NewEvent(&u.User, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil), nil
 }
 
 // UserLookUp gets a User by UserLookupRequest.
@@ -154,9 +150,5 @@ func (u *User) ChangePassword(db utils.SqlxGetter, password string, bcryptCost i
 	}
 
 	fieldMask := &types.FieldMask{Paths: []string{"password_changed_at", "updated_at"}}
-	event, err := events.NewEvent(&u.User, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask)
-	if err != nil {
-		return nil, errors.Wrap(err, "events.NewEvent failed")
-	}
-	return event, nil
+	return events.NewEvent(&u.User, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask), nil
 }
