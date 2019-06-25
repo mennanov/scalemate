@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
 
@@ -12,18 +14,18 @@ import (
 // authenticate a Node instead of making a gRPC query to the Scheduler service.
 // The data in this DB table is populated by listening to the Scheduler service events when a new Node is created.
 type Node struct {
-	utils.Model
+	Id          int64
 	Username    string
 	Name        string
 	Fingerprint []byte
+	CreatedAt   time.Time
+	UpdatedAt   *time.Time
 }
 
 // NewNodeFromSchedulerProto creates a new Node instance from `scheduler_proto.Node`.
 func NewNodeFromSchedulerProto(p *scheduler_proto.Node) *Node {
 	return &Node{
-		Model: utils.Model{
-			ID: p.Id,
-		},
+		Id:          p.Id,
 		Username:    p.Username,
 		Name:        p.Name,
 		Fingerprint: p.Fingerprint,
@@ -34,7 +36,7 @@ func NewNodeFromSchedulerProto(p *scheduler_proto.Node) *Node {
 func (n *Node) Create(db utils.SqlxGetter) error {
 	return utils.HandleDBError(db.Get(n,
 		"INSERT INTO nodes (id, username, name, fingerprint) VALUES ($1, $2, $3, $4) RETURNING *",
-		n.ID, n.Username, n.Name, n.Fingerprint))
+		n.Id, n.Username, n.Name, n.Fingerprint))
 }
 
 // NodeLookUp gets the Node from DB by a username and a Node name.

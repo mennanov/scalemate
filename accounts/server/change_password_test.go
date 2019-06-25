@@ -4,12 +4,10 @@ import (
 	"context"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
 
@@ -46,13 +44,7 @@ func (s *ServerTestSuite) TestChangePassword() {
 		}, creds)
 		s.Require().NoError(err)
 
-		s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
-			Type:    events_proto.Event_UPDATED,
-			Service: events_proto.Service_ACCOUNTS,
-			Payload: &events_proto.Event_AccountsUser{
-				AccountsUser: &accounts_proto.User{Id: registeredUser.Id},
-			},
-		})))
+		s.NoError(s.messagesHandler.ExpectMessages("Event_AccountsUserPasswordChanged"))
 
 		// Authenticate the user with the new password.
 		newAuthTokens, err := s.client.PasswordAuth(ctx, &accounts_proto.PasswordAuthRequest{

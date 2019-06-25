@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package billing.billing_proto;
+option go_package = "github.com/mennanov/scalemate/billing/billing_proto";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message Wallet {
+    int64 user_id = 1;
+    int64 satoshi = 2;
+    string address = 3;
+}
+
+message Transaction {
+    enum Status {
+        NEW = 0;
+        IN_PROGRESS = 1;
+        COMPLETED = 2;
+        FAILED = 3;
+    }
+
+    int64 user_id = 1;
+    int64 limit_id = 2;
+    int64 container_id = 3;
+    uint64 satoshi = 4;
+    google.protobuf.Timestamp period_start = 5;
+    google.protobuf.Timestamp period_end = 6;
+    Status status = 7;
+    string status_message = 8;
+
+    google.protobuf.Timestamp created_at = 9 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+    google.protobuf.Timestamp updated_at = 10 [(gogoproto.stdtime) = true];
+}
+
+message Pricing {
+    int64 node_id = 1;
+    // Price of 1 unit of CPU per hour in Satoshi.
+    int64 cpu_price = 2;
+    // Price of 1 unit of GPU per hour in Satoshi.
+    int64 gpu_price = 3;
+    // Price of 1 MB of memory per hour in Satoshi.
+    int64 memory_price = 4;
+    // Price of 1 MB of disk per hour in Satoshi.
+    int64 disk_price = 5;
+    google.protobuf.Timestamp created_at = 6 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+}
+
+message BalanceCheck {
+    int64 user_id = 1;
+    repeated int64 limit_id = 2;
+    google.protobuf.Timestamp created_at = 9 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+}

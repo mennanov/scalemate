@@ -1,6 +1,8 @@
 package events
 
 import (
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/nats-io/go-nats-streaming"
@@ -15,6 +17,7 @@ var (
 // Producer represents an event publisher interface.
 type Producer interface {
 	// Send sends the given events and blocks until all the messages are confirmed to be sent.
+	// Events are grouped into EventsMessage proto and sent as a single message to a message broker.
 	Send(events ...*events_proto.Event) error
 }
 
@@ -46,11 +49,13 @@ func NewFakeProducer() *FakeProducer {
 type NatsProducer struct {
 	conn    stan.Conn
 	subject string
+	// retryLimit is the max number of attempts to be used to publish a message.
+	retryLimit int
 }
 
 // NewNatsProducer creates a new NatsProducer instance.
-func NewNatsProducer(conn stan.Conn, subject string) *NatsProducer {
-	return &NatsProducer{conn: conn, subject: subject}
+func NewNatsProducer(conn stan.Conn, subject string, retryLimit int) *NatsProducer {
+	return &NatsProducer{conn: conn, subject: subject, retryLimit: retryLimit}
 }
 
 // Send publishes the given events to NATS.
@@ -58,19 +63,23 @@ func (n *NatsProducer) Send(events ...*events_proto.Event) error {
 	if len(events) == 0 {
 		return ErrNoEvents
 	}
-	messages := make([][]byte, len(events))
-	for i, event := range events {
-		serializedEvent, err := proto.Marshal(event)
-		if err != nil {
-			return errors.Wrapf(err, "proto.Marshal failed for event %s", event.String())
-		}
-		messages[i] = serializedEvent
+	eventsMessage := &events_proto.Message{
+		Events: events,
+	}
+	message, err := proto.Marshal(eventsMessage)
+	if err != nil {
+		return errors.Wrap(err, "proto.Marshal failed")
 	}
 
-	for _, message := range messages {
-		if err := n.conn.Publish(n.subject, message); err != nil {
-			return errors.Wrap(err, "NatsProducer.conn.Publish failed")
+	for i := 0; i < n.retryLimit+1; i++ {
+		err = n.conn.Publish(n.subject, message)
+		if err == nil {
+			break
+		}
+		if i < n.retryLimit {
+			time.Sleep(time.Second)
 		}
 	}
-	return nil
+
+	return errors.Wrap(err, "failed to publish a message to NATS")
 }

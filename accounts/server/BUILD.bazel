@@ -59,7 +59,6 @@ go_test(
         "//accounts/conf:go_default_library",
         "//shared/auth:go_default_library",
         "//shared/events:go_default_library",
-        "//shared/events_proto:go_default_library",
         "//shared/testutils:go_default_library",
         "//shared/utils:go_default_library",
         "@com_github_golang_migrate_migrate//:go_default_library",

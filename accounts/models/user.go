@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
@@ -12,12 +13,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/gogo/protobuf/types"
-
 	"github.com/mennanov/scalemate/shared/auth"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
+
+var psq = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
 // User defines a User model in DB.
 type User struct {
@@ -90,9 +90,6 @@ func (u *User) GenerateAuthTokens(
 		IssuedAt:  now.Unix(),
 	}, u.Username, nodeName, auth.TokenTypeRefresh)
 
-	if err != nil {
-		return nil, errors.Wrap(err, "claims.SignedString failed")
-	}
 	refreshToken, err := claims.SignedString(jwtSecretKey)
 	return &accounts_proto.AuthTokens{
 		AccessToken:  accessToken,
@@ -105,30 +102,54 @@ func (u *User) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
 	if u.Id != 0 {
 		return nil, status.Error(codes.FailedPrecondition, "can't create existing user")
 	}
-	if err := utils.HandleDBError(db.Get(u,
-		"INSERT INTO users (username, email, banned, password_hash) VALUES ($1, $2, $3, $4) RETURNING *",
-		u.Username, u.Email, u.Banned, u.PasswordHash)); err != nil {
-		return nil, errors.Wrap(err, "db.Get failed")
+	data := map[string]interface{}{
+		"username":      u.Username,
+		"email":         u.Email,
+		"banned":        u.Banned,
+		"password_hash": u.PasswordHash,
 	}
-	return events.NewEvent(&u.User, events_proto.Event_CREATED, events_proto.Service_ACCOUNTS, nil), nil
+	if !u.CreatedAt.IsZero() {
+		data["created_at"] = u.CreatedAt
+	}
+	query, args, err := psq.Insert("users").SetMap(data).Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if err := utils.HandleDBError(db.Get(u, query, args...)); err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	return &events_proto.Event{
+		Payload: &events_proto.Event_AccountsUserCreated{
+			AccountsUserCreated: &accounts_proto.UserCreatedEvent{
+				User: &u.User,
+			},
+		},
+		CreatedAt: time.Now().UTC(),
+	}, nil
 }
 
 // UserLookUp gets a User by UserLookupRequest.
 func UserLookUp(db utils.SqlxGetter, req *accounts_proto.UserLookupRequest) (*User, error) {
 	var err error
 	user := &User{}
+	query := psq.Select("*").From("users").Limit(1)
 	switch r := req.Request.(type) {
 	case *accounts_proto.UserLookupRequest_Id:
-		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE id = $1", r.Id))
+		query = query.Where("id = ?", r.Id)
 
 	case *accounts_proto.UserLookupRequest_Username:
-		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE username = $1", r.Username))
+		query = query.Where("username = ?", r.Username)
 
 	case *accounts_proto.UserLookupRequest_Email:
-		err = utils.HandleDBError(db.Get(user, "SELECT * FROM users WHERE email = $1", r.Email))
+		query = query.Where("email = ?", r.Email)
 	}
+	queryString, args, err := query.ToSql()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to perform a select request")
+		return nil, errors.WithStack(err)
+	}
+	if err := db.Get(user, queryString, args...); err != nil {
+		return nil, utils.HandleDBError(err)
 	}
 	return user, nil
 }
@@ -141,14 +162,22 @@ func (u *User) ChangePassword(db utils.SqlxGetter, password string, bcryptCost i
 	if err := u.SetPasswordHash(password, bcryptCost); err != nil {
 		return nil, errors.Wrap(err, "failed to set password hash")
 	}
+	query, args, err := psq.Update("users").Where("id = ?", u.Id).Set("password_hash", u.PasswordHash).
+		Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
 
-	if err := utils.HandleDBError(
-		db.Get(u, "UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2 RETURNING *",
-			u.PasswordHash, u.Id));
-		err != nil {
+	if err := utils.HandleDBError(db.Get(u, query, args...)); err != nil {
 		return nil, errors.Wrap(err, "failed to update user's password")
 	}
 
-	fieldMask := &types.FieldMask{Paths: []string{"password_changed_at", "updated_at"}}
-	return events.NewEvent(&u.User, events_proto.Event_UPDATED, events_proto.Service_ACCOUNTS, fieldMask), nil
+	return &events_proto.Event{
+		Payload: &events_proto.Event_AccountsUserPasswordChanged{
+			AccountsUserPasswordChanged: &accounts_proto.UserPasswordChangedEvent{
+				UserId: u.Id,
+			},
+		},
+		CreatedAt: time.Now().UTC(),
+	}, nil
 }

@@ -31,14 +31,12 @@ var upCmd = &cobra.Command{
 
 		creds, err := credentials.NewServerTLSFromFile(conf.AccountsConf.TLSCertFile, conf.AccountsConf.TLSKeyFile)
 		if err != nil {
-			logger.WithError(err).Fatal("utils.NewServerTLSCredentialsFromFile failed")
-			os.Exit(1) //revive:disable-line:deep-exit
+			logger.WithError(err).Fatal("NewServerTLSFromFile failed")
 		}
 
 		db, err := utils.ConnectDBFromEnv(conf.AccountsConf.DBUrl)
 		if err != nil {
-			logger.WithError(err).Fatal("utils.ConnectDBFromEnv failed")
-			os.Exit(1) //revive:disable-line:deep-exit
+			logger.WithError(err).Fatal("failed to connect to DB")
 		}
 		defer utils.Close(db, logger)
 
@@ -47,12 +45,11 @@ var upCmd = &cobra.Command{
 			fmt.Sprintf("accounts-service-%s", uuid.New().String()),
 			stan.NatsURL(conf.AccountsConf.NatsAddr))
 		if err != nil {
-			logger.Fatalf("stan.Connect failed: %s", err.Error())
-			os.Exit(1) //revive:disable-line:deep-exit
+			logger.WithError(err).Fatal("stan.Connect failed")
 		}
 		defer utils.Close(sc, logger)
 
-		producer := events.NewNatsProducer(sc, events.AccountsSubjectName)
+		producer := events.NewNatsProducer(sc, events.AccountsSubjectName, 5)
 
 		accountsServer, err := server.NewAccountsServer(
 			server.WithLogger(logger),
@@ -65,8 +62,7 @@ var upCmd = &cobra.Command{
 			server.WithBCryptCost(conf.AccountsConf.BCryptCost),
 		)
 		if err != nil {
-			logger.WithError(err).Fatal("Failed to start gRPC server: %+v\n", err)
-			os.Exit(1) //revive:disable-line:deep-exit
+			logger.WithError(err).Fatal("Failed to start gRPC server")
 		}
 
 		shutdown := make(chan os.Signal)

@@ -70,9 +70,9 @@ func StackTraceErrorInterceptor(logAll bool, logCodes ...codes.Code) grpc.UnaryS
 					if stackErr != nil {
 						// Log the first 5 stack trace frames.
 						entry.WithField("stacktrace", fmt.Sprintf("%+v", stackErr.StackTrace()[:5])).
-							Errorf("%s", err.Error())
+							Errorf("%s", err)
 					} else if logAll {
-						entry.Errorf("%s", err.Error())
+						entry.Errorf("%+v", err)
 					}
 					break
 				}

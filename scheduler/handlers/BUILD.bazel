@@ -2,37 +2,27 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "go_default_library",
-    srcs = [
-        "job_updated.go",
-        "node_disconnected.go",
-        "node_updated.go",
-        "task_terminated.go",
-    ],
+    srcs = ["container_created.go"],
     importpath = "github.com/mennanov/scalemate/scheduler/handlers",
     visibility = ["//visibility:public"],
     deps = [
         "//scheduler/models:go_default_library",
         "//scheduler/scheduler_proto:go_default_library",
-        "//shared/events:go_default_library",
         "//shared/events_proto:go_default_library",
         "//shared/utils:go_default_library",
-        "@com_github_jinzhu_gorm//:go_default_library",
-        "@com_github_mennanov_scalemate//accounts/utils:go_default_library",
         "@com_github_pkg_errors//:go_default_library",
         "@com_github_sirupsen_logrus//:go_default_library",
-        "@org_golang_google_grpc//codes:go_default_library",
-        "@org_golang_google_grpc//status:go_default_library",
     ],
 )
 
 go_test(
     name = "go_default_test",
     srcs = [
-        "job_updated_test.go",
-        "node_disconnected_test.go",
-        "node_updated_test.go",
-        "task_terminated_test.go",
+        "container_created_test.go",
         "testsuite_test.go",
+    ],
+    data = [
+        "//scheduler/migrations",
     ],
     embed = [":go_default_library"],
     deps = [
@@ -40,16 +30,16 @@ go_test(
         "//scheduler/models:go_default_library",
         "//scheduler/scheduler_proto:go_default_library",
         "//shared/events:go_default_library",
-        "//shared/events_proto:go_default_library",
         "//shared/testutils:go_default_library",
         "//shared/utils:go_default_library",
+        "@com_github_golang_migrate_migrate//:go_default_library",
+        "@com_github_golang_migrate_migrate//database/postgres:go_default_library",
+        "@com_github_golang_migrate_migrate//source/file:go_default_library",
         "@com_github_google_uuid//:go_default_library",
-        "@com_github_jinzhu_gorm//:go_default_library",
-        "@com_github_mennanov_scalemate//scheduler/migrations:go_default_library",
+        "@com_github_jmoiron_sqlx//:go_default_library",
         "@com_github_nats_io_go_nats_streaming//:go_default_library",
         "@com_github_sirupsen_logrus//:go_default_library",
         "@com_github_stretchr_testify//suite:go_default_library",
-        "@io_bazel_rules_go//proto/wkt:field_mask_go_proto",
     ],
 )
 

@@ -5,11 +5,16 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc/credentials"
 
+	"github.com/mennanov/scalemate/scheduler/conf"
 	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
@@ -19,50 +24,39 @@ var grpcAddr string
 var upCmd = &cobra.Command{
 	Use:   "up",
 	Short: "up runs a gRPC service",
+	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		// Connect to DB.
-		db, err := utils.ConnectDBFromEnv(server.DBEnvConf)
-		if err != nil {
-			logrus.WithError(err).Error("utils.ConnectDBFromEnv failed")
-			return
-		}
-		defer utils.Close(db, nil)
-
-		// Connect to AMQP.
-		amqpConnection, err := utils.ConnectAMQPFromEnv(server.AMQPEnvConf)
-		if err != nil {
-			logrus.WithError(err).Error("utils.ConnectAMQPFromEnv failed")
-			return
-		}
-		defer utils.Close(amqpConnection, nil)
-
 		logger := logrus.StandardLogger()
 		utils.SetLogrusLevelFromEnv(logger)
 
-		producer, err := events.NewAMQPProducer(amqpConnection, events.SchedulerAMQPExchangeName)
+		creds, err := credentials.NewServerTLSFromFile(conf.SchdulerConf.TLSCertFile, conf.SchdulerConf.TLSKeyFile)
 		if err != nil {
-			logger.WithError(err).Error("events.NewAMQPProducer failed")
-			return
+			logger.WithError(err).Fatal("NewServerTLSFromFile failed")
 		}
 
-		claimsInjector, err := server.JWTClaimsInjectorFromEnv(server.SchedulerEnvConf)
+		// Connect to DB.
+		db, err := utils.ConnectDBFromEnv(conf.SchdulerConf.DBUrl)
 		if err != nil {
-			logger.WithError(err).Error("server.JWTClaimsInjectorFromEnv failed")
-			return
+			logger.WithError(err).Fatal("failed to connect to DB")
 		}
+		defer utils.Close(db, nil)
 
-		schedulerServer, err := server.NewSchedulerServer(
-			server.WithLogger(logger),
-			server.WithDBConnection(db),
-			server.WithProducer(producer),
-			server.WithAMQPConsumers(amqpConnection),
-			server.WithClaimsInjector(claimsInjector),
-		)
+		clientID := args[0]
+		sc, err := stan.Connect(conf.SchdulerConf.NatsClusterName, clientID, stan.NatsURL(conf.SchdulerConf.NatsAddr))
 		if err != nil {
-			logger.WithError(err).Error("server.NewSchedulerServer failed")
-			return
+			logger.WithError(err).Fatal("stan.Connect failed")
 		}
-		defer utils.Close(schedulerServer, nil)
+		defer utils.Close(sc, logger)
+
+		producer := events.NewNatsProducer(sc, events.SchedulerSubjectName, 5)
+		consumer := events.NewNatsConsumer(sc, events.SchedulerSubjectName, producer, db, logger, 5,
+			3, stan.DurableName("scheduler-in-service-event-handlers"), stan.AckWait(time.Second*15))
+
+		subscription, err := consumer.Consume()
+		if err != nil {
+			logger.WithError(err).Fatal("failed to start NATS consumer")
+		}
+		defer utils.Close(subscription, logger)
 
 		shutdown := make(chan os.Signal)
 		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
@@ -74,7 +68,12 @@ var upCmd = &cobra.Command{
 			ctxCancel()
 		}()
 
-		schedulerServer.Serve(ctx, grpcAddr)
+		server.NewSchedulerServer(
+			server.WithLogger(logger),
+			server.WithDBConnection(db),
+			server.WithProducer(producer),
+			server.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.SchdulerConf.JWTSecretKey)),
+		).Serve(ctx, grpcAddr, creds)
 	},
 }
 

@@ -5,10 +5,8 @@ import (
 	"fmt"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc/codes"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
 
@@ -27,13 +25,7 @@ func (s *ServerTestSuite) TestRegister() {
 	s.NotEqual(uint32(0), registeredUser.Id)
 
 	// Verify that the event message is sent.
-	s.NoError(s.messagesHandler.ExpectMessages(events.KeyForEvent(&events_proto.Event{
-		Type:    events_proto.Event_CREATED,
-		Service: events_proto.Service_ACCOUNTS,
-		Payload: &events_proto.Event_AccountsUser{
-			AccountsUser: registeredUser,
-		},
-	})))
+	s.NoError(s.messagesHandler.ExpectMessages("Event_AccountsUserCreated"))
 
 	s.Run("duplicate registration fails", func() {
 		s.T().Parallel()

@@ -25,7 +25,7 @@ type Claims struct {
 	jwt.StandardClaims
 	Username string
 	// NodeName is used when authenticating Nodes. For clients it will be empty.
-	NodeName string
+	NodeName  string
 	TokenType TokenType
 }
 
@@ -104,12 +104,12 @@ func NewJWTClaimsInjector(jwtSecretKey []byte) *JWTClaimsInjector {
 func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
 	token, err := grpc_auth.AuthFromMD(ctx, "bearer")
 	if err != nil {
-		return nil, errors.Wrap(err, "grpc_auth.AuthFromMD failed")
+		return nil, errors.WithStack(err)
 	}
 
 	claims, err := NewClaimsFromStringVerified(token, i.jwtSecretKey)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid auth token: %v", err)
+		return nil, status.Errorf(codes.Unauthenticated, "invalid auth token: %v", err)
 	}
 
 	return context.WithValue(ctx, ContextKeyClaims, claims), nil
@@ -120,7 +120,7 @@ var _ ClaimsInjector = new(JWTClaimsInjector)
 
 // FakeClaimsInjector injects already provided Claims.
 type FakeClaimsInjector struct {
-	Claims *Claims
+	Claims   *Claims
 }
 
 // NewFakeClaimsContextInjector creates a new instance of NewFakeClaimsContextInjector.

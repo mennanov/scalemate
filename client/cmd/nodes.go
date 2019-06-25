@@ -80,7 +80,7 @@ var getNodeCmd = &cobra.Command{
 		}
 		job, err := scheduler.GetNodeController(
 			client.NewSchedulerClient(schedulerServiceAddr),
-			uint64(nodeID))
+			int64(nodeID))
 		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
 }

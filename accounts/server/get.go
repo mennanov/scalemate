@@ -5,11 +5,9 @@ import (
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 // Get gets details for the requested user.
@@ -18,25 +16,10 @@ func (s AccountsServer) Get(ctx context.Context, r *accounts_proto.UserLookupReq
 	if err != nil {
 		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
-	if err := claimsUsernameEqual(ctx, user.Username); err != nil {
+	if err := utils.ClaimsUsernameEqual(ctx, user.Username); err != nil {
 		return nil, err
 	}
 
 	return &user.User, nil
 }
 
-func claimsUsernameEqual(ctx context.Context, username string) error {
-	ctxClaims := ctx.Value(auth.ContextKeyClaims)
-	if ctxClaims == nil {
-		return status.Error(codes.Unauthenticated, "no JWT claims found")
-	}
-	claims, ok := ctxClaims.(*auth.Claims)
-	if !ok {
-		return status.Error(codes.Unauthenticated, "unknown JWT claims type")
-	}
-
-	if claims.Username != username {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	return nil
-}

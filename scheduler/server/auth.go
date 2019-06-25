@@ -4,36 +4,24 @@ import (
 	"context"
 
 	"github.com/pkg/errors"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
-
-// TODO: create a layer (interface of with the same service method names) for each type of Resource that will handle
-//  CRUD operations permissions.
-// Example:
 
 // AuthFuncOverride implements an authentication and (partially) authorization for gRPC methods in Scheduler Service.
 // The context is populated with the claims created from the parsed JWT passed along with the request.
 // More: https://github.com/grpc-ecosystem/go-grpc-middleware/tree/master/auth#ServiceAuthFuncOverride
 func (s SchedulerServer) AuthFuncOverride(ctx context.Context, fullMethodName string) (context.Context, error) {
-	var err error
-	switch fullMethodName {
-	case "/scheduler.scheduler_proto.Scheduler/RunJob",
-		"/scheduler.scheduler_proto.Scheduler/CreateJob",
-		"/scheduler.scheduler_proto.Scheduler/GetJob",
-		"/scheduler.scheduler_proto.Scheduler/CancelJob",
-		"/scheduler.scheduler_proto.Scheduler/ListJobs",
-		"/scheduler.scheduler_proto.Scheduler/IterateTasks",
-		"/scheduler.scheduler_proto.Scheduler/IterateTasksForNode",
-		"/scheduler.scheduler_proto.Scheduler/ListTasks",
-		"/scheduler.scheduler_proto.Scheduler/GetTask",
-		"/scheduler.scheduler_proto.Scheduler/CancelTask":
-
-		ctx, err = s.claimsInjector.InjectClaims(ctx)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to parse JWT")
+	newCtx, err := s.claimsInjector.InjectClaims(ctx)
+	if err != nil {
+		st, ok := status.FromError(errors.Cause(err))
+		if ok && st.Code() == codes.Unauthenticated {
+			// No JWT provided.
+			return ctx, nil
 		}
+		return ctx, err
 	}
-
-	return ctx, nil
+	return newCtx, nil
 }
 
 // AuthFunc is required by the grpc_auth.UnaryServerInterceptor.

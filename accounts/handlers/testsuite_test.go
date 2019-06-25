@@ -30,7 +30,7 @@ type HandlersTestSuite struct {
 	logger          *logrus.Logger
 	conn            stan.Conn
 	subscription    events.Subscription
-	messagesHandler *events.MessagesTestingHandler
+	messagesHandler *testutils.MessagesTestingHandler
 }
 
 func (s *HandlersTestSuite) SetupSuite() {
@@ -43,18 +43,19 @@ func (s *HandlersTestSuite) SetupSuite() {
 
 	s.conn, err = stan.Connect(
 		conf.AccountsConf.NatsClusterName,
+		// Unique clientID is used to avoid interference with events from the previous test runs.
 		fmt.Sprintf("accounts-events-handler-%s", uuid.New().String()),
 		stan.NatsURL(conf.AccountsConf.NatsAddr))
 
-	consumer := events.NewNatsConsumer(s.conn, events.AccountsSubjectName, s.logger, stan.DurableName(natsDurableName))
-	s.messagesHandler = events.NewMessagesTestingHandler()
+	consumer := events.NewNatsConsumer(s.conn, events.AccountsSubjectName, events.NewFakeProducer(), s.db, s.logger, 5, 3, stan.DurableName(natsDurableName))
+	s.messagesHandler = testutils.NewMessagesTestingHandler()
 	s.subscription, err = consumer.Consume(s.messagesHandler)
 	s.Require().NoError(err)
 
 	// Run migrations.
 	driver, err := postgres.WithInstance(db.DB, &postgres.Config{
 		MigrationsTable: "migrations",
-		DatabaseName:    "accounts_models_test_suite",
+		DatabaseName:    dbName,
 		SchemaName:      "",
 	})
 	m, err := migrate.NewWithDatabaseInstance("file://../migrations", dbName, driver)

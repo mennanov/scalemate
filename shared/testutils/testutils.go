@@ -2,8 +2,10 @@
 package testutils
 
 import (
+	"context"
 	"fmt"
 	"regexp"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,10 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
@@ -79,7 +84,7 @@ func AssertErrorCode(t *testing.T, err error, code codes.Code) {
 	require.Error(t, err)
 	statusCode, ok := status.FromError(errors.Cause(err))
 	require.True(t, ok, "Not a status error")
-	assert.Equal(t, code, statusCode.Code())
+	assert.Equal(t, code, statusCode.Code(), err)
 }
 
 // CreateTestingDatabase creates a new testing database and returns a connection to it.
@@ -117,4 +122,77 @@ func TruncateTables(db sqlx.Ext) {
 		}
 	}
 
+}
+
+// NewClientConn creates a new grpc.ClientConn to be used in tests.
+func NewClientConn(addr string, creds credentials.TransportCredentials) *grpc.ClientConn {
+	conn, err := grpc.DialContext(context.Background(), addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		panic(err)
+	}
+
+	return conn
+}
+
+const msgWaitTimeout = time.Second
+
+// MessagesTestingHandler is used in tests to check if all the expected messages have been received.
+type MessagesTestingHandler struct {
+	receivedEventTypes []string
+	mu                 *sync.RWMutex
+}
+
+// NewMessagesTestingHandler creates a new instance of MessagesTestingHandler.
+func NewMessagesTestingHandler() *MessagesTestingHandler {
+	return &MessagesTestingHandler{mu: &sync.RWMutex{}}
+}
+
+// Handle saves all the received message keys.
+func (h *MessagesTestingHandler) Handle(tx utils.SqlxExtGetter, event *events_proto.Event) ([]*events_proto.Event, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.receivedEventTypes = append(h.receivedEventTypes, fmt.Sprintf("%T", event.Payload))
+	return nil, nil
+}
+
+// ExpectMessages waits for the expected messages to be received.
+// It returns an error if some messages have not been received within the msgWaitTimeout.
+func (h *MessagesTestingHandler) ExpectMessages(eventTypes ...string) error {
+	defer func() {
+		// Reset the receivedEventTypes on exit.
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		h.receivedEventTypes = nil
+	}()
+
+	var matchedEventTypes []string
+loop:
+	for {
+		select {
+		case <-time.After(msgWaitTimeout):
+			break loop
+
+		default:
+			if len(matchedEventTypes) == len(eventTypes) {
+				break loop
+			}
+			for _, keyExpected := range eventTypes {
+				re := regexp.MustCompile(keyExpected)
+				func() {
+					h.mu.RLock()
+					defer h.mu.RUnlock()
+					for _, keyActual := range h.receivedEventTypes {
+						if re.MatchString(keyActual) {
+							matchedEventTypes = append(matchedEventTypes, keyExpected)
+							break
+						}
+					}
+				}()
+			}
+		}
+	}
+	if len(matchedEventTypes) != len(eventTypes) {
+		return errors.Errorf("expected messages: %s, matched messages: %s", eventTypes, matchedEventTypes)
+	}
+	return nil
 }

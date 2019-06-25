@@ -9,6 +9,7 @@ proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//accounts/accounts_proto:accounts_proto_proto",
+        "//billing/billing_proto:billing_proto_proto",
         "//scheduler/scheduler_proto:scheduler_proto_proto",
         "@com_google_protobuf//:field_mask_proto",
         "@com_google_protobuf//:timestamp_proto",
@@ -24,6 +25,7 @@ go_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//accounts/accounts_proto:go_default_library",
+        "//billing/billing_proto:go_default_library",
         "//scheduler/scheduler_proto:go_default_library",
     ],
 )

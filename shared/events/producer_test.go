@@ -14,6 +14,7 @@ import (
 	"google.golang.org/genproto/protobuf/field_mask"
 
 	"github.com/mennanov/scalemate/shared/events"
+	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -26,8 +27,8 @@ func TestNatsProducer_Send(t *testing.T) {
 	defer utils.Close(sc, logger)
 
 	subject := "test_subject"
-	producer := events.NewNatsProducer(sc, subject)
-	consumer := events.NewNatsConsumer(sc, subject, logrus.New(), stan.DurableName("durable-name"))
+	producer := events.NewNatsProducer(sc, subject, 5)
+	consumer := events.NewNatsConsumer(sc, subject, nil, nil, logrus.New(), 5, 3, stan.DurableName("durable-name"))
 
 	eventsToSend := []*events_proto.Event{
 		{
@@ -51,11 +52,11 @@ func TestNatsProducer_Send(t *testing.T) {
 
 	expectedMessageKeys := make([]string, len(eventsToSend))
 	for i, event := range eventsToSend {
-		key := events.KeyForEvent(event)
+		key := testutils.KeyForEvent(event)
 		assert.NoError(t, err)
 		expectedMessageKeys[i] = key
 	}
-	messagesHandler := events.NewMessagesTestingHandler()
+	messagesHandler := testutils.NewMessagesTestingHandler()
 	subscription, err := consumer.Consume(messagesHandler)
 	require.NoError(t, err)
 	defer utils.Close(subscription, logger)

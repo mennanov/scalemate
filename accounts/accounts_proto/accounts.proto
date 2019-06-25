@@ -27,7 +27,7 @@ service Accounts {
 
 message User {
     // Readonly.
-    uint32 id = 1;
+    int64 id = 1;
     // Unique username.
     string username = 2;
     // Unique email.
@@ -37,13 +37,12 @@ message User {
     // Datetime fields are ignored in CRUD operations requests.
     google.protobuf.Timestamp created_at = 5 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
     google.protobuf.Timestamp updated_at = 6 [(gogoproto.stdtime) = true];
-    google.protobuf.Timestamp password_changed_at = 7 [(gogoproto.stdtime) = true];
 }
 
 message UserLookupRequest {
     // Performs a lookup by any of the given fields.
     oneof request {
-        uint32 id = 1;
+        int64 id = 1;
         string username = 2;
         string email = 3;
     }
@@ -87,4 +86,12 @@ message TokenAuthRequest {
 message AuthTokens {
     string access_token = 1;
     string refresh_token = 2;
+}
+
+message UserCreatedEvent {
+    User user = 1;
+}
+
+message UserPasswordChangedEvent {
+    int64 user_id = 1;
 }

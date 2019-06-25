@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 
-	"github.com/go-ozzo/ozzo-validation"
+	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/gogo/protobuf/types"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -34,7 +35,7 @@ func (s AccountsServer) ChangePassword(
 	if err != nil {
 		return nil, errors.Wrap(err, "UserLookUp failed")
 	}
-	if err := claimsUsernameEqual(ctx, user.Username); err != nil {
+	if err := utils.ClaimsUsernameEqual(ctx, user.Username); err != nil {
 		return nil, err
 	}
 	tx, err := s.db.Beginx()
@@ -45,7 +46,7 @@ func (s AccountsServer) ChangePassword(
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "user.ChangePassword failed"))
 	}
-	if err := utils.CommitAndPublish(tx, s.producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "CommitAndPublish failed")
 	}
 

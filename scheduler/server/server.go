@@ -10,21 +10,15 @@ import (
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
-	"github.com/jinzhu/gorm"
+	"github.com/jmoiron/sqlx"
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
+	"github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
-	"github.com/mennanov/scalemate/shared/utils"
-	// required by gorm
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
-
 	"github.com/mennanov/scalemate/shared/middleware"
 )
 
@@ -49,19 +43,19 @@ var LoggedErrorCodes = []codes.Code{
 type SchedulerServer struct {
 	// Logrus entry to be used for all the logging.
 	logger *logrus.Logger
-	db     *gorm.DB
+	db     *sqlx.DB
 	// Authentication claims context injector.
 	claimsInjector auth.ClaimsInjector
 	// Events producer.
 	producer events.Producer
-	// Events consumers.
-	consumers []events.Consumer
-	// Tasks grouped by Node ID are sent to this channel as they are created by event listeners.
-	tasksForNodes    map[uint64]chan *scheduler_proto.Task
-	tasksForNodesMux *sync.RWMutex
-	// Tasks grouped by Job ID are sent to this channel as they are created by event listeners.
-	tasksForClients    map[uint64]chan *scheduler_proto.Task
-	tasksForClientsMux *sync.RWMutex
+	// Containers grouped by Node ID are sent to this channel as they are scheduled by event handlers.
+	// It is used to send scheduled containers to their connected Nodes.
+	// When the Node connects the corresponding channel is created, otherwise it is nil.
+	containersByNodeId   map[int64]chan *scheduler_proto.Container
+	containersByNodeIdMu *sync.RWMutex
+	// Container updates grouped by container ID are sent to this channel (that also includes Limits updates).
+	containerUpdatesById   map[int64]chan *scheduler_proto.ContainerUpdate
+	containerUpdatesByIdMu *sync.RWMutex
 	// gracefulStop channel is used to notify about the gRPC server GracefulStop() in progress. When the server is about
 	// to stop this channel is closed, this will unblock all the receivers of this channel and they will receive a zero
 	// value (empty struct) which should be discarded and take an appropriate action to gracefully finish long-running
@@ -74,54 +68,34 @@ type SchedulerServer struct {
 var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
 
 // NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
-func NewSchedulerServer(options ...Option) (*SchedulerServer, error) {
+func NewSchedulerServer(options ...Option) *SchedulerServer {
 	s := &SchedulerServer{
-		tasksForNodes:      make(map[uint64]chan *scheduler_proto.Task),
-		tasksForClients:    make(map[uint64]chan *scheduler_proto.Task),
-		gracefulStop:       make(chan struct{}),
-		tasksForNodesMux:   new(sync.RWMutex),
-		tasksForClientsMux: new(sync.RWMutex),
+		containersByNodeId:     make(map[int64]chan *scheduler_proto.Container),
+		containersByNodeIdMu:   new(sync.RWMutex),
+		containerUpdatesById:   make(map[int64]chan *scheduler_proto.ContainerUpdate),
+		containerUpdatesByIdMu: new(sync.RWMutex),
+		gracefulStop:           make(chan struct{}),
 	}
 	for _, option := range options {
-		if err := option(s); err != nil {
-			return nil, err
-		}
+		option(s)
 	}
 
-	return s, nil
+	return s
 }
-
-// Close closes the server resources.
-func (s *SchedulerServer) Close() error {
-	for _, consumer := range s.consumers {
-		if err := consumer.Close(); err != nil {
-			return errors.Wrap(err, "consumer.Close failed")
-		}
-	}
-
-	return errors.Wrap(s.producer.Close(), "SchedulerServer.producer.Close failed")
-}
-
-var (
-	// ErrNodeAlreadyConnected is used when the Node can't be "connected" because it is already connected.
-	ErrNodeAlreadyConnected = status.Error(codes.FailedPrecondition, "Node is already connected")
-)
 
 // Serve creates a gRPC server and starts serving on a given address.
 // It also starts all the consumers.
 // The service is gracefully stopped when the given context is Done.
-func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
+func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string, creds credentials.TransportCredentials) {
 	entry := logrus.NewEntry(s.logger)
 	grpc_logrus.ReplaceGrpcLogger(entry)
 	grpcServer := grpc.NewServer(
-		grpc.Creds(utils.NewServerTLSCredentialsFromFile(TLSEnvConf)),
+		grpc.Creds(creds),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			grpc_ctxtags.UnaryServerInterceptor(),
 			grpc_logrus.UnaryServerInterceptor(entry),
 			middleware.LoggerRequestIDInterceptor("request.id"),
-			// grpc_logrus.PayloadUnaryServerInterceptor(logrusEntry),
 			grpc_auth.UnaryServerInterceptor(AuthFunc),
-			grpc_validator.UnaryServerInterceptor(),
 			middleware.StackTraceErrorInterceptor(false, LoggedErrorCodes...),
 			grpc_recovery.UnaryServerInterceptor(),
 		)),
@@ -129,22 +103,18 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
 	)
 	scheduler_proto.RegisterSchedulerServer(grpcServer, s)
 
-	f := make(chan error, 1)
-
+	grpcErrors := make(chan error, 1)
 	go func(f chan error) {
 		lis, err := net.Listen("tcp", grpcAddr)
 		if err != nil {
-			panic(err)
+			f <- err
+			return
 		}
 		s.logger.Infof("Serving on %s", lis.Addr().String())
 		if err := grpcServer.Serve(lis); err != nil {
 			f <- err
 		}
-	}(f)
-
-	for _, consumer := range s.consumers {
-		go consumer.Consume(ctx)
-	}
+	}(grpcErrors)
 
 	select {
 	case <-ctx.Done():
@@ -152,7 +122,7 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string) {
 		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
-	case err := <-f:
+	case err := <-grpcErrors:
 		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
 	}
 	s.logger.Info("gRPC server is stopped.")

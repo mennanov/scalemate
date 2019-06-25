@@ -8,7 +8,6 @@ import (
 	"github.com/mennanov/fieldmask-utils"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -65,52 +64,43 @@ func (n *Node) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Node, error
 // Create inserts a new Node in DB and returns the corresponding event.
 // It only inserts those fields that are required for a new Node, others are set to default values.
 func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
-	// NOT NULL columns are always used.
-	columns := []string{
-		"username",
-		"name",
-		"status",
-		"cpu_capacity", "cpu_available", "cpu_class",
-		"memory_capacity", "memory_available",
-		"gpu_capacity", "gpu_available", "gpu_class",
-		"disk_capacity", "disk_available", "disk_class",
-		"network_ingress_capacity", "network_egress_capacity",
-		"containers_finished", "containers_failed",
-		"fingerprint",
-	}
-	values := []interface{}{
-		n.Username,
-		n.Name,
-		int32(n.Status),
-		n.CpuCapacity, n.CpuAvailable, n.CpuClass,
-		n.MemoryCapacity, n.MemoryAvailable,
-		n.GpuCapacity, n.GpuAvailable, n.GpuClass,
-		n.DiskCapacity, n.DiskAvailable, n.DiskClass,
-		n.NetworkIngressCapacity, n.NetworkEgressCapacity,
-		n.ContainersFinished, n.ContainersFailed,
-		n.Fingerprint,
+	data := map[string]interface{}{
+		"username":                 n.Username,
+		"name":                     n.Name,
+		"status":                   n.Status,
+		"cpu_capacity":             n.CpuCapacity,
+		"cpu_available":            n.CpuAvailable,
+		"cpu_class":                n.CpuClass,
+		"memory_capacity":          n.MemoryCapacity,
+		"memory_available":         n.MemoryAvailable,
+		"gpu_capacity":             n.GpuCapacity,
+		"gpu_available":            n.GpuAvailable,
+		"gpu_class":                n.GpuClass,
+		"disk_capacity":            n.DiskCapacity,
+		"disk_available":           n.DiskAvailable,
+		"disk_class":               n.DiskClass,
+		"network_ingress_capacity": n.NetworkIngressCapacity,
+		"network_egress_capacity":  n.NetworkEgressCapacity,
+		"containers_finished":      n.ContainersFinished,
+		"containers_failed":        n.ContainersFailed,
+		"fingerprint":              n.Fingerprint,
 	}
 
 	// Nullable columns are used only when they have a value.
 	if n.ConnectedAt != nil {
-		columns = append(columns, "connected_at")
-		values = append(values, *n.ConnectedAt)
+		data["connected_at"] = *n.ConnectedAt
 	}
 	if n.DisconnectedAt != nil {
-		columns = append(columns, "disconnected_at")
-		values = append(values, *n.DisconnectedAt)
+		data["disconnected_at"] = *n.DisconnectedAt
 	}
 	if n.LastScheduledAt != nil {
-		columns = append(columns, "last_scheduled_at")
-		values = append(values, *n.LastScheduledAt)
+		data["last_scheduled_at"] = *n.LastScheduledAt
 	}
 	if n.Ip != nil {
-		columns = append(columns, "ip")
-		values = append(values, n.Ip)
+		data["ip"] = n.Ip
 	}
 
-	queryString, values, err := psq.Insert("nodes").Columns(columns...).Values(values...).
-		Suffix("RETURNING *").ToSql()
+	queryString, values, err := psq.Insert("nodes").SetMap(data).Suffix("RETURNING *").ToSql()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -135,34 +125,34 @@ func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
 	return events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil), nil
 }
 
-// Update performs an UPDATE SqlxGetter query for the Node fields given in the `updates` argument and returns a corresponding
+// Update performs an UPDATE query for the Node fields given in the `updates` argument and returns a corresponding
 // event.
-//func (n *Node) Update(db *gorm.DB, updates map[string]interface{}) (*events_proto.Event, error) {
-//	if n.ID == 0 {
-//		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Node"))
-//	}
-//	if err := utils.HandleDBError(db.Model(n).Updates(updates)); err != nil {
-//		return nil, err
-//	}
-//	fieldMask := &field_mask.FieldMask{Paths: mapKeys(updates)}
-//	nodeProto, err := n.ToProto(fieldMask)
-//	if err != nil {
-//		return nil, errors.Wrap(err, "node.ToProto failed")
-//	}
-//	event, err := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER,
-//		fieldMask)
-//	if err != nil {
-//		return nil, err
-//	}
-//	return event, nil
-//}
-
-// LoadFromDB performs a lookup by ID and populates the struct.
-func NewNodeFromDB(db utils.SqlxExtGetter, nodeId int64, forUpdate bool, logger *logrus.Logger) (*Node, error) {
-	query := psq.Select("*").From("nodes").Where(sq.Eq{"id": nodeId})
-	if forUpdate {
-		query = query.Suffix("FOR UPDATE")
+func (n *Node) Update(db utils.SqlxGetter, updates map[string]interface{}) (*events_proto.Event, error) {
+	if n.Id == 0 {
+		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Node"))
 	}
+
+	queryString, args, err := psq.Update("nodes").Where(sq.Eq{"id": n.Id}).SetMap(updates).
+		Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	if err := db.Get(n, queryString, args...); err != nil {
+		return nil, utils.HandleDBError(err)
+	}
+
+	fieldMask := &types.FieldMask{Paths: mapKeys(updates)}
+	nodeProto, err := n.ToProto(fieldMask)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	return events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask), nil
+}
+
+// NewNodeFromDB performs a lookup by ID and returns a Node instance.
+func NewNodeFromDB(db utils.SqlxExtGetter, nodeId int64) (*Node, error) {
+	query := psq.Select("*").From("nodes").Where(sq.Eq{"id": nodeId})
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -173,14 +163,14 @@ func NewNodeFromDB(db utils.SqlxExtGetter, nodeId int64, forUpdate bool, logger 
 	if err := utils.HandleDBError(db.Get(&node, queryString, args...)); err != nil {
 		return nil, err
 	}
-	if err := node.loadLabelsFromDB(db, logger); err != nil {
+	if err := node.loadLabelsFromDB(db); err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return &node, nil
 }
 
 // loadLabelsFromDB loads the corresponding NodeLabels to the Labels field.
-func (n *Node) loadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
+func (n *Node) loadLabelsFromDB(db utils.SqlxSelector) error {
 	if n.Id == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "Node is not saved in DB"))
 	}
@@ -189,79 +179,77 @@ func (n *Node) loadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
 		return errors.WithStack(err)
 	}
 
-	rows, err := db.Queryx(query, args...)
-	if err != nil {
-		return utils.HandleDBError(err)
-	}
-	defer utils.Close(rows, logger)
-
-	n.Labels = nil
-	var label string
-	for rows.Next() {
-		if err := rows.Scan(&label); err != nil {
-			return errors.Wrap(err, "rows.Scan failed")
-		}
-		n.Labels = append(n.Labels, label)
-	}
-	return nil
+	return utils.HandleDBError(db.Select(&n.Labels, query, args...))
 }
-//
-//// AllocateContainerLimit allocates resources requested by the newLimit on the Node.
-//// If the oldLimit provided, then the current Node's resources are adjusted accordingly.
-//// This function returns a map that can be passed to the Node.Update() method.
-//func (n *Node) AllocateContainerLimit(newLimit, oldLimit *Limit) (map[string]interface{}, error) {
-//	if newLimit == nil {
-//		return nil, errors.New("new limit can not be nil")
-//	}
-//	cpuAvailable := n.CpuAvailable
-//	memoryAvailable := n.MemoryAvailable
-//	diskAvailable := n.DiskAvailable
-//	gpuAvailable := n.GpuAvailable
-//
-//	if oldLimit != nil {
-//		cpuAvailable += oldLimit.Cpu
-//		memoryAvailable += oldLimit.Memory
-//		diskAvailable += oldLimit.Disk
-//		gpuAvailable += oldLimit.Gpu
-//	}
-//
-//	if cpuAvailable < newLimit.Cpu {
-//		return nil, errors.
-//			Errorf("failed to allocate Node CPU: %f requested, %f available", newLimit.Cpu, cpuAvailable)
-//	}
-//	if memoryAvailable < newLimit.Memory {
-//		return nil, errors.
-//			Errorf("failed to allocate Node memory: %d requested, %d available", newLimit.Memory, memoryAvailable)
-//	}
-//	if diskAvailable < newLimit.Disk {
-//		return nil, errors.
-//			Errorf("failed to allocate Node disk: %d requested, %d available", newLimit.Disk, diskAvailable)
-//	}
-//	if gpuAvailable < newLimit.Gpu {
-//		return nil, errors.
-//			Errorf("failed to allocate Node GPU: %d requested, %d available", newLimit.Gpu, gpuAvailable)
-//	}
-//	nodeUpdates := map[string]interface{}{
-//		"cpu_available":    cpuAvailable - newLimit.Cpu,
-//		"memory_available": memoryAvailable - newLimit.Memory,
-//		"disk_available":   diskAvailable - newLimit.Disk,
-//		"gpu_available":    gpuAvailable - newLimit.Gpu,
-//	}
-//	return nodeUpdates, nil
-//}
-//
-//// DeallocateContainerLimit deallocates resources requested by the limit on the Node.
-//// This function returns a map that can be passed to the Node.Update() method.
-//func (n *Node) DeallocateContainerLimit(limit *Limit) map[string]interface{} {
-//	nodeUpdates := map[string]interface{}{
-//		"cpu_available":    n.CpuAvailable + limit.Cpu,
-//		"memory_available": n.MemoryAvailable + limit.Memory,
-//		"disk_available":   n.DiskAvailable + limit.Disk,
-//		"gpu_available":    n.GpuAvailable + limit.Gpu,
-//	}
-//
-//	return nodeUpdates
-//}
+
+// GetCurrentPricing gets the current NodePricing policy for the Node.
+func (n *Node) GetCurrentPricing(db utils.SqlxGetter) (*NodePricing, error) {
+	query, args, err := psq.Select("*").From("node_pricing").Where("node_id = ?", n.Id).
+		OrderBy("created_at DESC").Limit(1).ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	var nodePricing NodePricing
+	if err := db.Get(&nodePricing, query, args...); err != nil {
+		return nil, utils.HandleDBError(err)
+	}
+	return &nodePricing, nil
+}
+
+// AllocateResources allocates resources requested by the newRequest on the Node.
+// If the currentRequest provided, then the current Node's resources are adjusted accordingly.
+// This function returns a map that can be passed to the Node.Update() method.
+func (n *Node) AllocateResources(newRequest, currentRequest *ResourceRequest) (map[string]interface{}, error) {
+	if newRequest == nil {
+		return nil, errors.New("new limit can not be nil")
+	}
+	cpuAvailable := n.CpuAvailable
+	memoryAvailable := n.MemoryAvailable
+	diskAvailable := n.DiskAvailable
+	gpuAvailable := n.GpuAvailable
+
+	if currentRequest != nil {
+		cpuAvailable += currentRequest.Cpu
+		memoryAvailable += currentRequest.Memory
+		diskAvailable += currentRequest.Disk
+		gpuAvailable += currentRequest.Gpu
+	}
+
+	if cpuAvailable < newRequest.Cpu {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"failed to allocate Node CPU: %f requested, %f available", newRequest.Cpu, cpuAvailable)
+	}
+	if memoryAvailable < newRequest.Memory {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"failed to allocate Node memory: %d requested, %d available", newRequest.Memory, memoryAvailable)
+	}
+	if diskAvailable < newRequest.Disk {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"failed to allocate Node disk: %d requested, %d available", newRequest.Disk, diskAvailable)
+	}
+	if gpuAvailable < newRequest.Gpu {
+		return nil, status.Errorf(codes.ResourceExhausted,
+			"failed to allocate Node GPU: %d requested, %d available", newRequest.Gpu, gpuAvailable)
+	}
+	// TODO: rewrite without using absolute values.
+	nodeUpdates := map[string]interface{}{
+		"cpu_available":    cpuAvailable - newRequest.Cpu,
+		"memory_available": memoryAvailable - newRequest.Memory,
+		"disk_available":   diskAvailable - newRequest.Disk,
+		"gpu_available":    gpuAvailable - newRequest.Gpu,
+	}
+	return nodeUpdates, nil
+}
+
+// DeallocateResources updates the Nodes resources and returns a map to be passed to Node.Update().
+func (n *Node) DeallocateResources(request *ResourceRequest) map[string]interface{} {
+	return map[string]interface{}{
+		"cpu_available":    sq.Expr("cpu_available + ?", request.Cpu),
+		"gpu_available":    sq.Expr("gpu_available + ?", request.Gpu),
+		"memory_available": sq.Expr("memory_available + ?", request.Memory),
+		"disk_available":   sq.Expr("disk_available + ?", request.Disk),
+	}
+}
 
 // SchedulePendingJobs finds suitable Containers that can be scheduled on the given Node and selects the best combination of
 // these Containers so that they all fit into the Node.
@@ -310,7 +298,7 @@ func (n *Node) loadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
 //		Where("ARRAY[?] @> labels", n.Labels).
 //		Joins("INNER JOIN (SELECT container_id, MAX(id) from container_limits WHERE status = ? AND cpu > 0 group by container_id) as t1 on (t1.container_id = containers.id)", utils.Enum(scheduler_proto.Limit_CONFIRMED))
 //
-//	q = q.Limit(ContainersScheduledForNodeQueryLimit)
+//	q = q.ResourceRequest(ContainersScheduledForNodeQueryLimit)
 //
 //	var containers []Container
 //	if err := utils.HandleDBError(q.Find(containers)); err != nil {
@@ -403,12 +391,12 @@ func (n *Node) loadLabelsFromDB(db sqlx.Ext, logger *logrus.Logger) error {
 //
 //	// Apply limit.
 //	var limit uint32
-//	if request.Limit <= ListNodesMaxLimit {
-//		limit = request.Limit
+//	if request.ResourceRequest <= ListNodesMaxLimit {
+//		limit = request.ResourceRequest
 //	} else {
 //		limit = ListNodesMaxLimit
 //	}
-//	query = query.Limit(limit)
+//	query = query.ResourceRequest(limit)
 //
 //	// Perform a SELECT query.
 //	if err := utils.HandleDBError(query.Find(nodes)); err != nil {

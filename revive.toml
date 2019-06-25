@@ -15,7 +15,7 @@ warningCode = 1
 [rule.if-return]
 [rule.increment-decrement]
 [rule.var-naming]
-  arguments = [["CPU", "GPU"],]
+  arguments = [["CPU", "GPU", "ID"],]
 
 [rule.var-declaration]
 [rule.package-comments]
@@ -37,4 +37,4 @@ warningCode = 1
 [rule.waitgroup-by-value]
 [rule.atomic]
 [rule.line-length-limit]
-  arguments = [120]
+  arguments = [160]

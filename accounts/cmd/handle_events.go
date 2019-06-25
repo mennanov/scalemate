@@ -1,13 +1,11 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -21,7 +19,7 @@ import (
 // handleEventsCmd represents the handle_events command.
 var handleEventsCmd = &cobra.Command{
 	Use:   "handle_events",
-	Short: "Handle events consumed from a message broker.",
+	Short: "Handle events consumed from a message broker. Client ID must be provided.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		logger := logrus.StandardLogger()
@@ -30,39 +28,28 @@ var handleEventsCmd = &cobra.Command{
 		db, err := utils.ConnectDBFromEnv(conf.AccountsConf.DBUrl)
 		if err != nil {
 			logger.Fatalf("Failed to connect to database: %s", err.Error())
-			os.Exit(1) //revive:disable-line:deep-exit
 		}
 		defer utils.Close(db, logger)
 
-		sc, err := stan.Connect(
-			conf.AccountsConf.NatsClusterName,
-			fmt.Sprintf("accounts-events-handler-%s", uuid.New().String()),
-			stan.NatsURL(conf.AccountsConf.NatsAddr))
+		clientID := args[0]
+		sc, err := stan.Connect(conf.AccountsConf.NatsClusterName, clientID, stan.NatsURL(conf.AccountsConf.NatsAddr))
 		if err != nil {
 			logger.Fatalf("stan.Connect failed: %s", err.Error())
-			os.Exit(1) //revive:disable-line:deep-exit
 		}
 		defer utils.Close(sc, logger)
 
-		producer := events.NewNatsProducer(sc, events.AccountsSubjectName)
+		producer := events.NewNatsProducer(sc, events.AccountsSubjectName, 5)
 		// NatsQueueConsumer is used to make the events processing scalable (round-robin delivery).
 		consumer := events.NewNatsQueueConsumer(sc, events.SchedulerSubjectName,
-			"accounts-events-handlers-queue", logger,
+			"accounts-events-handlers-queue", producer, db, logger, 3,
 			stan.DurableName("accounts-events-handlers"),
 			stan.AckWait(time.Second*5))
 
-		subscription, err := consumer.Consume(handlers.NewSchedulerNodeCreatedHandler(db, producer, logger))
+		subscription, err := consumer.Consume(handlers.NewSchedulerNodeCreatedHandler(logger))
 		if err != nil {
 			logger.Fatalf("consumer.Consume failed: %s", err.Error())
-			os.Exit(1) //revive:disable-line:deep-exit
 		}
 		defer utils.Close(subscription, logger)
-
-		go func() {
-			for err := range subscription.Errors() {
-				logger.WithError(err).Error("error occurred while processing an event message")
-			}
-		}()
 
 		terminate := make(chan os.Signal)
 		signal.Notify(terminate, os.Interrupt, syscall.SIGTERM)

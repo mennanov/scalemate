@@ -6,7 +6,6 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 
 	"github.com/mennanov/scalemate/accounts/models"
-	"github.com/mennanov/scalemate/shared/utils"
 )
 
 func (s *ModelsTestSuite) TestNode_FromSchedulerProto() {
@@ -26,7 +25,7 @@ func (s *ModelsTestSuite) TestNode_FromSchedulerProto() {
 		},
 	} {
 		node := models.NewNodeFromSchedulerProto(schedulerNodeProto)
-		s.Equal(schedulerNodeProto.Id, node.ID)
+		s.Equal(schedulerNodeProto.Id, node.Id)
 		s.Equal(schedulerNodeProto.Fingerprint, node.Fingerprint)
 		s.Equal(schedulerNodeProto.Name, node.Name)
 		s.Equal(schedulerNodeProto.Username, node.Username)
@@ -38,9 +37,7 @@ func (s *ModelsTestSuite) TestNode_FromSchedulerProto() {
 
 func (s *ModelsTestSuite) TestNode_Create() {
 	node := &models.Node{
-		Model: utils.Model{
-			ID: 1,
-		},
+		Id:       1,
 		Username: "username",
 		Name:     "name",
 	}

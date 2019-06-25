@@ -1,19 +1,13 @@
 package events
 
 import (
-	"fmt"
-	"regexp"
-	"sync"
-	"time"
+	"database/sql/driver"
 
-	"github.com/gogo/protobuf/types"
-
-	"github.com/golang/protobuf/proto"
-	"github.com/google/uuid"
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
-	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
+
+	"github.com/mennanov/scalemate/shared/events_proto"
+
+	"github.com/mennanov/scalemate/shared/utils"
 )
 
 const (
@@ -23,127 +17,17 @@ const (
 	SchedulerSubjectName = "scheduler"
 )
 
-// NewEvent creates a new events_proto.Event instance.
-func NewEvent(
-	payload proto.Message,
-	eventType events_proto.Event_Type,
-	service events_proto.Service,
-	fieldMask *types.FieldMask,
-) *events_proto.Event {
-	eventUUID := uuid.New()
-	event := &events_proto.Event{
-		Uuid:        eventUUID[:],
-		Type:        eventType,
-		Service:     service,
-		PayloadMask: fieldMask,
-		CreatedAt:   time.Now().UTC(),
+
+// CommitAndPublish commits the DB transaction and sends the given events with confirmation.
+// It also handles and wraps all the errors if there is any.
+func CommitAndPublish(tx driver.Tx, producer Producer, events ...*events_proto.Event) error {
+	if err := utils.HandleDBError(tx.Commit()); err != nil {
+		return errors.Wrap(err, "failed to commit transaction")
 	}
-
-	switch p := payload.(type) {
-	case *scheduler_proto.Container:
-		event.Payload = &events_proto.Event_SchedulerContainer{SchedulerContainer: p}
-
-	case *scheduler_proto.Node:
-		event.Payload = &events_proto.Event_SchedulerNode{SchedulerNode: p}
-
-	case *accounts_proto.User:
-		event.Payload = &events_proto.Event_AccountsUser{AccountsUser: p}
-
-	default:
-		panic(fmt.Sprintf("unknown event payload type %T", payload))
-	}
-
-	return event
-}
-
-// KeyForEvent returns a key string for the given event.
-func KeyForEvent(event *events_proto.Event) string {
-	var key string
-	switch e := event.Payload.(type) {
-	case *events_proto.Event_SchedulerNode:
-		key = fmt.Sprintf("scheduler.node.%s", event.Type.String())
-		if e.SchedulerNode.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.SchedulerNode.Id)
+	if len(events) > 0 {
+		if err := producer.Send(events...); err != nil {
+			return errors.WithStack(err)
 		}
-
-	case *events_proto.Event_SchedulerContainer:
-		key = fmt.Sprintf("scheduler.container.%s", event.Type.String())
-		if e.SchedulerContainer.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.SchedulerContainer.Id)
-		}
-
-	case *events_proto.Event_AccountsUser:
-		key = fmt.Sprintf("accounts.user.%s", event.Type.String())
-		if e.AccountsUser.Id != 0 {
-			key = fmt.Sprintf("%s.%d", key, e.AccountsUser.Id)
-		}
-
-	default:
-		panic(fmt.Sprintf("unknown event Payload type %T", e))
-	}
-
-	return key
-}
-
-const msgWaitTimeout = time.Second
-
-// MessagesTestingHandler is used in tests to check if all the expected messages have been received.
-type MessagesTestingHandler struct {
-	receivedMessageKeys []string
-	mu                  *sync.RWMutex
-}
-
-// NewMessagesTestingHandler creates a new instance of MessagesTestingHandler.
-func NewMessagesTestingHandler() *MessagesTestingHandler {
-	return &MessagesTestingHandler{mu: &sync.RWMutex{}}
-}
-
-// Handle saves all the received message keys.
-func (h *MessagesTestingHandler) Handle(event *events_proto.Event) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.receivedMessageKeys = append(h.receivedMessageKeys, KeyForEvent(event))
-	return nil
-}
-
-// ExpectMessages waits for the expected messages to be received.
-// It returns an error if some messages have not been received within the msgWaitTimeout.
-func (h *MessagesTestingHandler) ExpectMessages(keys ...string) error {
-	defer func() {
-		// Reset the receivedMessageKeys on exit.
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		h.receivedMessageKeys = nil
-	}()
-
-	var matchedKeys []string
-loop:
-	for {
-		select {
-		case <-time.After(msgWaitTimeout):
-			break loop
-
-		default:
-			if len(matchedKeys) == len(keys) {
-				break loop
-			}
-			for _, keyExpected := range keys {
-				re := regexp.MustCompile(keyExpected)
-				func() {
-					h.mu.RLock()
-					defer h.mu.RUnlock()
-					for _, keyActual := range h.receivedMessageKeys {
-						if re.MatchString(keyActual) {
-							matchedKeys = append(matchedKeys, keyExpected)
-							break
-						}
-					}
-				}()
-			}
-		}
-	}
-	if len(matchedKeys) != len(keys) {
-		return errors.Errorf("expected messages: %s, matched messages: %s", keys, matchedKeys)
 	}
 	return nil
 }

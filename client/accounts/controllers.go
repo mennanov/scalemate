@@ -33,11 +33,12 @@ func LoginController(
 		return nil, ErrEmptyPassword
 	}
 	request := &accounts_proto.PasswordAuthRequest{
-		Username: username,
-		Password: password,
-	}
-	if err := request.Validate(); err != nil {
-		return nil, errors.Wrap(err, "invalid arguments format")
+		Request: &accounts_proto.PasswordAuthRequest_UserAuth{
+			UserAuth: &accounts_proto.PasswordAuthRequest_UserAuthRequest{
+				Username: username,
+				Password: password,
+			},
+		},
 	}
 	tokens, err := client.PasswordAuth(context.Background(), request)
 	if err != nil {
@@ -71,9 +72,6 @@ func RegisterController(client accounts_proto.AccountsClient, username, email, p
 		Username: username,
 		Email:    email,
 		Password: password,
-	}
-	if err := request.Validate(); err != nil {
-		return errors.Wrap(err, "invalid arguments format")
 	}
 	_, err := client.Register(context.Background(), request)
 	return err

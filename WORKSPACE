@@ -135,7 +135,7 @@ go_repository(
 
 go_repository(
     name = "com_github_mennanov_fieldmask_utils",
-    commit = "fd0e78e68e7aa8f7ac6eb2ada059e784831e1fcc",
+    commit = "a8e4da45a3a74ff064558e0e1e59bcfefff89898",
     importpath = "github.com/mennanov/fieldmask-utils",
 )
 

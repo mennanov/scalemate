@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -20,8 +19,6 @@ import (
 	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 
-	"google.golang.org/grpc"
-
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/stretchr/testify/suite"
 
@@ -30,8 +27,7 @@ import (
 )
 
 const (
-	natsDurableName = "accounts-server-tests"
-	dbName          = "accounts_server_test_suite"
+	dbName = "accounts_server_test_suite"
 )
 
 type ServerTestSuite struct {
@@ -41,7 +37,7 @@ type ServerTestSuite struct {
 	db              *sqlx.DB
 	sc              stan.Conn
 	subscription    events.Subscription
-	messagesHandler *events.MessagesTestingHandler
+	messagesHandler *testutils.MessagesTestingHandler
 	ctxCancel       context.CancelFunc
 	logger          *logrus.Logger
 }
@@ -63,14 +59,15 @@ func (s *ServerTestSuite) SetupSuite() {
 		stan.NatsURL(conf.AccountsConf.NatsAddr))
 	s.Require().NoError(err)
 
-	consumer := events.NewNatsConsumer(s.sc, events.AccountsSubjectName, s.logger, stan.DurableName(natsDurableName))
-	s.messagesHandler = events.NewMessagesTestingHandler()
+	producer := events.NewNatsProducer(s.sc, events.AccountsSubjectName, 5)
+	consumer := events.NewNatsConsumer(s.sc, events.AccountsSubjectName, producer, s.db, s.logger, 5, 3)
+	s.messagesHandler = testutils.NewMessagesTestingHandler()
 	s.subscription, err = consumer.Consume(s.messagesHandler)
 
 	s.service, err = server.NewAccountsServer(
 		server.WithLogger(logrus.New()),
 		server.WithDBConnection(s.db),
-		server.WithProducer(events.NewNatsProducer(s.sc, events.AccountsSubjectName)),
+		server.WithProducer(producer),
 		server.WithJWTSecretKey(conf.AccountsConf.JWTSecretKey),
 		server.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.AccountsConf.JWTSecretKey)),
 		server.WithAccessTokenTTL(conf.AccountsConf.AccessTokenTTL),
@@ -89,11 +86,11 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 	s.Require().NoError(m.Up())
 
-	var ctx context.Context
-	ctx, s.ctxCancel = context.WithCancel(context.Background())
-
 	serverCreds, err := credentials.NewServerTLSFromFile(conf.AccountsConf.TLSCertFile, conf.AccountsConf.TLSKeyFile)
 	s.Require().NoError(err)
+
+	var ctx context.Context
+	ctx, s.ctxCancel = context.WithCancel(context.Background())
 
 	go func() {
 		s.service.Serve(ctx, localAddr, serverCreds)
@@ -101,7 +98,7 @@ func (s *ServerTestSuite) SetupSuite() {
 
 	clientCreds, err := credentials.NewClientTLSFromFile(conf.AccountsConf.TLSCertFile, "localhost")
 	s.Require().NoError(err)
-	s.client = accounts_proto.NewAccountsClient(newClientConn(localAddr, clientCreds))
+	s.client = accounts_proto.NewAccountsClient(testutils.NewClientConn(localAddr, clientCreds))
 }
 
 func (s *ServerTestSuite) SetupTest() {
@@ -118,16 +115,4 @@ func (s *ServerTestSuite) TearDownSuite() {
 
 func TestRunServerSuite(t *testing.T) {
 	suite.Run(t, new(ServerTestSuite))
-}
-
-func newClientConn(addr string, creds credentials.TransportCredentials) *grpc.ClientConn {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx, addr, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		panic(err)
-	}
-
-	return conn
 }

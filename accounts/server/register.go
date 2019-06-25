@@ -4,15 +4,16 @@ import (
 	"context"
 	"regexp"
 
+	validation "github.com/go-ozzo/ozzo-validation"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/accounts/models"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 
-	"github.com/go-ozzo/ozzo-validation"
 	"github.com/go-ozzo/ozzo-validation/is"
 )
 
@@ -50,7 +51,7 @@ func (s AccountsServer) Register(ctx context.Context, r *accounts_proto.Register
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "failed to create a new user"))
 	}
 
-	if err := utils.CommitAndPublish(tx, s.producer, event); err != nil {
+	if err := events.CommitAndPublish(tx, s.producer, event); err != nil {
 		return nil, errors.Wrap(err, "CommitAndPublish failed")
 	}
 
