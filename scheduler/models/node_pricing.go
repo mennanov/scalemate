@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
 	fieldmask_utils "github.com/mennanov/fieldmask-utils"
@@ -8,7 +10,6 @@ import (
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/pkg/errors"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -53,9 +54,12 @@ func (n *NodePricing) Create(db utils.SqlxExtGetter) (*events_proto.Event, error
 		return nil, utils.HandleDBError(err)
 	}
 
-	nodePricing, err := n.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "NodePricing.ToProto failed")
-	}
-	return events.NewEvent(nodePricing, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil), nil
+	return &events_proto.Event{
+		Payload: &events_proto.Event_SchedulerNodePricingCreated{
+			SchedulerNodePricingCreated: &scheduler_proto.NodePricingCreatedEvent{
+				NodePricing: &n.NodePricing,
+			},
+		},
+		CreatedAt: time.Now().UTC(),
+	}, nil
 }

@@ -10,7 +10,7 @@ import (
 
 func (s *ModelsTestSuite) TestResourceRequest_Create() {
 	container := new(models.Container)
-	_, err := container.Create(s.db)
+	err := container.Create(s.db)
 	s.Require().NoError(err)
 
 	s.Run("empty request", func() {
@@ -56,7 +56,7 @@ func (s *ModelsTestSuite) TestResourceRequest_Create() {
 
 func (s *ModelsTestSuite) TestNewResourceRequestFromDBLatest() {
 	container := new(models.Container)
-	_, err := container.Create(s.db)
+	err := container.Create(s.db)
 	s.Require().NoError(err)
 
 	s.Run("not found", func() {

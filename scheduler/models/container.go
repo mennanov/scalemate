@@ -1,8 +1,6 @@
 package models
 
 import (
-	"fmt"
-
 	sq "github.com/Masterminds/squirrel"
 	"github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
@@ -14,7 +12,6 @@ import (
 
 	"github.com/mennanov/scalemate/shared/events_proto"
 
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -34,11 +31,8 @@ type Container struct {
 }
 
 // NewContainerFromDB performs a lookup by ID and populates the struct.
-func NewContainerFromDB(db utils.SqlxExtGetter, containerId int64, forUpdate bool) (*Container, error) {
+func NewContainerFromDB(db utils.SqlxExtGetter, containerId int64) (*Container, error) {
 	query := psq.Select("*").From("containers").Where(sq.Eq{"id": containerId})
-	if forUpdate {
-		query = query.Suffix("FOR UPDATE")
-	}
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -50,6 +44,9 @@ func NewContainerFromDB(db utils.SqlxExtGetter, containerId int64, forUpdate boo
 		return nil, err
 	}
 	if err := container.loadLabelsFromDB(db); err != nil {
+		return nil, errors.WithStack(err)
+	}
+	if err := container.loadSchedulingStrategiesFromDB(db); err != nil {
 		return nil, errors.WithStack(err)
 	}
 	return &container, nil
@@ -74,7 +71,7 @@ func (c *Container) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Contai
 }
 
 // Create inserts a new Container in DB and returns the corresponding event.
-func (c *Container) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
+func (c *Container) Create(db utils.SqlxGetter) error {
 	data := map[string]interface{}{
 		"username":            c.Username,
 		"status":              c.Status,
@@ -89,6 +86,7 @@ func (c *Container) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
 		"disk_class_max":      c.DiskClassMax,
 		"network_ingress_min": c.NetworkIngressMin,
 		"network_egress_min":  c.NetworkEgressMin,
+		"max_price_limit":     c.MaxPriceLimit,
 	}
 
 	if c.Id != 0 {
@@ -102,11 +100,11 @@ func (c *Container) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
 	}
 	queryString, args, err := psq.Insert("containers").SetMap(data).Suffix("RETURNING *").ToSql()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	if err := db.Get(c, queryString, args...); err != nil {
-		return nil, utils.HandleDBError(err)
+		return utils.HandleDBError(err)
 	}
 	for _, label := range c.Labels {
 		containerLabel := &ContainerLabel{
@@ -114,14 +112,23 @@ func (c *Container) Create(db utils.SqlxGetter) (*events_proto.Event, error) {
 			Label:       label,
 		}
 		if err := containerLabel.Create(db); err != nil {
-			return nil, errors.Wrap(err, "containerLabel.Create failed")
+			return errors.Wrap(err, "containerLabel.Create failed")
 		}
 	}
-	containerProto, err := c.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "container.ToProto failed")
+	for i, strategy := range c.SchedulingStrategy {
+		containerSchedulingStrategy := &ContainerSchedulingStrategy{
+			SchedulingStrategy: scheduler_proto.SchedulingStrategy{
+				Strategy:             strategy.Strategy,
+				DifferencePercentage: strategy.DifferencePercentage,
+			},
+			ContainerId: c.Id,
+			Position:    i,
+		}
+		if err := containerSchedulingStrategy.Create(db); err != nil {
+			return errors.WithStack(err)
+		}
 	}
-	return events.NewEvent(containerProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil), nil
+	return nil
 }
 
 // loadLabelsFromDB loads the corresponding ContainerLabels to the Labels field.
@@ -135,6 +142,20 @@ func (c *Container) loadLabelsFromDB(db utils.SqlxSelector) error {
 	}
 
 	return utils.HandleDBError(db.Select(&c.Labels, query, args...))
+}
+
+// loadSchedulingStrategiesFromDB loads the corresponding ContainerLabels to the Labels field.
+func (c *Container) loadSchedulingStrategiesFromDB(db utils.SqlxSelector) error {
+	if c.Id == 0 {
+		return errors.WithStack(status.Error(codes.FailedPrecondition, "Container is not saved in DB"))
+	}
+	query, args, err := psq.Select("strategy, difference_percentage").From("container_scheduling_strategies").
+		Where(sq.Eq{"container_id": c.Id}).OrderBy("position ASC").ToSql()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	return utils.HandleDBError(db.Select(&c.SchedulingStrategy, query, args...))
 }
 
 // ContainerStatusTransitions defined possible Container status transitions.
@@ -189,21 +210,16 @@ func (c *Container) ValidateNewStatus(newStatus scheduler_proto.Container_Status
 
 // Update performs an UPDATE query for the Container fields given in the `updates` argument and returns a
 // corresponding event.
-func (c *Container) Update(db utils.SqlxGetter, updates map[string]interface{}) (*events_proto.Event, error) {
+func (c *Container) Update(db utils.SqlxGetter, updates map[string]interface{}) error {
 	if c.Id == 0 {
-		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update unsaved Container"))
+		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't update unsaved Container"))
 	}
 	query, args, err := psq.Update("containers").SetMap(updates).Where(sq.Eq{"id": c.Id}).Suffix("RETURNING *").ToSql()
-	if err := db.Get(c, query, args...); err != nil {
-		return nil, utils.HandleDBError(err)
+	if err != nil {
+		return errors.WithStack(err)
 	}
 
-	fieldMask := &types.FieldMask{Paths: mapKeys(updates)}
-	containerProto, err := c.ToProto(fieldMask)
-	if err != nil {
-		return nil, errors.Wrap(err, "container.ToProto failed")
-	}
-	return events.NewEvent(containerProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask), nil
+	return utils.HandleDBError(db.Get(c, query, args...))
 }
 
 // isFinalContainerStatus return true if the given Container status is final (can't be changed).
@@ -216,128 +232,76 @@ func (c *Container) IsTerminated() bool {
 	return isFinalContainerStatus(c.Status)
 }
 
-// Schedule finds the Node that satisfies the Container's criteria and the given ResourceRequest, updates the Node's
-// resources (*_available field values) and sets the status of the Container to SCHEDULED.
-func (c *Container) Schedule(db utils.SqlxGetter, request *ResourceRequest) ([]*events_proto.Event, error) {
-	if c.NodeId != nil {
-		return nil, status.Errorf(codes.FailedPrecondition, "Container has already been scheduled")
-	}
-	lookupQuery := psq.Select("id").From("nodes").Where(sq.Eq{"status": scheduler_proto.Node_ONLINE}).Limit(1)
+func (c *Container) NodesForScheduling(db utils.SqlxSelector, request *ResourceRequest) ([]*NodeWithPricing, error) {
+	query := psq.Select("nodes.*, cpu_price, gpu_price, memory_price, disk_price").From("nodes").
+		Where(sq.Eq{"status": scheduler_proto.Node_ONLINE})
+
+	pricingQuery := psq.Select("*").
+		FromSelect(
+			psq.Select("*, rank() OVER (PARTITION BY node_id ORDER BY created_at DESC) as position").
+				From("node_pricing"), "pricing").
+		Where("pricing.position = 1")
+
+	query = query.JoinClause(pricingQuery.Prefix("INNER JOIN (").Suffix(") p ON (p.node_id = nodes.id)"))
 
 	if request.Cpu != 0 {
-		lookupQuery = lookupQuery.Where("cpu_available >= ?", request.Cpu)
+		query = query.Where("cpu_available >= ?", request.Cpu)
 	}
 	if request.Gpu != 0 {
-		lookupQuery = lookupQuery.Where("gpu_available >= ?", request.Gpu)
+		query = query.Where("gpu_available >= ?", request.Gpu)
 	}
 	if request.Memory != 0 {
-		lookupQuery = lookupQuery.Where("memory_available >= ?", request.Memory)
+		query = query.Where("memory_available >= ?", request.Memory)
 	}
 	if request.Disk != 0 {
-		lookupQuery = lookupQuery.Where("disk_available >= ?", request.Disk)
+		query = query.Where("disk_available >= ?", request.Disk)
 	}
 
 	if c.NetworkEgressMin != 0 {
-		lookupQuery = lookupQuery.Where("network_egress_capacity >= ?", c.NetworkEgressMin)
+		query = query.Where("network_egress_capacity >= ?", c.NetworkEgressMin)
 	}
 	if c.NetworkIngressMin != 0 {
-		lookupQuery = lookupQuery.Where("network_ingress_capacity >= ?", c.NetworkIngressMin)
+		query = query.Where("network_ingress_capacity >= ?", c.NetworkIngressMin)
 	}
 	if c.CpuClassMin != 0 {
-		lookupQuery = lookupQuery.Where("cpu_class >= ?", c.CpuClassMin)
+		query = query.Where("cpu_class >= ?", c.CpuClassMin)
 	}
 	if c.CpuClassMax != 0 {
-		lookupQuery = lookupQuery.Where("cpu_class <= ?", c.CpuClassMax)
+		query = query.Where("cpu_class <= ?", c.CpuClassMax)
 	}
 	if c.GpuClassMin != 0 {
-		lookupQuery = lookupQuery.Where("gpu_class >= ?", c.GpuClassMin)
+		query = query.Where("gpu_class >= ?", c.GpuClassMin)
 	}
 	if c.GpuClassMax != 0 {
-		lookupQuery = lookupQuery.Where("gpu_class <= ?", c.GpuClassMax)
+		query = query.Where("gpu_class <= ?", c.GpuClassMax)
 	}
 	if c.DiskClassMin != 0 {
-		lookupQuery = lookupQuery.Where("disk_class >= ?", c.DiskClassMin)
+		query = query.Where("disk_class >= ?", c.DiskClassMin)
 	}
 	if c.DiskClassMax != 0 {
-		lookupQuery = lookupQuery.Where("disk_class <= ?", c.DiskClassMax)
+		query = query.Where("disk_class <= ?", c.DiskClassMax)
 	}
 	if len(c.Labels) != 0 {
-		lookupQuery = lookupQuery.Where(`0 < ALL (
+		query = query.Where(`0 < ALL (
 		SELECT (
 			SELECT COUNT(*) FROM node_labels AS nl WHERE nl.node_id = nodes.id AND nl.label ~* cl.label
 		) FROM container_labels AS cl WHERE cl.container_id = ?)`, c.Id)
 	}
-
-	switch c.SchedulingStrategy {
-	case scheduler_proto.Container_CHEAPEST:
-		pricingQuery := psq.Select("node_id, cpu_price, gpu_price, memory_price, disk_price").
-			FromSelect(
-				psq.Select("*, rank() OVER (PARTITION BY node_id ORDER BY created_at DESC) as pos").
-					From("node_pricing"), "pricing").
-			Where("pricing.pos = 1")
-
-		lookupQuery = lookupQuery.JoinClause(pricingQuery.Prefix("JOIN (").Suffix(") p ON (p.node_id = nodes.id)")).
-			OrderBy(fmt.Sprintf("cpu_price * %d + gpu_price * %d + memory_price * %d + disk_price * %d",
-				request.Cpu, request.Gpu, request.Memory, request.Disk))
-
-	case scheduler_proto.Container_LEAST_BUSY:
-		lookupQuery = lookupQuery.OrderBy(`CASE WHEN gpu_capacity > 0 THEN
-		(cpu_available::float / cpu_capacity::float)^2 + (gpu_available::float / gpu_capacity::float)^2 +
-		(disk_available::float / disk_capacity::float)^2 + (memory_available::float / memory_capacity::float)^2
-		ELSE
-		(cpu_available::float / cpu_capacity::float)^2 +
-		(disk_available::float / disk_capacity::float)^2 + (memory_available::float / memory_capacity::float)^2
-		END`)
-	case scheduler_proto.Container_MOST_RELIABLE:
-		lookupQuery = lookupQuery.OrderBy(`CASE
-		WHEN containers_finished == 0
-			THEN Infinity
-		ELSE containers_failed::float / containers_finished::float
-		END`)
+	if c.MaxPriceLimit > 0 {
+		query = query.Where("cpu_price * ? + gpu_price * ? + disk_price * ? + memory_price * ? <= ?",
+			request.Cpu, request.Gpu, request.Disk, request.Memory, c.MaxPriceLimit)
 	}
 
-	updateQuery := psq.Update("nodes").Where(lookupQuery.Prefix("id IN(").Suffix(")")).Suffix("RETURNING *")
-
-	nodeUpdates := map[string]interface{}{
-		"cpu_available":     sq.Expr("cpu_available - ?", request.Cpu),
-		"gpu_available":     sq.Expr("gpu_available - ?", request.Gpu),
-		"memory_available":  sq.Expr("memory_available - ?", request.Memory),
-		"disk_available":    sq.Expr("disk_available - ?", request.Disk),
-		"last_scheduled_at": sq.Expr("NOW()"),
-	}
-	updateQuery = updateQuery.SetMap(nodeUpdates)
-
-	queryString, args, err := updateQuery.ToSql()
+	queryString, args, err := query.ToSql()
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	var node Node
-	if err := db.Get(&node, queryString, args...); err != nil {
+	var nodesWithPricing []*NodeWithPricing
+	if err := db.Select(&nodesWithPricing, queryString, args...); err != nil {
 		return nil, utils.HandleDBError(err)
 	}
-	nodePricing, err := node.GetCurrentPricing(db)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	fieldMask := &types.FieldMask{Paths: mapKeys(nodeUpdates)}
-	nodeProto, err := (&node).ToProto(fieldMask)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	nodeEvent := events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask)
-
-	containerEvent, err := c.Update(db, map[string]interface{}{
-		"status":          scheduler_proto.Container_SCHEDULED,
-		"node_id":         node.Id,
-		"node_pricing_id": nodePricing.Id,
-	})
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-
-	return []*events_proto.Event{nodeEvent, containerEvent}, nil
+	return nodesWithPricing, nil
 }
 
 // Terminate validates and updates the Container's status, deallocates resources on the corresponding Node.
@@ -361,22 +325,23 @@ func (c *Container) Terminate(db utils.SqlxGetter, newStatus scheduler_proto.Con
 	}
 
 	node := &Node{scheduler_proto.Node{Id: *c.NodeId}}
-	updates := node.DeallocateResources(resources)
+	updates := node.DeallocateResourcesUpdates(resources)
 	if newStatus == scheduler_proto.Container_OFFLINE_FAILED {
 		updates["containers_failed"] = sq.Expr("containers_failed + 1")
 	}
 	updates["containers_finished"] = sq.Expr("containers_finished + 1")
 
-	nodeUpdatedEvent, err := node.Update(db, updates)
+	err = node.Update(db, updates)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
-	containerUpdatedEvent, err := c.Update(db, map[string]interface{}{"status": newStatus})
+	err = c.Update(db, map[string]interface{}{"status": newStatus})
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-	return []*events_proto.Event{nodeUpdatedEvent, containerUpdatedEvent}, nil
+	//return []*events_proto.Event{nodeUpdatedEvent, containerUpdatedEvent}, nil
+	return nil, nil
 }
 
 // ListContainers selects Containers from DB by the given filtering request.
@@ -430,6 +395,11 @@ func ListContainers(db utils.SqlxExtGetter, request *scheduler_proto.ListContain
 	return containers, count, nil
 }
 
+// NewContainerFromProto creates a new instance of Container populated from the given proto message.
+func NewContainerFromProto(p *scheduler_proto.Container) *Container {
+	return &Container{Container: *p}
+}
+
 // ContainerLabel is a Container's label.
 type ContainerLabel struct {
 	ContainerId int64
@@ -448,7 +418,23 @@ func (c *ContainerLabel) Create(db utils.SqlxGetter) error {
 	return utils.HandleDBError(db.Get(c, queryString, args...))
 }
 
-// NewContainerFromProto creates a new instance of Container populated from the given proto message.
-func NewContainerFromProto(p *scheduler_proto.Container) *Container {
-	return &Container{Container: *p}
+// ContainerLabel is a Container's label.
+type ContainerSchedulingStrategy struct {
+	scheduler_proto.SchedulingStrategy
+	ContainerId int64
+	Position    int
+}
+
+// Create inserts a new ContainerSchedulingStrategy in DB.
+func (c *ContainerSchedulingStrategy) Create(db utils.SqlxGetter) error {
+	queryString, args, err := psq.Insert("container_scheduling_strategies").SetMap(map[string]interface{}{
+		"container_id":          c.ContainerId,
+		"position":              c.Position,
+		"strategy":              c.Strategy,
+		"difference_percentage": c.DifferencePercentage,
+	}).Suffix("RETURNING *").ToSql()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	return utils.HandleDBError(db.Get(c, queryString, args...))
 }

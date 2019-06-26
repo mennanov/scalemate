@@ -28,7 +28,7 @@ create table containers
     updated_at          timestamp,
 
     node_auth_token     bytea     not null,
-    scheduling_strategy bytea[]   not null
+    max_price_limit     bigint
 );
 
 create index containers_scheduling_idx ON containers (status, cpu_class_min, cpu_class_max, disk_class_min,

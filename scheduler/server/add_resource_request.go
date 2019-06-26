@@ -27,7 +27,7 @@ func (s *SchedulerServer) AddResourceRequest(
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	container, err := models.NewContainerFromDB(s.db, request.ContainerId, false)
+	container, err := models.NewContainerFromDB(s.db, request.ContainerId)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get the corresponding container")
 	}
@@ -76,11 +76,11 @@ func (s *SchedulerServer) AddResourceRequest(
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.WithStack(err))
 	}
-	updates, err := node.AllocateResources(resourceRequest, latestRequest)
+	updates, err := node.AllocateResourcesUpdates(resourceRequest, latestRequest)
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.WithStack(err))
 	}
-	nodeUpdatedEvent, err := node.Update(tx, updates)
+	err := node.Update(tx, updates)
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.WithStack(err))
 	}

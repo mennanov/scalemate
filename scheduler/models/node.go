@@ -11,9 +11,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/mennanov/scalemate/shared/events_proto"
-
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -61,9 +58,8 @@ func (n *Node) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Node, error
 	return protoFiltered, nil
 }
 
-// Create inserts a new Node in DB and returns the corresponding event.
-// It only inserts those fields that are required for a new Node, others are set to default values.
-func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
+// Create inserts a new Node in DB (also including its labels).
+func (n *Node) Create(db utils.SqlxExtGetter) error {
 	data := map[string]interface{}{
 		"username":                 n.Username,
 		"name":                     n.Name,
@@ -81,8 +77,9 @@ func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
 		"disk_class":               n.DiskClass,
 		"network_ingress_capacity": n.NetworkIngressCapacity,
 		"network_egress_capacity":  n.NetworkEgressCapacity,
-		"containers_finished":      n.ContainersFinished,
+		"containers_succeeded":     n.ContainersSucceeded,
 		"containers_failed":        n.ContainersFailed,
+		"containers_scheduled":     n.ContainersScheduled,
 		"fingerprint":              n.Fingerprint,
 	}
 
@@ -93,20 +90,17 @@ func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
 	if n.DisconnectedAt != nil {
 		data["disconnected_at"] = *n.DisconnectedAt
 	}
-	if n.LastScheduledAt != nil {
-		data["last_scheduled_at"] = *n.LastScheduledAt
-	}
 	if n.Ip != nil {
 		data["ip"] = n.Ip
 	}
 
 	queryString, values, err := psq.Insert("nodes").SetMap(data).Suffix("RETURNING *").ToSql()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
 	if err := db.Get(n, queryString, values...); err != nil {
-		return nil, utils.HandleDBError(err)
+		return utils.HandleDBError(err)
 	}
 
 	for _, label := range n.Labels {
@@ -115,39 +109,26 @@ func (n *Node) Create(db utils.SqlxExtGetter) (*events_proto.Event, error) {
 			Label:  label,
 		}
 		if err := nodeLabel.Create(db); err != nil {
-			return nil, errors.Wrap(err, "nodeLabel.Create failed")
+			return errors.Wrap(err, "nodeLabel.Create failed")
 		}
 	}
-	nodeProto, err := n.ToProto(nil)
-	if err != nil {
-		return nil, errors.Wrap(err, "node.ToProto failed")
-	}
-	return events.NewEvent(nodeProto, events_proto.Event_CREATED, events_proto.Service_SCHEDULER, nil), nil
+	return nil
 }
 
 // Update performs an UPDATE query for the Node fields given in the `updates` argument and returns a corresponding
 // event.
-func (n *Node) Update(db utils.SqlxGetter, updates map[string]interface{}) (*events_proto.Event, error) {
+func (n *Node) Update(db utils.SqlxGetter, updates map[string]interface{}) error {
 	if n.Id == 0 {
-		return nil, errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Node"))
+		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't update not saved Node"))
 	}
 
 	queryString, args, err := psq.Update("nodes").Where(sq.Eq{"id": n.Id}).SetMap(updates).
 		Suffix("RETURNING *").ToSql()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return errors.WithStack(err)
 	}
 
-	if err := db.Get(n, queryString, args...); err != nil {
-		return nil, utils.HandleDBError(err)
-	}
-
-	fieldMask := &types.FieldMask{Paths: mapKeys(updates)}
-	nodeProto, err := n.ToProto(fieldMask)
-	if err != nil {
-		return nil, errors.WithStack(err)
-	}
-	return events.NewEvent(nodeProto, events_proto.Event_UPDATED, events_proto.Service_SCHEDULER, fieldMask), nil
+	return utils.HandleDBError(db.Get(n, queryString, args...))
 }
 
 // NewNodeFromDB performs a lookup by ID and returns a Node instance.
@@ -196,10 +177,10 @@ func (n *Node) GetCurrentPricing(db utils.SqlxGetter) (*NodePricing, error) {
 	return &nodePricing, nil
 }
 
-// AllocateResources allocates resources requested by the newRequest on the Node.
+// AllocateResourcesUpdates allocates resources requested by the newRequest on the Node.
 // If the currentRequest provided, then the current Node's resources are adjusted accordingly.
 // This function returns a map that can be passed to the Node.Update() method.
-func (n *Node) AllocateResources(newRequest, currentRequest *ResourceRequest) (map[string]interface{}, error) {
+func (n *Node) AllocateResourcesUpdates(newRequest, currentRequest *ResourceRequest) (map[string]interface{}, error) {
 	if newRequest == nil {
 		return nil, errors.New("new limit can not be nil")
 	}
@@ -241,8 +222,8 @@ func (n *Node) AllocateResources(newRequest, currentRequest *ResourceRequest) (m
 	return nodeUpdates, nil
 }
 
-// DeallocateResources updates the Nodes resources and returns a map to be passed to Node.Update().
-func (n *Node) DeallocateResources(request *ResourceRequest) map[string]interface{} {
+// DeallocateResourcesUpdates updates the Nodes resources and returns a map to be passed to Node.Update().
+func (n *Node) DeallocateResourcesUpdates(request *ResourceRequest) map[string]interface{} {
 	return map[string]interface{}{
 		"cpu_available":    sq.Expr("cpu_available + ?", request.Cpu),
 		"gpu_available":    sq.Expr("gpu_available + ?", request.Gpu),
@@ -310,97 +291,4 @@ func (n *Node) DeallocateResources(request *ResourceRequest) map[string]interfac
 //// Nodes represents a collection of Nodes.
 //type Nodes []Node
 //
-//// List selects Containers from DB by the given filtering request and populates the receiver.
-//// Returns the total number of Containers that satisfy the criteria and an error.
-//func (nodes *Nodes) List(db *gorm.DB, request *scheduler_proto.ListNodesRequest) (uint32, error) {
-//	query := db.Model(&Node{})
-//	ordering := request.GetOrdering()
-//
-//	var orderBySQL string
-//	switch ordering {
-//	case scheduler_proto.ListNodesRequest_CONNECTED_AT_DESC:
-//		orderBySQL = "connected_at DESC"
-//	case scheduler_proto.ListNodesRequest_CONNECTED_AT_ASC:
-//		orderBySQL = "created_at"
-//	case scheduler_proto.ListNodesRequest_DISCONNECTED_AT_DESC:
-//		orderBySQL = "disconnected_at DESC"
-//	case scheduler_proto.ListNodesRequest_DISCONNECTED_AT_ASC:
-//		orderBySQL = "disconnected_at"
-//	case scheduler_proto.ListNodesRequest_SCHEDULED_AT_DESC:
-//		orderBySQL = "scheduled_at DESC"
-//	case scheduler_proto.ListNodesRequest_SCHEDULED_AT_ASC:
-//		orderBySQL = "scheduled_at"
-//	}
-//	query = query.Order(orderBySQL)
-//
-//	// Filter by status.
-//	if len(request.Status) > 0 {
-//		enumStatus := make([]utils.Enum, len(request.Status))
-//		for i, s := range request.Status {
-//			enumStatus[i] = utils.Enum(s)
-//		}
-//		query = query.Where("status IN (?)", enumStatus)
-//	}
-//
-//	if request.CpuAvailable > 0 {
-//		query = query.Where("cpu_available >= ?", request.CpuAvailable)
-//	}
-//	if request.CpuClass != scheduler_proto.CPUClass_CPU_CLASS_UNKNOWN {
-//		enum := utils.Enum(request.CpuClass)
-//		query = query.Where("cpu_class_min <= ? AND cpu_class >= ?", enum, enum)
-//	}
-//
-//	if request.MemoryAvailable > 0 {
-//		query = query.Where("memory_available >= ?", request.MemoryAvailable)
-//	}
-//
-//	if request.GpuAvailable > 0 {
-//		query = query.Where("gpu_available >= ?", request.GpuAvailable)
-//	}
-//	if request.GpuClass != scheduler_proto.GPUClass_GPU_CLASS_UNKNOWN {
-//		enum := utils.Enum(request.GpuClass)
-//		query = query.Where("gpu_class_min <= ? AND gpu_class >= ?", enum, enum)
-//	}
-//
-//	if request.DiskAvailable > 0 {
-//		query = query.Where("disk_available >= ?", request.DiskAvailable)
-//	}
-//	if request.DiskClass != scheduler_proto.DiskClass_DISK_CLASS_UNKNOWN {
-//		enum := utils.Enum(request.DiskClass)
-//		query = query.Where("disk_class_min <= ? AND disk_class >= ?", enum, enum)
-//	}
-//
-//	// TODO: add labels constraints.
-//
-//	if request.ContainersFinished > 0 {
-//		query = query.Where("container_finished >= ?", request.ContainersFinished)
-//	}
-//
-//	if request.ContainersFailed > 0 {
-//		query = query.Where("container_failed <= ?", request.ContainersFailed)
-//	}
-//
-//	// Perform a COUNT query with no limit and offset applied.
-//	var count uint32
-//	if err := utils.HandleDBError(query.Count(&count)); err != nil {
-//		return 0, err
-//	}
-//
-//	// Apply offset.
-//	query = query.Offset(request.GetOffset())
-//
-//	// Apply limit.
-//	var limit uint32
-//	if request.ResourceRequest <= ListNodesMaxLimit {
-//		limit = request.ResourceRequest
-//	} else {
-//		limit = ListNodesMaxLimit
-//	}
-//	query = query.ResourceRequest(limit)
-//
-//	// Perform a SELECT query.
-//	if err := utils.HandleDBError(query.Find(nodes)); err != nil {
-//		return 0, err
-//	}
-//	return count, nil
-//}
+

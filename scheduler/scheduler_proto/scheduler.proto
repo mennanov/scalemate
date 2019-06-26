@@ -143,23 +143,25 @@ message Container {
     // Readonly.
     bytes node_auth_token = 22;
 
-    message SchedulingStrategy {
-        enum Strategy {
-            CHEAPEST = 0;
-            MOST_RELIABLE = 1;
-            LEAST_BUSY = 2;
-        }
-        Strategy strategy = 1;
-        // Max difference in values (scores) to group Nodes by. Nodes with similar scores will be put in the same
-        // bucket. Valid value range is [0, 100].
-        uint32 difference_percentage = 2;
-    }
-
     // When multiple Nodes are available for scheduling of this Container the Node is chosen according to the strategy.
     // Multiple strategies can be chained to achieve sorting by multiple criteria.
     // This field is only taken into consideration when the newly created Container can be scheduled immediately.
     // Otherwise the Container will be scheduled to the first available Node.
     repeated SchedulingStrategy scheduling_strategy = 23;
+    // Max price limit per hour (in $1e-9).
+    int64 max_price_limit = 25;
+}
+
+message SchedulingStrategy {
+    enum Strategy {
+        CHEAPEST = 0;
+        MOST_RELIABLE = 1;
+        LEAST_BUSY = 2;
+    }
+    Strategy strategy = 1;
+    // Max difference in values (scores) to group Nodes by. Nodes with similar scores will be put in the same
+    // bucket. Valid value range is [0, 100].
+    uint32 difference_percentage = 2;
 }
 
 // Container resources limit request.

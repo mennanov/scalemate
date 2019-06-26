@@ -66,7 +66,7 @@ func (c *ContainerCreated) Handle(
 		return nil, errors.WithStack(err)
 	}
 
-	containerUpdateEvent, err := container.Update(tx, map[string]interface{}{
+	err := container.Update(tx, map[string]interface{}{
 		"node_id": node.Id,
 		"status":  scheduler_proto.Container_SCHEDULED,
 	})

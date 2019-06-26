@@ -24,7 +24,7 @@ func (s *ModelsTestSuite) TestNode_Create() {
 			},
 		},
 	} {
-		_, err := node.Create(s.db)
+		err := node.Create(s.db)
 		s.Require().NoError(err)
 		s.NotNil(node.Id)
 		s.False(node.CreatedAt.IsZero())
@@ -174,7 +174,7 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 			},
 		},
 	} {
-		output, err := node.AllocateResources(testCase.newRequest, testCase.currentRequest)
+		output, err := node.AllocateResourcesUpdates(testCase.newRequest, testCase.currentRequest)
 		if testCase.expectedOutput != nil {
 			s.Require().NoError(err)
 			s.Equal(testCase.expectedOutput, output)

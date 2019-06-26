@@ -16,7 +16,7 @@ func (s SchedulerServer) GetContainer(
 	ctx context.Context,
 	r *scheduler_proto.ContainerLookupRequest,
 ) (*scheduler_proto.Container, error) {
-	container, err := models.NewContainerFromDB(s.db, r.ContainerId, false)
+	container, err := models.NewContainerFromDB(s.db, r.ContainerId)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}

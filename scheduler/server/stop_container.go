@@ -22,7 +22,7 @@ func (s *SchedulerServer) updateContainerStatus(
 	request *scheduler_proto.ContainerLookupRequest,
 	toStatus scheduler_proto.Container_Status,
 ) (*types.Empty, error) {
-	container, err := models.NewContainerFromDB(s.db, request.ContainerId, false)
+	container, err := models.NewContainerFromDB(s.db, request.ContainerId)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
@@ -36,7 +36,7 @@ func (s *SchedulerServer) updateContainerStatus(
 	if err := container.ValidateNewStatus(toStatus); err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.WithStack(err))
 	}
-	containerUpdateEvent, err := container.Update(tx, map[string]interface{}{"status": toStatus})
+	err := container.Update(tx, map[string]interface{}{"status": toStatus})
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.WithStack(err))
 	}

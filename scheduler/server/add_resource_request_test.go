@@ -35,7 +35,7 @@ func (s *ServerTestSuite) TestAddLimit() {
 			DiskAvailable:   validRequest.Disk - initialRequest.Disk,
 		},
 	}
-	_, err := node.Create(s.db)
+	err := node.Create(s.db)
 	s.Require().NoError(err)
 
 	request := &scheduler_proto.ContainerWithResourceRequest{
@@ -66,7 +66,7 @@ func (s *ServerTestSuite) TestAddLimit() {
 
 	// Manually update the status of the container to SCHEDULED.
 	container := models.NewContainerFromProto(containerWithLimit.Container)
-	_, err = container.Update(s.db, map[string]interface{}{
+	err = container.Update(s.db, map[string]interface{}{
 		"node_id": node.Id,
 		"status":  scheduler_proto.Container_SCHEDULED,
 	})

@@ -4,7 +4,10 @@ import "math"
 
 type NodeWithPricing struct {
 	*Node
-	*NodePricing
+	CpuPrice    uint64
+	GpuPrice    uint64
+	DiskPrice   uint64
+	MemoryPrice uint64
 }
 
 type NodesByPrice struct {
@@ -16,13 +19,13 @@ func (n *NodesByPrice) Len() int {
 	return len(n.nodes)
 }
 
-func (n *NodesByPrice) nodePrice(pricing *NodePricing) uint64 {
-	return uint64(n.request.Cpu)*pricing.CpuPrice + uint64(n.request.Gpu)*pricing.GpuPrice +
-		uint64(n.request.Disk)*pricing.DiskPrice + uint64(n.request.Memory)*pricing.MemoryPrice
+func (n *NodesByPrice) nodePrice(node *NodeWithPricing) uint64 {
+	return uint64(n.request.Cpu)*node.CpuPrice + uint64(n.request.Gpu)*node.GpuPrice +
+		uint64(n.request.Disk)*node.DiskPrice + uint64(n.request.Memory)*node.MemoryPrice
 }
 
 func (n *NodesByPrice) Less(i, j int) bool {
-	return n.nodePrice(n.nodes[i].NodePricing) < n.nodePrice(n.nodes[j].NodePricing)
+	return n.nodePrice(n.nodes[i]) < n.nodePrice(n.nodes[j])
 }
 
 func (n *NodesByPrice) Swap(i, j int) {
@@ -73,11 +76,11 @@ func (n *NodesByReliability) Len() int {
 
 // nodeReliabilityScore computes a reliability score for the Node. The smaller the score the higher reliability is.
 func nodeReliabilityScore(node *Node) float64 {
-	if node.ContainersFinished == 0 {
-		// Treat Nodes with no containers
+	if node.ContainersScheduled == 0 {
+		// Treat Nodes with no containers scheduled as unreliable.
 		return math.Inf(1)
 	}
-	return float64(node.ContainersFailed) / float64(node.ContainersFinished)
+	return float64(node.ContainersFailed) / float64(node.ContainersScheduled)
 }
 
 func (n *NodesByReliability) Less(i, j int) bool {

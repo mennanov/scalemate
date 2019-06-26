@@ -31,7 +31,7 @@ func (s SchedulerServer) CreateContainer(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to start a transaction")
 	}
-	containerEvent, err := container.Create(tx)
+	err := container.Create(tx)
 	if err != nil {
 		return nil, utils.RollbackTransaction(tx, errors.Wrap(err, "failed to create a Container"))
 	}

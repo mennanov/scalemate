@@ -9,7 +9,7 @@ import (
 
 func (s *HandlersTestSuite) TestContainerCreated() {
 	container := &models.Container{}
-	containerCreatedEvent, err := container.Create(s.db)
+	err := container.Create(s.db)
 	s.Require().NoError(err)
 	resourceRequest := &models.ResourceRequest{
 		ResourceRequest: scheduler_proto.ResourceRequest{
