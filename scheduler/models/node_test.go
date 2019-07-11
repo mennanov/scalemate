@@ -29,7 +29,7 @@ func (s *ModelsTestSuite) TestNode_Create() {
 		s.NotNil(node.Id)
 		s.False(node.CreatedAt.IsZero())
 		s.Nil(node.UpdatedAt)
-		nodeFromDB, err := models.NewNodeFromDB(s.db, node.Id)
+		nodeFromDB, err := models.NewNodeFromDB(s.db, "id = ?", node.Id)
 		s.Require().NoError(err)
 		s.Equal(node, nodeFromDB)
 	}
@@ -244,7 +244,7 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 //	}
 //	for _, testCase := range []struct {
 //		container       *models.Container
-//		resourceRequest *models.ResourceRequest
+//		resourceRequest *models.CurrentResourceRequest
 //		expectedNodeIds []int64
 //	}{
 //		// Labels focused test cases:
@@ -325,7 +325,7 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 //		// Resources focused test cases:
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Cpu:    1,
 //				Memory: 1,
 //				Disk:   1,
@@ -335,7 +335,7 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Cpu:    8,
 //				Gpu:    4,
 //				Memory: 4000,
@@ -345,35 +345,35 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Cpu: 100,
 //			}),
 //			expectedNodeIds: []int64{},
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Cpu: 8,
 //			}),
 //			expectedNodeIds: []int64{1, 3},
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Gpu: 2,
 //			}),
 //			expectedNodeIds: []int64{1, 2, 3},
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Memory: 2000,
 //			}),
 //			expectedNodeIds: []int64{1, 2, 3},
 //		},
 //		{
 //			container: models.NewContainerFromProto(&scheduler_proto.Container{}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Disk: 5000,
 //			}),
 //			expectedNodeIds: []int64{1, 2, 3},
@@ -391,7 +391,7 @@ func (s *ModelsTestSuite) TestNode_AllocateResources() {
 //				NetworkIngressMin: 50,
 //				NetworkEgressMin:  50,
 //			}),
-//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+//			resourceRequest: models.NewResourceRequestFromProto(&scheduler_proto.CurrentResourceRequest{
 //				Cpu:    8,
 //				Gpu:    4,
 //				Disk:   10000,

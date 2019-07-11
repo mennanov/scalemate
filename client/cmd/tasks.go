@@ -57,7 +57,7 @@ var tasksGetCmd = &cobra.Command{
 		}
 		task, err := scheduler.GetTaskController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			uint64(taskID))
 		scheduler.JSONPbView(logger, os.Stdout, task, err)
 	},
@@ -82,7 +82,7 @@ var tasksListCmd = &cobra.Command{
 
 		response, err := scheduler.ListTasksController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			jobIDs,
 			&tasksListCmdFlagValues,
 		)
@@ -104,7 +104,7 @@ var tasksCancelCmd = &cobra.Command{
 		}
 		task, err := scheduler.CancelTaskController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			uint64(taskID))
 		scheduler.JSONPbView(logger, os.Stdout, task, err)
 	},
@@ -124,7 +124,7 @@ var tasksIterateCmd = &cobra.Command{
 		}
 		client, err := scheduler.IterateTasksController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			uint64(jobID),
 			tasksIterateCmdIncludeExisting)
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"syscall"
@@ -38,16 +39,14 @@ var handleEventsCmd = &cobra.Command{
 		}
 		defer utils.Close(sc, logger)
 
-		producer := events.NewNatsProducer(sc, events.AccountsSubjectName, 5)
-		// NatsQueueConsumer is used to make the events processing scalable (round-robin delivery).
-		consumer := events.NewNatsQueueConsumer(sc, events.SchedulerSubjectName,
-			"accounts-events-handlers-queue", producer, db, logger, 3,
+		ctx, cancel := context.WithCancel(context.Background())
+		// QueueSubscribe is used to make the events processing scalable (round-robin delivery).
+		subscription, err := sc.QueueSubscribe(events.SchedulerSubjectName, "accounts-events-handlers-queue",
+			events.StanMsgHandler(ctx, logger, 5, handlers.NewSchedulerNodeCreatedHandler(db)),
 			stan.DurableName("accounts-events-handlers"),
 			stan.AckWait(time.Second*5))
-
-		subscription, err := consumer.Consume(handlers.NewSchedulerNodeCreatedHandler(logger))
 		if err != nil {
-			logger.Fatalf("consumer.Consume failed: %s", err.Error())
+			logger.WithError(err).Fatal("failed to subscribe to NATS")
 		}
 		defer utils.Close(subscription, logger)
 
@@ -56,6 +55,7 @@ var handleEventsCmd = &cobra.Command{
 
 		logger.Info("Started handling events...")
 		<-terminate
+		cancel()
 		logger.Info("Stopped handling events.")
 	},
 }

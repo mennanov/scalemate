@@ -24,7 +24,7 @@ func TestBitArray_Or(t *testing.T) {
 	require.Equal(t, uint16(4), ba2.BitsSet)
 	b := ba1.Or(ba2)
 	assert.Equal(t, uint16(8), b.BitsSet)
-	assert.Equal(t, []uint64{0, 2, 3, 4, 5, 64, 68, 127}, b.SetBits())
+	assert.Equal(t, []uint16{0, 2, 3, 4, 5, 64, 68, 127}, b.SetBits())
 }
 
 func TestBitArray_SetBits(t *testing.T) {
@@ -33,7 +33,7 @@ func TestBitArray_SetBits(t *testing.T) {
 	b.SetBit(32)
 	b.SetBit(80)
 	b.SetBit(120)
-	assert.Equal(t, []uint64{0, 32, 80, 120}, b.SetBits())
+	assert.Equal(t, []uint16{0, 32, 80, 120}, b.SetBits())
 }
 
 func TestBitArray_SetAndGetBit(t *testing.T) {

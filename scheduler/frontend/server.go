@@ -1,20 +1,16 @@
-package server
+package frontend
 
 import (
 	"context"
 	"net"
 	"sync"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
-	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
+	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 
 	"github.com/mennanov/scalemate/shared/auth"
@@ -22,25 +18,9 @@ import (
 	"github.com/mennanov/scalemate/shared/middleware"
 )
 
-// LoggedErrorCodes are the error codes for the errors that will be logged with the "Error" level with a full stack
-// trace if available.
-var LoggedErrorCodes = []codes.Code{
-	codes.Unknown,
-	codes.Internal,
-	codes.DeadlineExceeded,
-	codes.DataLoss,
-	codes.FailedPrecondition,
-	codes.Aborted,
-	codes.OutOfRange,
-	codes.ResourceExhausted,
-	codes.Unavailable,
-	codes.Unimplemented,
-	codes.PermissionDenied,
-}
-
-// SchedulerServer is a wrapper for `scheduler_proto.SchedulerServer` that holds the application specific settings
+// SchedulerFrontend is a wrapper for `scheduler_proto.SchedulerFrontend` that holds the application specific settings
 // and also implements some additional methods.
-type SchedulerServer struct {
+type SchedulerFrontend struct {
 	// Logrus entry to be used for all the logging.
 	logger *logrus.Logger
 	db     *sqlx.DB
@@ -53,7 +33,7 @@ type SchedulerServer struct {
 	// When the Node connects the corresponding channel is created, otherwise it is nil.
 	containersByNodeId   map[int64]chan *scheduler_proto.Container
 	containersByNodeIdMu *sync.RWMutex
-	// Container updates grouped by container ID are sent to this channel (that also includes Limits updates).
+	// Container updates grouped by container ID are sent to this channel (that also includes ResourceRequests updates).
 	containerUpdatesById   map[int64]chan *scheduler_proto.ContainerUpdate
 	containerUpdatesByIdMu *sync.RWMutex
 	// gracefulStop channel is used to notify about the gRPC server GracefulStop() in progress. When the server is about
@@ -65,11 +45,11 @@ type SchedulerServer struct {
 }
 
 // Compile time interface check.
-var _ scheduler_proto.SchedulerServer = new(SchedulerServer)
+var _ scheduler_proto.SchedulerFrontEndServer = new(SchedulerFrontend)
 
-// NewSchedulerServer creates a new SchedulerServer and applies the given options to it.
-func NewSchedulerServer(options ...Option) *SchedulerServer {
-	s := &SchedulerServer{
+// NewSchedulerServer creates a new SchedulerFrontend and applies the given options to it.
+func NewSchedulerServer(options ...Option) *SchedulerFrontend {
+	s := &SchedulerFrontend{
 		containersByNodeId:     make(map[int64]chan *scheduler_proto.Container),
 		containersByNodeIdMu:   new(sync.RWMutex),
 		containerUpdatesById:   make(map[int64]chan *scheduler_proto.ContainerUpdate),
@@ -85,23 +65,18 @@ func NewSchedulerServer(options ...Option) *SchedulerServer {
 
 // Serve creates a gRPC server and starts serving on a given address.
 // It also starts all the consumers.
-// The service is gracefully stopped when the given context is Done.
-func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string, creds credentials.TransportCredentials) {
-	entry := logrus.NewEntry(s.logger)
-	grpc_logrus.ReplaceGrpcLogger(entry)
+// The frontEndService is gracefully stopped when the given context is Done.
+func (s *SchedulerFrontend) Serve(ctx context.Context, grpcAddr string, creds credentials.TransportCredentials) {
 	grpcServer := grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpc_ctxtags.UnaryServerInterceptor(),
-			grpc_logrus.UnaryServerInterceptor(entry),
-			middleware.LoggerRequestIDInterceptor("request.id"),
-			grpc_auth.UnaryServerInterceptor(AuthFunc),
-			middleware.StackTraceErrorInterceptor(false, LoggedErrorCodes...),
+			middleware.RequestsLoggerInterceptor(s.logger),
+			middleware.ClaimsInjectorUnaryInterceptor(s.claimsInjector),
 			grpc_recovery.UnaryServerInterceptor(),
 		)),
-		grpc.StreamInterceptor(grpc_auth.StreamServerInterceptor(AuthFunc)),
+		grpc.StreamInterceptor(middleware.ClaimsInjectorStreamingInterceptor(s.claimsInjector)),
 	)
-	scheduler_proto.RegisterSchedulerServer(grpcServer, s)
+	scheduler_proto.RegisterSchedulerFrontEndServer(grpcServer, s)
 
 	grpcErrors := make(chan error, 1)
 	go func(f chan error) {
@@ -110,7 +85,7 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string, creds cred
 			f <- err
 			return
 		}
-		s.logger.Infof("Serving on %s", lis.Addr().String())
+		s.logger.Infof("Serving SchedulerFrontend on %s", lis.Addr().String())
 		if err := grpcServer.Serve(lis); err != nil {
 			f <- err
 		}
@@ -118,12 +93,12 @@ func (s *SchedulerServer) Serve(ctx context.Context, grpcAddr string, creds cred
 
 	select {
 	case <-ctx.Done():
-		s.logger.Info("Gracefully stopping gRPC server...")
+		s.logger.Info("Gracefully stopping SchedulerFrontend gRPC server...")
 		close(s.gracefulStop)
 		grpcServer.GracefulStop()
 
 	case err := <-grpcErrors:
-		s.logger.WithError(err).Error("gRPC server unexpectedly failed")
+		s.logger.WithError(err).Error("SchedulerFrontend gRPC server unexpectedly failed")
 	}
-	s.logger.Info("gRPC server is stopped.")
+	s.logger.Info("SchedulerFrontend gRPC server is stopped.")
 }

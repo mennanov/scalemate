@@ -13,7 +13,8 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	"github.com/mennanov/scalemate/scheduler/conf"
-	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/scheduler/frontend"
+	"github.com/mennanov/scalemate/scheduler/handlers"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
@@ -49,30 +50,30 @@ var upCmd = &cobra.Command{
 		defer utils.Close(sc, logger)
 
 		producer := events.NewNatsProducer(sc, events.SchedulerSubjectName, 5)
-		consumer := events.NewNatsConsumer(sc, events.SchedulerSubjectName, producer, db, logger, 5,
-			3, stan.DurableName("scheduler-in-service-event-handlers"), stan.AckWait(time.Second*15))
 
-		subscription, err := consumer.Consume()
+		ctx, ctxCancel := context.WithCancel(context.Background())
+
+		subscription, err := sc.Subscribe(events.SchedulerSubjectName,
+			events.StanMsgHandler(ctx, logger, 5, handlers.NewIndependentHandlers(db, producer, logger, 5)...),
+			stan.AckWait(time.Second*15))
 		if err != nil {
-			logger.WithError(err).Fatal("failed to start NATS consumer")
+			logger.WithError(err).Fatal("failed to subscribe to NATS")
 		}
 		defer utils.Close(subscription, logger)
 
 		shutdown := make(chan os.Signal)
 		signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-		ctx, ctxCancel := context.WithCancel(context.Background())
-
 		go func() {
 			<-shutdown
 			ctxCancel()
 		}()
 
-		server.NewSchedulerServer(
-			server.WithLogger(logger),
-			server.WithDBConnection(db),
-			server.WithProducer(producer),
-			server.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.SchdulerConf.JWTSecretKey)),
+		frontend.NewSchedulerServer(
+			frontend.WithLogger(logger),
+			frontend.WithDBConnection(db),
+			frontend.WithProducer(producer),
+			frontend.WithClaimsInjector(auth.NewJWTClaimsInjector(conf.SchdulerConf.JWTSecretKey)),
 		).Serve(ctx, grpcAddr, creds)
 	},
 }

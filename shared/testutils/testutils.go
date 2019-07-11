@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,7 +13,9 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
+	stan "github.com/nats-io/go-nats-streaming"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -23,6 +24,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
@@ -106,7 +108,7 @@ func CreateTestingDatabase(dbURL, dbName string) (*sqlx.DB, error) {
 }
 
 // TruncateTables truncates the database tables and resets associated sequence generators.
-func TruncateTables(db sqlx.Ext) {
+func TruncateTables(db *sqlx.DB) {
 	rows, err := db.Queryx("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'")
 	if err != nil {
 		panic(err)
@@ -121,7 +123,6 @@ func TruncateTables(db sqlx.Ext) {
 			panic(err)
 		}
 	}
-
 }
 
 // NewClientConn creates a new grpc.ClientConn to be used in tests.
@@ -134,65 +135,58 @@ func NewClientConn(addr string, creds credentials.TransportCredentials) *grpc.Cl
 	return conn
 }
 
-const msgWaitTimeout = time.Second
-
-// MessagesTestingHandler is used in tests to check if all the expected messages have been received.
-type MessagesTestingHandler struct {
-	receivedEventTypes []string
-	mu                 *sync.RWMutex
+// ExpectMessagesHandler is used in tests to check if all the expected messages have been received.
+type ExpectMessagesHandler struct {
+	expectedEventTypes []string
+	done               chan struct{}
+	doneClosed         bool
 }
 
-// NewMessagesTestingHandler creates a new instance of MessagesTestingHandler.
-func NewMessagesTestingHandler() *MessagesTestingHandler {
-	return &MessagesTestingHandler{mu: &sync.RWMutex{}}
+// NewExpectMessagesHandler creates a new instance of ExpectMessagesHandler.
+func NewExpectMessagesHandler(expectedEventTypes ...string) *ExpectMessagesHandler {
+	return &ExpectMessagesHandler{expectedEventTypes: expectedEventTypes, done: make(chan struct{})}
 }
 
-// Handle saves all the received message keys.
-func (h *MessagesTestingHandler) Handle(tx utils.SqlxExtGetter, event *events_proto.Event) ([]*events_proto.Event, error) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.receivedEventTypes = append(h.receivedEventTypes, fmt.Sprintf("%T", event.Payload))
-	return nil, nil
+// ExpectMessages creates an event handler that expects the given messages and return a function that when is called
+// waits for the remaining messages to be received or fails by the timeout.
+// This method should be called BEFORE the events are expected to be produced.
+func ExpectMessages(sc stan.Conn, subject string, logger *logrus.Logger, expectedEventTypes ...string) func(duration time.Duration) error {
+	handler := NewExpectMessagesHandler(expectedEventTypes...)
+	s, err := sc.Subscribe(subject, events.StanMsgHandler(context.Background(), logger, 0, handler), stan.SetManualAckMode())
+	if err != nil {
+		panic(err)
+	}
+	return func(d time.Duration) error {
+		defer utils.Close(s, logger)
+		return handler.Wait(d)
+	}
 }
 
-// ExpectMessages waits for the expected messages to be received.
-// It returns an error if some messages have not been received within the msgWaitTimeout.
-func (h *MessagesTestingHandler) ExpectMessages(eventTypes ...string) error {
-	defer func() {
-		// Reset the receivedEventTypes on exit.
-		h.mu.Lock()
-		defer h.mu.Unlock()
-		h.receivedEventTypes = nil
-	}()
-
-	var matchedEventTypes []string
-loop:
-	for {
-		select {
-		case <-time.After(msgWaitTimeout):
-			break loop
-
-		default:
-			if len(matchedEventTypes) == len(eventTypes) {
-				break loop
-			}
-			for _, keyExpected := range eventTypes {
-				re := regexp.MustCompile(keyExpected)
-				func() {
-					h.mu.RLock()
-					defer h.mu.RUnlock()
-					for _, keyActual := range h.receivedEventTypes {
-						if re.MatchString(keyActual) {
-							matchedEventTypes = append(matchedEventTypes, keyExpected)
-							break
-						}
-					}
-				}()
-			}
+// Handle deletes the received event types from the expectedEventTypes in the specified order.
+func (h *ExpectMessagesHandler) Handle(_ context.Context, event *events_proto.Event) error {
+	if len(h.expectedEventTypes) > 0 {
+		actualEventType := fmt.Sprintf("%T", event.Payload)
+		re := regexp.MustCompile(h.expectedEventTypes[0])
+		if re.MatchString(actualEventType) {
+			h.expectedEventTypes = h.expectedEventTypes[1:]
 		}
 	}
-	if len(matchedEventTypes) != len(eventTypes) {
-		return errors.Errorf("expected messages: %s, matched messages: %s", eventTypes, matchedEventTypes)
+	if len(h.expectedEventTypes) == 0 {
+		if !h.doneClosed {
+			h.doneClosed = true
+			close(h.done)
+		}
 	}
 	return nil
+}
+
+// Wait waits for the expected messages to be received or returns an error if the timeout is hit.
+func (h *ExpectMessagesHandler) Wait(timeout time.Duration) error {
+	select {
+	case <-time.After(timeout):
+		return errors.Errorf("unmatched messages: %s", h.expectedEventTypes)
+
+	case <-h.done:
+		return nil
+	}
 }

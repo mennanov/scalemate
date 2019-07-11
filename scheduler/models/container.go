@@ -1,6 +1,8 @@
 package models
 
 import (
+	"fmt"
+
 	sq "github.com/Masterminds/squirrel"
 	"github.com/gogo/protobuf/types"
 	"github.com/golang/protobuf/protoc-gen-go/generator"
@@ -52,13 +54,13 @@ func NewContainerFromDB(db utils.SqlxExtGetter, containerId int64) (*Container, 
 	return &container, nil
 }
 
-// ToProto populates the given `*scheduler_proto.Container` with the contents of the Container.
-func (c *Container) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Container, error) {
-	if fieldMask == nil || len(fieldMask.Paths) == 0 {
+// ToProto returns the corresponding scheduler_proto.Container instance with the mask applied.
+func (c *Container) ToProto(paths []string) (*scheduler_proto.Container, error) {
+	if len(paths) == 0 {
 		return &c.Container, nil
 	}
 
-	mask, err := fieldmask_utils.MaskFromPaths(fieldMask.Paths, generator.CamelCase)
+	mask, err := fieldmask_utils.MaskFromPaths(paths, generator.CamelCase)
 	if err != nil {
 		return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 	}
@@ -68,6 +70,17 @@ func (c *Container) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Contai
 		return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 	}
 	return protoFiltered, nil
+}
+
+// ToProtoFromUpdates returns a scheduler_proto.Container with the applied FieldMask derived from the given paths.
+func (c *Container) ToProtoFromUpdates(updates map[string]interface{}) (*scheduler_proto.Container, *types.FieldMask, error) {
+	paths := utils.MapKeys(updates)
+	containerProto, err := c.ToProto(paths)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	fieldMask := &types.FieldMask{Paths: paths}
+	return containerProto, fieldMask, nil
 }
 
 // Create inserts a new Container in DB and returns the corresponding event.
@@ -185,11 +198,11 @@ var ContainerStatusTransitions = map[scheduler_proto.Container_Status][]schedule
 	scheduler_proto.Container_OFFLINE: {
 		scheduler_proto.Container_STOPPED,
 		scheduler_proto.Container_RUNNING,
-		scheduler_proto.Container_OFFLINE_FAILED,
+		scheduler_proto.Container_NODE_FAILED,
 		scheduler_proto.Container_EVICTED,
 	},
-	scheduler_proto.Container_OFFLINE_FAILED: {},
-	scheduler_proto.Container_EVICTED:        {},
+	scheduler_proto.Container_NODE_FAILED: {},
+	scheduler_proto.Container_EVICTED:     {},
 }
 
 // ValidateNewStatus checks whether the status of the Container can be changed to the given one.
@@ -204,12 +217,11 @@ func (c *Container) ValidateNewStatus(newStatus scheduler_proto.Container_Status
 			return nil
 		}
 	}
-	return status.Errorf(codes.FailedPrecondition, "container with status %s can't be updated to %s",
+	return status.Errorf(codes.InvalidArgument, "container with status %s can't be updated to %s",
 		containerStatus.String(), newStatus.String())
 }
 
-// Update performs an UPDATE query for the Container fields given in the `updates` argument and returns a
-// corresponding event.
+// Update performs an UPDATE query for the Container fields given in the `updates` argument.
 func (c *Container) Update(db utils.SqlxGetter, updates map[string]interface{}) error {
 	if c.Id == 0 {
 		return errors.WithStack(status.Error(codes.FailedPrecondition, "can't update unsaved Container"))
@@ -232,9 +244,15 @@ func (c *Container) IsTerminated() bool {
 	return isFinalContainerStatus(c.Status)
 }
 
-func (c *Container) NodesForScheduling(db utils.SqlxSelector, request *ResourceRequest) ([]*NodeWithPricing, error) {
-	query := psq.Select("nodes.*, cpu_price, gpu_price, memory_price, disk_price").From("nodes").
-		Where(sq.Eq{"status": scheduler_proto.Node_ONLINE})
+// NodesForScheduling finds the Nodes this Container can be scheduled on.
+func (c *Container) NodesForScheduling(db utils.SqlxSelector, request *ResourceRequest) ([]*NodeExt, error) {
+	query := psq.Select(
+		fmt.Sprintf(`nodes.*, p.id AS pricing_id, cpu_price, gpu_price, memory_price, disk_price, 
+		COUNT(*) AS containers_scheduled, SUM(CASE WHEN c.status = %d THEN 1 ELSE 0 END) AS containers_node_failed`,
+			scheduler_proto.Container_NODE_FAILED)).
+		From("nodes").Where(sq.Eq{"nodes.status": scheduler_proto.Node_ONLINE}).
+		JoinClause("LEFT JOIN containers AS c ON(nodes.id = c.node_id)").
+		GroupBy("nodes.id, p.id, p.cpu_price, p.gpu_price, p.memory_price, p.disk_price")
 
 	pricingQuery := psq.Select("*").
 		FromSelect(
@@ -297,11 +315,47 @@ func (c *Container) NodesForScheduling(db utils.SqlxSelector, request *ResourceR
 		return nil, errors.WithStack(err)
 	}
 
-	var nodesWithPricing []*NodeWithPricing
+	var nodesWithPricing []*NodeExt
 	if err := db.Select(&nodesWithPricing, queryString, args...); err != nil {
 		return nil, utils.HandleDBError(err)
 	}
 	return nodesWithPricing, nil
+}
+
+// CurrentResourceRequest finds the current (most recently confirmed) Container's CurrentResourceRequest.
+func (c *Container) CurrentResourceRequest(db utils.SqlxGetter) (*ResourceRequest, error) {
+	query := psq.Select("*").From("resource_requests").
+		Where("container_id = ? AND status = ?", c.Id, scheduler_proto.ResourceRequest_CONFIRMED).
+		Limit(1).
+		OrderBy("created_at DESC")
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var request ResourceRequest
+	if err := utils.HandleDBError(db.Get(&request, queryString, args...)); err != nil {
+		return nil, err
+	}
+	return &request, nil
+}
+
+// ResourceRequests finds all corresponding Container's ResourceRequests.
+func (c *Container) ResourceRequests(db utils.SqlxSelector) ([]*ResourceRequest, error) {
+	query := psq.Select("*").From("resource_requests").
+		Where("container_id = ?", c.Id).OrderBy("created_at ASC")
+
+	queryString, args, err := query.ToSql()
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+
+	var requests []*ResourceRequest
+	if err := utils.HandleDBError(db.Select(&requests, queryString, args...)); err != nil {
+		return nil, err
+	}
+	return requests, nil
 }
 
 // Terminate validates and updates the Container's status, deallocates resources on the corresponding Node.
@@ -319,17 +373,13 @@ func (c *Container) Terminate(db utils.SqlxGetter, newStatus scheduler_proto.Con
 		return nil, errors.WithStack(err)
 	}
 
-	resources, err := NewResourceRequestFromDBLatest(db, c.Id)
+	resourceRequest, err := c.CurrentResourceRequest(db)
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
 
 	node := &Node{scheduler_proto.Node{Id: *c.NodeId}}
-	updates := node.DeallocateResourcesUpdates(resources)
-	if newStatus == scheduler_proto.Container_OFFLINE_FAILED {
-		updates["containers_failed"] = sq.Expr("containers_failed + 1")
-	}
-	updates["containers_finished"] = sq.Expr("containers_finished + 1")
+	updates := node.DeallocateResourcesUpdates(resourceRequest)
 
 	err = node.Update(db, updates)
 	if err != nil {
@@ -346,8 +396,8 @@ func (c *Container) Terminate(db utils.SqlxGetter, newStatus scheduler_proto.Con
 
 // ListContainers selects Containers from DB by the given filtering request.
 // Returns the Containers slice, a total number of Containers that satisfy the criteria and an error.
-func ListContainers(db utils.SqlxExtGetter, request *scheduler_proto.ListContainersRequest) ([]Container, uint32, error) {
-	query := psq.Select().From("containers").Where(sq.Eq{"username": request.Username})
+func ListContainers(db utils.SqlxExtGetter, username string, request *scheduler_proto.ListContainersRequest) ([]Container, uint32, error) {
+	query := psq.Select().From("containers").Where(sq.Eq{"username": username})
 
 	if len(request.Status) != 0 {
 		query = query.Where(sq.Eq{"status": request.Status})
@@ -418,7 +468,7 @@ func (c *ContainerLabel) Create(db utils.SqlxGetter) error {
 	return utils.HandleDBError(db.Get(c, queryString, args...))
 }
 
-// ContainerLabel is a Container's label.
+// ContainerSchedulingStrategy is a Container's scheduling strategy model.
 type ContainerSchedulingStrategy struct {
 	scheduler_proto.SchedulingStrategy
 	ContainerId int64

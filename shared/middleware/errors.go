@@ -3,82 +3,86 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus/ctxlogrus"
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-// wrapperAndCause returns the root error and the immediate wrapper of it.
-// Both returned errors can be nil.
-func wrapperAndCause(err error) (error, error) { //revive:disable-line:error-return
-	type causer interface {
-		Cause() error
-	}
-
-	if err == nil {
-		return nil, nil
-	}
-
-	var e error
-	for err != nil {
-		cause, ok := err.(causer)
-		if !ok {
-			return e, err
-		}
-		e = err
-		err = cause.Cause()
-	}
-	return e, err
+type causer interface {
+	Cause() error
 }
 
 type stackTracer interface {
 	StackTrace() errors.StackTrace
 }
 
-// firstErrorWithStack returns a stackTracer from the first error that provides it.
-func firstErrorWithStack(errors ...error) stackTracer {
-	for _, err := range errors {
-		stackErr, ok := err.(stackTracer)
+// stackAndCause returns a stackTracer from the first (deepest) error that provides it and the cause error.
+func stackAndCause(err error) (stackTracer, error) {
+	var tracer stackTracer
+	for ; ; {
+		t, ok := err.(stackTracer)
 		if ok {
-			return stackErr
+			tracer = t
+		}
+		errCause, ok := err.(causer)
+		if ok {
+			err = errCause.Cause()
+		} else {
+			break
 		}
 	}
-	return nil
+	return tracer, err
 }
 
-// StackTraceErrorInterceptor unwraps the error, logs the stack trace if the error's code is listed in the logCodes.
-// If `logAll` is true, the error will be logged even if there is no stack trace available.
-func StackTraceErrorInterceptor(logAll bool, logCodes ...codes.Code) grpc.UnaryServerInterceptor {
-	return func(
-		ctx context.Context,
+type contextKey struct {
+	value string
+}
+
+func (c *contextKey) String() string {
+	return c.value
+}
+
+// requestLoggerContextKey is the key used to store a requests logger in a context.
+var requestLoggerContextKey = &contextKey{"logger"}
+
+// RequestsLoggerInterceptor adds a field to the logger with a unique request ID string value.
+func RequestsLoggerInterceptor(logger *logrus.Logger) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context,
 		req interface{},
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (_ interface{}, err error) {
-		response, err := handler(ctx, req)
-		if err != nil {
-			wrapperErr, rootErr := wrapperAndCause(err)
-			errorStatus, _ := status.FromError(rootErr)
-			for _, code := range logCodes {
-				if errorStatus.Code() == code {
-					entry := ctxlogrus.Extract(ctx)
-					// Try to log a stack trace if it's available.
-					stackErr := firstErrorWithStack(rootErr, wrapperErr)
-					if stackErr != nil {
-						// Log the first 5 stack trace frames.
-						entry.WithField("stacktrace", fmt.Sprintf("%+v", stackErr.StackTrace()[:5])).
-							Errorf("%s", err)
-					} else if logAll {
-						entry.Errorf("%+v", err)
-					}
-					break
-				}
-			}
-			return response, errorStatus.Err()
+		start := time.Now()
+		entry := logger.WithField("grpc.request_id", uuid.New().String())
+		if info != nil {
+			entry = entry.WithField("grpc.method", info.FullMethod)
 		}
+		newCtx := context.WithValue(ctx, requestLoggerContextKey, entry)
+		response, err := handler(newCtx, req)
+		if err != nil {
+			entry = entry.WithField("error", err.Error())
+			errWithStack, errCause := stackAndCause(err)
+			if errWithStack != nil {
+				entry = entry.WithField("stacktrace", fmt.Sprintf("%+v", errWithStack.StackTrace()))
+			}
+			s, ok := status.FromError(errCause)
+			if ok {
+				entry = entry.WithField("grpc.code", s.Code().String())
+			}
+			err = errCause
+		}
+
+		entry.WithField("grpc.duration_ns", time.Now().Sub(start).Nanoseconds()).Info("request finished")
 		return response, err
 	}
+}
+
+// GetCtxLogger gets the requests logger from the given context.
+// Will panic if there is no request logger in the context.
+func GetCtxLogger(ctx context.Context) *logrus.Logger {
+	return ctx.Value(requestLoggerContextKey).(*logrus.Logger)
 }

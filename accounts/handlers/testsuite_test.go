@@ -14,13 +14,11 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/mennanov/scalemate/accounts/conf"
-	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 	"github.com/mennanov/scalemate/shared/utils"
 )
 
 const (
-	natsDurableName = "accounts-handlers-tests"
 	dbName          = "accounts_handlers_test_suite"
 )
 
@@ -29,8 +27,7 @@ type HandlersTestSuite struct {
 	db              *sqlx.DB
 	logger          *logrus.Logger
 	conn            stan.Conn
-	subscription    events.Subscription
-	messagesHandler *testutils.MessagesTestingHandler
+	messagesHandler *testutils.ExpectMessagesHandler
 }
 
 func (s *HandlersTestSuite) SetupSuite() {
@@ -46,11 +43,6 @@ func (s *HandlersTestSuite) SetupSuite() {
 		// Unique clientID is used to avoid interference with events from the previous test runs.
 		fmt.Sprintf("accounts-events-handler-%s", uuid.New().String()),
 		stan.NatsURL(conf.AccountsConf.NatsAddr))
-
-	consumer := events.NewNatsConsumer(s.conn, events.AccountsSubjectName, events.NewFakeProducer(), s.db, s.logger, 5, 3, stan.DurableName(natsDurableName))
-	s.messagesHandler = testutils.NewMessagesTestingHandler()
-	s.subscription, err = consumer.Consume(s.messagesHandler)
-	s.Require().NoError(err)
 
 	// Run migrations.
 	driver, err := postgres.WithInstance(db.DB, &postgres.Config{
@@ -68,7 +60,6 @@ func (s *HandlersTestSuite) SetupTest() {
 }
 
 func (s *HandlersTestSuite) TearDownSuite() {
-	utils.Close(s.subscription, s.logger)
 	utils.Close(s.conn, s.logger)
 	utils.Close(s.db, s.logger)
 }

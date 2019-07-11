@@ -3,10 +3,12 @@ package server_test
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"google.golang.org/grpc/codes"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
 
@@ -18,6 +20,8 @@ func (s *ServerTestSuite) TestRegister() {
 		Password: "password",
 	}
 
+	wait := testutils.ExpectMessages(s.sc, events.AccountsSubjectName, s.logger, "Event_AccountsUserCreated")
+	
 	registeredUser, err := s.client.Register(ctx, registerRequest)
 	s.Require().NoError(err)
 	s.Equal(registerRequest.Username, registeredUser.Username)
@@ -25,7 +29,7 @@ func (s *ServerTestSuite) TestRegister() {
 	s.NotEqual(uint32(0), registeredUser.Id)
 
 	// Verify that the event message is sent.
-	s.NoError(s.messagesHandler.ExpectMessages("Event_AccountsUserCreated"))
+	s.Require().NoError(wait(time.Second))
 
 	s.Run("duplicate registration fails", func() {
 		s.T().Parallel()

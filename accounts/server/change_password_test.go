@@ -2,12 +2,14 @@ package server_test
 
 import (
 	"context"
+	"time"
 
 	"github.com/mennanov/scalemate/accounts/accounts_proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/shared/auth"
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
 
@@ -38,13 +40,13 @@ func (s *ServerTestSuite) TestChangePassword() {
 	s.Run("change password then authenticate succeeds", func() {
 		s.T().Parallel()
 		newPassword := "new password"
+		wait := testutils.ExpectMessages(s.sc, events.AccountsSubjectName, s.logger, "Event_AccountsUserPasswordChanged")
 		_, err = s.client.ChangePassword(ctx, &accounts_proto.ChangePasswordRequest{
 			Username: registeredUser.Username,
 			Password: newPassword,
 		}, creds)
 		s.Require().NoError(err)
-
-		s.NoError(s.messagesHandler.ExpectMessages("Event_AccountsUserPasswordChanged"))
+		s.Require().NoError(wait(time.Second))
 
 		// Authenticate the user with the new password.
 		newAuthTokens, err := s.client.PasswordAuth(ctx, &accounts_proto.PasswordAuthRequest{

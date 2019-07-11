@@ -1,4 +1,4 @@
-build --test_timeout=10
+build --test_timeout=10 --test_env=LOG_LEVEL=DEBUG
 
 # SHARED ENV VARIABLES
 build --test_env=NATS_ADDR=stan://localhost:4222

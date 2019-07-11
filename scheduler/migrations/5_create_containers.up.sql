@@ -34,6 +34,9 @@ create table containers
 create index containers_scheduling_idx ON containers (status, cpu_class_min, cpu_class_max, disk_class_min,
                                                       disk_class_max, gpu_class_min, gpu_class_max);
 
+create index containers_node_id_idx ON containers (node_id, status);
+create index containers_node_pricing_id_idx ON containers (node_pricing_id);
+
 CREATE TRIGGER containers_set_updated_at
     BEFORE UPDATE
     ON containers

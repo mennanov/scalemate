@@ -6,13 +6,9 @@ import (
 	"time"
 
 	"github.com/grpc-ecosystem/go-grpc-middleware"
-	"github.com/grpc-ecosystem/go-grpc-middleware/auth"
 	"github.com/grpc-ecosystem/go-grpc-middleware/logging/logrus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/recovery"
-	"github.com/grpc-ecosystem/go-grpc-middleware/tags"
-	"github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	"github.com/jmoiron/sqlx"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 
 	// required by gorm
@@ -25,22 +21,6 @@ import (
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/middleware"
 )
-
-// LoggedErrorCodes are the error codes for the errors that will be logged with the "Error" level with a full stack
-// trace if available.
-var LoggedErrorCodes = []codes.Code{
-	codes.Unknown,
-	codes.Internal,
-	codes.DeadlineExceeded,
-	codes.DataLoss,
-	codes.FailedPrecondition,
-	codes.Aborted,
-	codes.OutOfRange,
-	codes.ResourceExhausted,
-	codes.Unavailable,
-	codes.Unimplemented,
-	codes.PermissionDenied,
-}
 
 // AccountsServer implements Accounts gRPC service.
 type AccountsServer struct {
@@ -78,12 +58,8 @@ func (s *AccountsServer) Serve(ctx context.Context, grpcAddr string, creds crede
 	grpcServer := grpc.NewServer(
 		grpc.Creds(creds),
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
-			grpc_ctxtags.UnaryServerInterceptor(),
-			grpc_logrus.UnaryServerInterceptor(entry),
-			middleware.LoggerRequestIDInterceptor("request.id"),
-			grpc_auth.UnaryServerInterceptor(AuthFunc),
-			grpc_validator.UnaryServerInterceptor(),
-			middleware.StackTraceErrorInterceptor(false, LoggedErrorCodes...),
+			middleware.RequestsLoggerInterceptor(s.logger),
+			middleware.ClaimsInjectorUnaryInterceptor(s.claimsInjector),
 			grpc_recovery.UnaryServerInterceptor(),
 		)),
 	)

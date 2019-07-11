@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
-service Scheduler {
+service SchedulerFrontEnd {
     // CreateContainer creates a new Container entity in the service.
     // It will later be scheduled to an available Node to run.
     // Use ReceiveContainerUpdates() method to receive updates on a newly created Container.
@@ -30,8 +30,8 @@ service Scheduler {
     // The most recent version of the Container is always returned as the first response with all the fields filled in.
     // All the existing Container ResourceRequests are also returned immediately.
     // Subsequent responses will only contain fields that were actually updated.
-    rpc ReceiveContainerUpdates (ContainerLookupRequest) returns (stream ContainerUpdate) {
-    }
+    //    rpc ReceiveContainerUpdates (ContainerLookupRequest) returns (stream ContainerUpdate) {
+    //    }
     // AddResourceRequest adds a new resources limit request to be applied to a Container.
     // LXD limits can be updated dynamically even when a Container is running.
     // This method fails immediately if the Node can't provide the resources requested.
@@ -53,6 +53,22 @@ service Scheduler {
     }
     // ListNodeLabels lists aggregated labels of the Nodes that are currently online.
     rpc ListNodeLabels (google.protobuf.Empty) returns (ListNodeLabelsResponse) {
+    }
+}
+
+service SchedulerBackEnd {
+    // CreateNode creates a new Node with the corresponding NodePricing.
+    rpc CreateNode (NodeWithPricing) returns (NodeWithPricing) {
+    }
+
+    // ConnectNode makes the Node available for scheduling.
+    rpc ConnectNode (ConnectNodeRequest) returns (stream Container) {
+    }
+
+    // ConfirmResourceRequest updates the status of the ResourceRequest to CONFIRMED. This method should be called only
+    // after the actual resource limits have been applied to the running Container or when the Container has started
+    // successfully for the first time.
+    rpc ConfirmResourceRequest (ResourceRequestLookupRequest) returns (google.protobuf.Empty) {
     }
 }
 
@@ -84,6 +100,7 @@ message Container {
     int64 id = 1;
     google.protobuf.Int64Value node_id = 2 [(gogoproto.wktpointer) = true];
     google.protobuf.Int64Value node_pricing_id = 24 [(gogoproto.wktpointer) = true];
+    // Readonly.
     string username = 3;
 
     enum Status {
@@ -102,11 +119,11 @@ message Container {
         // The Node this Container is running on is offline (not connected to the service).
         // The Container may still be running and reachable over the network.
         // If the Node reconnects within 1 hour and the Container is running normally then it will have the RUNNING
-        // status, OFFLINE_FAILED otherwise.
+        // status, NODE_FAILED otherwise.
         // The time the Container is OFFLINE is not billable.
         OFFLINE = 6;
-        // The Container was OFFLINE for 1 hour. It is then considered failed as unreachable.
-        OFFLINE_FAILED = 7;
+        // The Container failed because of the malfunctioning Node is was running on.
+        NODE_FAILED = 7;
         // The Container is stopped due to insufficient funds.
         EVICTED = 8;
     }
@@ -118,9 +135,9 @@ message Container {
     // Public LXD image. See https://us.images.linuxcontainers.org for the full list.
     string image = 6;
 
-    // Network incoming traffic minimum required speed in Mbit/sec.
+    // Network incoming traffic minimum required speed in Kbit/sec.
     uint32 network_ingress_min = 7;
-    // Network outgoing traffic minimum required speed in Mbit/sec.
+    // Network outgoing traffic minimum required speed in Kbit/sec.
     uint32 network_egress_min = 8;
 
     // Hardware requirements range.
@@ -168,7 +185,7 @@ message SchedulingStrategy {
 message ResourceRequest {
     // Readonly.
     int64 id = 1;
-    // Readonly.
+
     int64 container_id = 2;
 
     // Number of CPUs to expose to the container.
@@ -248,14 +265,6 @@ message Node {
     // Node owner's defined labels for this Node.
     // These are also automatically populated with the Node's hardware model strings when it connects.
     repeated string labels = 18;
-
-    // Number of Containers that have finished successfully (no failures).
-    uint32 containers_succeeded = 19;
-    // Number of Containers that failed on this Node when the Node was at fault.
-    uint32 containers_failed = 20;
-    // Total number of scheduled Containers on this Node, also includes currently running containers.
-    // containers_scheduled = containers_succeeded + containers_failed + containers_running.
-    uint32 containers_scheduled = 28;
 
     // The most recent connection time.
     google.protobuf.Timestamp connected_at = 21 [(gogoproto.stdtime) = true];
@@ -405,14 +414,12 @@ message ListResourceRequestsResponse {
 }
 
 message AddResourceRequestRequest {
-    int64 container_id = 1;
-    ResourceRequest resource_request = 2;
-    google.protobuf.FieldMask updated_fields = 3;
+    ResourceRequest resource_request = 1;
+    google.protobuf.FieldMask resource_request_mask = 2;
 }
 
 message ListContainersRequest {
-    string username = 1;
-    repeated Container.Status status = 2;
+    repeated Container.Status status = 1;
 
     enum Ordering {
         CREATED_AT_DESC = 0;
@@ -421,11 +428,11 @@ message ListContainersRequest {
         UPDATED_AT_ASC = 3;
     }
     // CREATED_AT_DESC is used by default.
-    Ordering ordering = 3;
+    Ordering ordering = 2;
 
     // Limit of 50 is used by default.
-    uint32 limit = 4;
-    uint32 offset = 5;
+    uint32 limit = 3;
+    uint32 offset = 4;
 }
 
 message ListContainersResponse {
@@ -435,7 +442,7 @@ message ListContainersResponse {
 }
 
 message ResourceRequestLookupRequest {
-    int64 container_id = 1;
+    int64 request_id = 1;
 }
 
 message ContainerCreatedEvent {
@@ -443,20 +450,47 @@ message ContainerCreatedEvent {
     ResourceRequest resource_request = 2;
 }
 
+message NodeWithPricing {
+    Node node = 1;
+    NodePricing node_pricing = 2;
+}
+
+message ConnectNodeRequest {
+    uint32 cpu_available = 1;
+    uint32 memory_available = 2;
+    uint32 disk_available = 3;
+    uint32 gpu_available = 4;
+    uint32 network_ingress_capacity = 5;
+    uint32 network_egress_capacity = 6;
+}
+
 message ContainerScheduledEvent {
-    scheduler.scheduler_proto.Container container = 1;
+    Container container = 1;
     google.protobuf.FieldMask container_mask = 2;
     // The Node this Container is scheduled to.
     Node node = 3;
     google.protobuf.FieldMask node_mask = 4;
+    // The corresponding Container's ResourceRequest used for scheduling.
+    ResourceRequest resource_request = 5;
+}
+
+message ContainerStoppedEvent {
+    Container container = 1;
+    google.protobuf.FieldMask container_mask = 2;
 }
 
 message ResourceRequestCreated {
     ResourceRequest resource_request = 1;
 }
 
-message ResourceRequestStatusChanged {
+message ResourceRequestConfirmed {
     ResourceRequest resource_request = 1;
+    google.protobuf.FieldMask resource_mask = 2;
+}
+
+message ResourceRequestDeclined {
+    ResourceRequest resource_request = 1;
+    google.protobuf.FieldMask resource_mask = 2;
 }
 
 message NodePricingCreatedEvent {
@@ -466,4 +500,19 @@ message NodePricingCreatedEvent {
 message NodeCreatedEvent {
     Node node = 1;
     NodePricing node_pricing = 2;
+}
+
+message NodeConnectedEvent {
+    Node node = 1;
+    google.protobuf.FieldMask node_mask = 2;
+}
+
+message NodeDisconnectedEvent {
+    Node node = 1;
+    google.protobuf.FieldMask node_mask = 2;
+}
+
+message NodeShuttingDownEvent {
+    Node node = 1;
+    google.protobuf.FieldMask node_mask = 2;
 }

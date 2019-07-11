@@ -50,7 +50,7 @@ Get all models:
 			}
 		}
 		response, err := scheduler.ListCpuModelsController(
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			scheduler_proto.CPUClass(class))
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
 	},
@@ -79,7 +79,7 @@ Get all models:
 			}
 		}
 		response, err := scheduler.ListGpuModelsController(
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			scheduler_proto.GPUClass(class))
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
 	},
@@ -108,7 +108,7 @@ Get all models:
 			}
 		}
 		response, err := scheduler.ListDiskModelsController(
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			scheduler_proto.DiskClass(class))
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
 	},
@@ -121,7 +121,7 @@ var listMemoryModelsCmd = &cobra.Command{
 	Args:    cobra.MaximumNArgs(0),
 	Example: `> scalemate models memory`,
 	Run: func(cmd *cobra.Command, args []string) {
-		response, err := scheduler.ListMemoryModelsController(client.NewSchedulerClient(schedulerServiceAddr))
+		response, err := scheduler.ListMemoryModelsController(client.NewSchedulerFrontEndClient(schedulerServiceAddr))
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
 	},
 }

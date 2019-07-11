@@ -133,13 +133,9 @@ type SqlxExtGetter interface {
 
 // ClaimsUsernameEqual checks if the claims' Username value equals to the given username string.
 func ClaimsUsernameEqual(ctx context.Context, username string) error {
-	ctxClaims := ctx.Value(auth.ContextKeyClaims)
-	if ctxClaims == nil {
-		return status.Error(codes.Unauthenticated, "no JWT claims found")
-	}
-	claims, ok := ctxClaims.(*auth.Claims)
-	if !ok {
-		return status.Error(codes.Unauthenticated, "unknown JWT claims type")
+	claims, err := auth.GetClaimsFromContext(ctx)
+	if err != nil {
+		return err
 	}
 
 	if claims.Username != username {
@@ -160,4 +156,16 @@ func (i *isEmpty) Validate(value interface{}) error {
 		return status.Errorf(codes.InvalidArgument, "readonly field is not empty", value)
 	}
 	return nil
+}
+
+// MapKeys returns a slice of map string keys.
+func MapKeys(m map[string]interface{}) []string {
+	keys := make([]string, len(m))
+
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	return keys
 }

@@ -1,4 +1,4 @@
-package server_test
+package frontend_test
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 func (s *ServerTestSuite) TestGetContainer() {
 	request := &scheduler_proto.ContainerWithResourceRequest{
 		Container: &scheduler_proto.Container{
-			Username: s.claimsInjector.Claims.Username,
 			Image:    "image",
 		},
 		ResourceRequest: &scheduler_proto.ResourceRequest{
@@ -23,7 +22,7 @@ func (s *ServerTestSuite) TestGetContainer() {
 			Gpu:    1,
 		},
 	}
-	containerWithResourceRequest, err := s.client.CreateContainer(context.Background(), request)
+	containerWithResourceRequest, err := s.frontEndClient.CreateContainer(context.Background(), request)
 	s.Require().NoError(err)
 	s.Require().NotNil(containerWithResourceRequest)
 
@@ -31,7 +30,7 @@ func (s *ServerTestSuite) TestGetContainer() {
 
 	s.Run("get the created container", func() {
 		s.T().Parallel()
-		container, err := s.client.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{
+		container, err := s.frontEndClient.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{
 			ContainerId: containerWithResourceRequest.Container.Id})
 		s.Require().NoError(err)
 		s.Equal(containerWithResourceRequest.Container, container)
@@ -43,7 +42,7 @@ func (s *ServerTestSuite) TestGetContainer() {
 		})
 		defer restoreClaims()
 
-		container, err := s.client.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{
+		container, err := s.frontEndClient.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{
 			ContainerId: containerWithResourceRequest.Container.Id})
 		testutils.AssertErrorCode(s.T(), err, codes.PermissionDenied)
 		s.Nil(container)
@@ -51,7 +50,7 @@ func (s *ServerTestSuite) TestGetContainer() {
 
 	s.Run("not found", func() {
 		s.T().Parallel()
-		container, err := s.client.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{ContainerId: 0})
+		container, err := s.frontEndClient.GetContainer(ctx, &scheduler_proto.ContainerLookupRequest{ContainerId: 0})
 		testutils.AssertErrorCode(s.T(), err, codes.NotFound)
 		s.Nil(container)
 	})

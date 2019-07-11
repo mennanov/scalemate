@@ -1,4 +1,4 @@
-package server_test
+package frontend_test
 
 import (
 	"context"
@@ -6,16 +6,15 @@ import (
 	"time"
 
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"github.com/mennanov/scalemate/shared/events_proto"
 	"google.golang.org/grpc/codes"
 
+	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func (s *ServerTestSuite) TestCreateContainer() {
 	request := &scheduler_proto.ContainerWithResourceRequest{
 		Container: &scheduler_proto.Container{
-			Username:          s.claimsInjector.Claims.Username,
 			Image:             "image",
 			NetworkIngressMin: 50,
 			NetworkEgressMin:  20,
@@ -34,29 +33,15 @@ func (s *ServerTestSuite) TestCreateContainer() {
 			Gpu:    1,
 		},
 	}
-	containerWithResourceRequest, err := s.client.CreateContainer(context.Background(), request)
+	wait := testutils.ExpectMessages(s.sc, events.SchedulerSubjectName, s.logger, "Event_SchedulerContainerCreated")
+	containerWithResourceRequest, err := s.frontEndClient.CreateContainer(context.Background(), request)
 	s.Require().NoError(err)
 	s.Require().NotNil(containerWithResourceRequest)
 
-	s.NoError(s.messagesHandler.ExpectMessages(
-		testutils.KeyForEvent(&events_proto.Event{
-			Type:    events_proto.Event_CREATED,
-			Service: events_proto.Service_SCHEDULER,
-			Payload: &events_proto.Event_SchedulerContainer{
-				SchedulerContainer: containerWithResourceRequest.Container,
-			},
-		}),
-		testutils.KeyForEvent(&events_proto.Event{
-			Type:    events_proto.Event_CREATED,
-			Service: events_proto.Service_SCHEDULER,
-			Payload: &events_proto.Event_SchedulerResourceRequest{
-				SchedulerResourceRequest: containerWithResourceRequest.ResourceRequest,
-			},
-		})),
-	)
+	s.NoError(wait(time.Second))
 
 	// Verify the Container was created.
-	container, err := s.client.GetContainer(context.Background(), &scheduler_proto.ContainerLookupRequest{
+	container, err := s.frontEndClient.GetContainer(context.Background(), &scheduler_proto.ContainerLookupRequest{
 		ContainerId: containerWithResourceRequest.Container.Id})
 	s.Require().NoError(err)
 	s.Equal(containerWithResourceRequest.Container, container)
@@ -215,25 +200,9 @@ func (s *ServerTestSuite) TestCreateContainer_InvalidArgument() {
 		i := i
 		s.Run(fmt.Sprintf("invalid argument request-%d", i), func() {
 			s.T().Parallel()
-			response, err := s.client.CreateContainer(ctx, request)
+			response, err := s.frontEndClient.CreateContainer(ctx, request)
 			testutils.AssertErrorCode(s.T(), err, codes.InvalidArgument)
 			s.Nil(response)
 		})
 	}
-}
-
-func (s *ServerTestSuite) TestCreateContainer_PermissionDenied() {
-	container, err := s.client.CreateContainer(context.Background(), &scheduler_proto.ContainerWithResourceRequest{
-		Container: &scheduler_proto.Container{
-			Image:    "image",
-			Username: "invalid_username",
-		},
-		ResourceRequest: &scheduler_proto.ResourceRequest{
-			Cpu:    1,
-			Memory: 128,
-			Disk:   1024,
-		},
-	})
-	testutils.AssertErrorCode(s.T(), err, codes.PermissionDenied)
-	s.Nil(container)
 }

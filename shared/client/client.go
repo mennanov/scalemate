@@ -50,8 +50,8 @@ func NewAccountsClient(addr string) accounts_proto.AccountsClient {
 	return accounts_proto.NewAccountsClient(conn)
 }
 
-// NewSchedulerClient creates a new SchedulerClient instance.
-func NewSchedulerClient(addr string) scheduler_proto.SchedulerClient {
+// NewSchedulerFrontEndClient creates a new SchedulerClient instance.
+func NewSchedulerFrontEndClient(addr string) scheduler_proto.SchedulerFrontEndClient {
 	conn := newGRPCConnection(fmt.Sprintf("dns://%s", addr))
-	return scheduler_proto.NewSchedulerClient(conn)
+	return scheduler_proto.NewSchedulerFrontEndClient(conn)
 }

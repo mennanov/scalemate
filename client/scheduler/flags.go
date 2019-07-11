@@ -50,7 +50,7 @@ type CreateJobCmdFlags struct {
 	IsDaemon         bool
 }
 
-// ToProto parses the flags and returns a filled in Job_RunConfig struct.
+// MustToProto parses the flags and returns a filled in Job_RunConfig struct.
 func (f *CreateJobCmdFlags) ToProto() (*scheduler_proto.Job, error) {
 	job := &scheduler_proto.Job{
 		RunConfig: &scheduler_proto.Job_RunConfig{
@@ -139,7 +139,7 @@ type ListJobsCmdFlags struct {
 	Offset   uint32
 }
 
-// ToProto creates a new scheduler_proto.ListJobsRequest from the flags.
+// MustToProto creates a new scheduler_proto.ListJobsRequest from the flags.
 func (f *ListJobsCmdFlags) ToProto() *scheduler_proto.ListJobsRequest {
 	request := &scheduler_proto.ListJobsRequest{
 		Ordering: scheduler_proto.ListJobsRequest_Ordering(f.Ordering),
@@ -164,7 +164,7 @@ type ListTasksCmdFlags struct {
 	Offset   uint32
 }
 
-// ToProto creates a new scheduler_proto.ListTasksRequest from the flags.
+// MustToProto creates a new scheduler_proto.ListTasksRequest from the flags.
 func (f *ListTasksCmdFlags) ToProto() *scheduler_proto.ListTasksRequest {
 	request := &scheduler_proto.ListTasksRequest{
 		Ordering: scheduler_proto.ListTasksRequest_Ordering(f.Ordering),
@@ -205,7 +205,7 @@ type ListNodesCmdFlags struct {
 	TasksFailed     uint64
 }
 
-// ToProto creates a new ListNodesRequest from flags.
+// MustToProto creates a new ListNodesRequest from flags.
 func (f *ListNodesCmdFlags) ToProto() *scheduler_proto.ListNodesRequest {
 	request := &scheduler_proto.ListNodesRequest{
 		Ordering:        scheduler_proto.ListNodesRequest_Ordering(f.Ordering),

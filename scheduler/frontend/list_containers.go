@@ -1,4 +1,4 @@
-package server
+package frontend
 
 import (
 	"context"
@@ -10,23 +10,25 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/utils"
+	"github.com/mennanov/scalemate/shared/auth"
 )
 
-func (s *SchedulerServer) ListContainers(
+// ListContainers lists existing Containers.
+func (s *SchedulerFrontend) ListContainers(
 	ctx context.Context, request *scheduler_proto.ListContainersRequest,
 ) (*scheduler_proto.ListContainersResponse, error) {
+	claims, err := auth.GetClaimsFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := validation.ValidateStruct(request,
-		validation.Field(&request.Username, validation.Required),
 		validation.Field(&request.Limit, validation.Required),
 	); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if err := utils.ClaimsUsernameEqual(ctx, request.Username); err != nil {
-		return nil, errors.WithStack(err)
-	}
-	containers, count, err := models.ListContainers(s.db, request)
+	containers, count, err := models.ListContainers(s.db, claims.Username, request)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to find containers")
 	}

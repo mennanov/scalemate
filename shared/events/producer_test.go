@@ -1,17 +1,15 @@
 package events_test
 
 import (
-	"math/rand"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/mennanov/scalemate/accounts/accounts_proto"
+	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 	"github.com/nats-io/go-nats-streaming"
 	"github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/genproto/protobuf/field_mask"
 
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
@@ -28,40 +26,15 @@ func TestNatsProducer_Send(t *testing.T) {
 
 	subject := "test_subject"
 	producer := events.NewNatsProducer(sc, subject, 5)
-	consumer := events.NewNatsConsumer(sc, subject, nil, nil, logrus.New(), 5, 3, stan.DurableName("durable-name"))
+	wait := testutils.ExpectMessages(sc, subject, logger, "Event_SchedulerNodeConnected")
 
-	eventsToSend := []*events_proto.Event{
-		{
-			Type:    events_proto.Event_CREATED,
-			Service: events_proto.Service_ACCOUNTS,
-			Payload: &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{
-				Id:       rand.Uint32(),
-				Username: "username",
-			}},
+	err = producer.Send(&events_proto.Event{
+		Payload: &events_proto.Event_SchedulerNodeConnected{
+			SchedulerNodeConnected: &scheduler_proto.NodeConnectedEvent{
+				Node: new(scheduler_proto.Node),
+			},
 		},
-		{
-			Type:    events_proto.Event_UPDATED,
-			Service: events_proto.Service_ACCOUNTS,
-			Payload: &events_proto.Event_AccountsUser{AccountsUser: &accounts_proto.User{
-				Id:     rand.Uint32(),
-				Banned: true,
-			}},
-			PayloadMask: &field_mask.FieldMask{Paths: []string{"Banned"}},
-		},
-	}
-
-	expectedMessageKeys := make([]string, len(eventsToSend))
-	for i, event := range eventsToSend {
-		key := testutils.KeyForEvent(event)
-		assert.NoError(t, err)
-		expectedMessageKeys[i] = key
-	}
-	messagesHandler := testutils.NewMessagesTestingHandler()
-	subscription, err := consumer.Consume(messagesHandler)
+	})
 	require.NoError(t, err)
-	defer utils.Close(subscription, logger)
-
-	err = producer.Send(eventsToSend...)
-	require.NoError(t, err)
-	assert.NoError(t, messagesHandler.ExpectMessages(expectedMessageKeys...))
+	require.NoError(t, wait(time.Second))
 }

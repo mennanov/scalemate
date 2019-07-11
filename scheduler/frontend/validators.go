@@ -1,4 +1,4 @@
-package server
+package frontend
 
 import (
 	"github.com/go-ozzo/ozzo-validation"
@@ -17,6 +17,7 @@ func ValidateContainerFields(c *scheduler_proto.Container) error {
 	}
 	if err := validation.ValidateStruct(c,
 		validation.Field(&c.Id, utils.ValidateIsEmpty),
+		validation.Field(&c.Username, utils.ValidateIsEmpty),
 		validation.Field(&c.NodeId, utils.ValidateIsEmpty),
 		validation.Field(&c.Status, utils.ValidateIsEmpty),
 		validation.Field(&c.StatusMessage, utils.ValidateIsEmpty),
@@ -33,11 +34,10 @@ func ValidateContainerFields(c *scheduler_proto.Container) error {
 // ValidateResourceRequestFields checks if the Limit fields are valid and can be used to create a new Limit.
 func ValidateResourceRequestFields(r *scheduler_proto.ResourceRequest, mask *types.FieldMask) error {
 	if r == nil {
-		return status.Error(codes.InvalidArgument, "ResourceRequest is nil")
+		return status.Error(codes.InvalidArgument, "CurrentResourceRequest is nil")
 	}
 	rules := []*validation.FieldRules{
 		validation.Field(&r.Id, utils.ValidateIsEmpty),
-		validation.Field(&r.ContainerId, utils.ValidateIsEmpty),
 		validation.Field(&r.Status, utils.ValidateIsEmpty),
 		validation.Field(&r.StatusMessage, utils.ValidateIsEmpty),
 		validation.Field(&r.CreatedAt, utils.ValidateIsEmpty),

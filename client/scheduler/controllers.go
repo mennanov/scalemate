@@ -6,14 +6,9 @@ import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 )
 
-var (
-	loadTokensFailedErrMsg       = "failed to load authentication tokens. Are you logged in?"
-	newClaimsFromStringFailedMsg = "failed to parse authentication tokens. Try re-login"
-)
-
 // GetNodeController gets an existing Node by its ID.
 func GetNodeController(
-	schedulerClient scheduler_proto.SchedulerClient,
+	schedulerClient scheduler_proto.SchedulerFrontEndClient,
 	nodeID int64,
 ) (*scheduler_proto.Node, error) {
 	return schedulerClient.GetNode(
@@ -23,7 +18,7 @@ func GetNodeController(
 
 // ListNodesController lists the Nodes that satisfy the criteria.
 func ListNodesController(
-	schedulerClient scheduler_proto.SchedulerClient,
+	schedulerClient scheduler_proto.SchedulerFrontEndClient,
 	flags *ListNodesCmdFlags,
 ) (*scheduler_proto.ListNodesResponse, error) {
 	r := flags.ToProto()

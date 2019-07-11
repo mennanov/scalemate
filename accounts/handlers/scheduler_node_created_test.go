@@ -1,6 +1,8 @@
 package handlers_test
 
 import (
+	"context"
+
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
 	"github.com/mennanov/scalemate/shared/events_proto"
 
@@ -9,7 +11,7 @@ import (
 )
 
 func (s *HandlersTestSuite) TestSchedulerNodeCreatedHandler_Handle() {
-	handler := handlers.NewSchedulerNodeCreatedHandler(s.logger)
+	handler := handlers.NewSchedulerNodeCreatedHandler(s.db)
 
 	nodeProto := &scheduler_proto.Node{
 		Id:          42,
@@ -25,10 +27,7 @@ func (s *HandlersTestSuite) TestSchedulerNodeCreatedHandler_Handle() {
 		},
 	}
 
-	handlerEvents, err := handler.Handle(s.db, event)
-	s.Require().NoError(err)
-	// No events are expected.
-	s.Nil(handlerEvents)
+	s.Require().NoError(handler.Handle(context.Background(), event))
 
 	// The Node is expected to be created in DB.
 	node, err := models.NodeLookUp(s.db, nodeProto.Username, nodeProto.Name)
@@ -39,7 +38,7 @@ func (s *HandlersTestSuite) TestSchedulerNodeCreatedHandler_Handle() {
 	s.Equal(nodeProto.Fingerprint, node.Fingerprint)
 
 	// Verify that the operation is idempotent.
-	handlerEvents, err = handler.Handle(s.db, event)
+	err = handler.Handle(context.Background(), event)
 	var count int
 
 	s.Require().NoError(s.db.QueryRowx("SELECT COUNT(*) FROM nodes WHERE username = $1 AND name = $2",

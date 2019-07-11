@@ -1,4 +1,4 @@
-package server_test
+package frontend_test
 
 import (
 	"context"
@@ -19,22 +19,20 @@ func (s *ServerTestSuite) TestListContainers() {
 	}
 	createContainerRequest := &scheduler_proto.ContainerWithResourceRequest{
 		Container: &scheduler_proto.Container{
-			Username: s.claimsInjector.Claims.Username,
-			Image:    "image",
+			Image: "image",
 		},
 		ResourceRequest: validResourceRequest,
 	}
 	ctx := context.Background()
 
-	createdContainer, err := s.client.CreateContainer(ctx, createContainerRequest)
+	createdContainer, err := s.frontEndClient.CreateContainer(ctx, createContainerRequest)
 	s.Require().NoError(err)
 	s.Require().NotNil(createdContainer)
 
 	s.Run("list the created container", func() {
 		s.T().Parallel()
-		response, err := s.client.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
-			Username: s.claimsInjector.Claims.Username,
-			Limit:    10,
+		response, err := s.frontEndClient.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
+			Limit: 10,
 		})
 		s.Require().NoError(err)
 		s.EqualValues(1, response.TotalCount)
@@ -44,10 +42,9 @@ func (s *ServerTestSuite) TestListContainers() {
 
 	s.Run("not found", func() {
 		s.T().Parallel()
-		response, err := s.client.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
-			Username: s.claimsInjector.Claims.Username,
-			Status:   []scheduler_proto.Container_Status{scheduler_proto.Container_RUNNING},
-			Limit:    10,
+		response, err := s.frontEndClient.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
+			Status: []scheduler_proto.Container_Status{scheduler_proto.Container_RUNNING},
+			Limit:  10,
 		})
 		testutils.AssertErrorCode(s.T(), err, codes.NotFound)
 		s.Nil(response)
@@ -61,27 +58,23 @@ func (s *ServerTestSuite) TestListContainers() {
 			{
 				Limit: 0,
 			},
-			{
-				Username: "",
-			},
 		} {
-			response, err := s.client.ListContainers(ctx, request)
+			response, err := s.frontEndClient.ListContainers(ctx, request)
 			testutils.AssertErrorCode(s.T(), err, codes.InvalidArgument)
 			s.Nil(response)
 		}
 	})
 
-	s.Run("permission denied", func() {
+	s.Run("not found for a different username", func() {
 		restoreClaims := s.claimsInjector.SetClaims(&auth.Claims{
 			Username: "different_username",
 		})
 		defer restoreClaims()
 
-		response, err := s.client.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
-			Username: createContainerRequest.Container.Username,
-			Limit:    10,
+		response, err := s.frontEndClient.ListContainers(ctx, &scheduler_proto.ListContainersRequest{
+			Limit: 10,
 		})
-		testutils.AssertErrorCode(s.T(), err, codes.PermissionDenied)
+		testutils.AssertErrorCode(s.T(), err, codes.NotFound)
 		s.Nil(response)
 	})
 }

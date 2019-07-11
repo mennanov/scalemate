@@ -79,7 +79,7 @@ var getNodeCmd = &cobra.Command{
 			return
 		}
 		job, err := scheduler.GetNodeController(
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			int64(nodeID))
 		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
@@ -92,7 +92,7 @@ var listNodesCmd = &cobra.Command{
 	Example: `> scalemate nodes list --memory 2048`,
 	Run: func(cmd *cobra.Command, args []string) {
 		response, err := scheduler.ListNodesController(
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			&listNodesCmdFlagValues,
 		)
 		scheduler.JSONPbView(logger, os.Stdout, response, err)

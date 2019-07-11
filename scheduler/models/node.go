@@ -24,6 +24,19 @@ type Node struct {
 	scheduler_proto.Node
 }
 
+// NodeExt is an extended Node struct with some extra fields added.
+// These extra fields are used to sort Nodes.
+type NodeExt struct {
+	*Node
+	PricingId            int64
+	CpuPrice             uint64
+	GpuPrice             uint64
+	DiskPrice            uint64
+	MemoryPrice          uint64
+	ContainersNodeFailed int
+	ContainersScheduled  int
+}
+
 // NewNodeFromProto create a new Node instance from a proto message.
 func NewNodeFromProto(p *scheduler_proto.Node) *Node {
 	return &Node{Node: *p}
@@ -41,13 +54,13 @@ func (l *NodeLabel) Create(db sqlx.Ext) error {
 	return utils.HandleDBError(err)
 }
 
-// ToProto returns a proto Node instance with applied proto field mask (if provided).
-func (n *Node) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Node, error) {
-	if fieldMask == nil || len(fieldMask.Paths) == 0 {
+// ToProto returns a proto Node instance with the mask provided (derived from paths).
+func (n *Node) ToProto(paths []string) (*scheduler_proto.Node, error) {
+	if len(paths) == 0 {
 		return &n.Node, nil
 	}
 
-	mask, err := fieldmask_utils.MaskFromPaths(fieldMask.Paths, generator.CamelCase)
+	mask, err := fieldmask_utils.MaskFromPaths(paths, generator.CamelCase)
 	if err != nil {
 		return nil, errors.Wrap(err, "fieldmask_utils.MaskFromProtoFieldMask failed")
 	}
@@ -56,6 +69,17 @@ func (n *Node) ToProto(fieldMask *types.FieldMask) (*scheduler_proto.Node, error
 		return nil, errors.Wrap(err, "fieldmask_utils.StructToStruct failed")
 	}
 	return protoFiltered, nil
+}
+
+// ToProtoFromUpdates returns a scheduler_proto.Node with the applied FieldMask derived from the given paths.
+func (n *Node) ToProtoFromUpdates(updates map[string]interface{}) (*scheduler_proto.Node, *types.FieldMask, error) {
+	paths := utils.MapKeys(updates)
+	nodeProto, err := n.ToProto(paths)
+	if err != nil {
+		return nil, nil, errors.WithStack(err)
+	}
+	fieldMask := &types.FieldMask{Paths: paths}
+	return nodeProto, fieldMask, nil
 }
 
 // Create inserts a new Node in DB (also including its labels).
@@ -77,9 +101,6 @@ func (n *Node) Create(db utils.SqlxExtGetter) error {
 		"disk_class":               n.DiskClass,
 		"network_ingress_capacity": n.NetworkIngressCapacity,
 		"network_egress_capacity":  n.NetworkEgressCapacity,
-		"containers_succeeded":     n.ContainersSucceeded,
-		"containers_failed":        n.ContainersFailed,
-		"containers_scheduled":     n.ContainersScheduled,
 		"fingerprint":              n.Fingerprint,
 	}
 
@@ -132,8 +153,8 @@ func (n *Node) Update(db utils.SqlxGetter, updates map[string]interface{}) error
 }
 
 // NewNodeFromDB performs a lookup by ID and returns a Node instance.
-func NewNodeFromDB(db utils.SqlxExtGetter, nodeId int64) (*Node, error) {
-	query := psq.Select("*").From("nodes").Where(sq.Eq{"id": nodeId})
+func NewNodeFromDB(db utils.SqlxExtGetter, pred interface{}, args ...interface{}) (*Node, error) {
+	query := psq.Select("*").From("nodes").Where(pred, args...)
 
 	queryString, args, err := query.ToSql()
 	if err != nil {
@@ -198,7 +219,7 @@ func (n *Node) AllocateResourcesUpdates(newRequest, currentRequest *ResourceRequ
 
 	if cpuAvailable < newRequest.Cpu {
 		return nil, status.Errorf(codes.ResourceExhausted,
-			"failed to allocate Node CPU: %f requested, %f available", newRequest.Cpu, cpuAvailable)
+			"failed to allocate Node CPU: %d requested, %d available", newRequest.Cpu, cpuAvailable)
 	}
 	if memoryAvailable < newRequest.Memory {
 		return nil, status.Errorf(codes.ResourceExhausted,
@@ -212,7 +233,6 @@ func (n *Node) AllocateResourcesUpdates(newRequest, currentRequest *ResourceRequ
 		return nil, status.Errorf(codes.ResourceExhausted,
 			"failed to allocate Node GPU: %d requested, %d available", newRequest.Gpu, gpuAvailable)
 	}
-	// TODO: rewrite without using absolute values.
 	nodeUpdates := map[string]interface{}{
 		"cpu_available":    cpuAvailable - newRequest.Cpu,
 		"memory_available": memoryAvailable - newRequest.Memory,
@@ -277,9 +297,10 @@ func (n *Node) DeallocateResourcesUpdates(request *ResourceRequest) map[string]i
 //		Where("? BETWEEN gpu_class_min AND gpu_class_max", n.GpuClass).
 //		Where("? BETWEEN disk_class_min AND disk_class_max", n.DiskClass).
 //		Where("ARRAY[?] @> labels", n.Labels).
-//		Joins("INNER JOIN (SELECT container_id, MAX(id) from container_limits WHERE status = ? AND cpu > 0 group by container_id) as t1 on (t1.container_id = containers.id)", utils.Enum(scheduler_proto.Limit_CONFIRMED))
+//		Joins("INNER JOIN (SELECT container_id, MAX(id) from container_limits WHERE status = ? AND cpu > 0 group by container_id) as
+//		t1 on (t1.container_id = containers.id)", utils.Enum(scheduler_proto.Limit_CONFIRMED))
 //
-//	q = q.ResourceRequest(ContainersScheduledForNodeQueryLimit)
+//	q = q.CurrentResourceRequest(ContainersScheduledForNodeQueryLimit)
 //
 //	var containers []Container
 //	if err := utils.HandleDBError(q.Find(containers)); err != nil {
@@ -291,4 +312,3 @@ func (n *Node) DeallocateResourcesUpdates(request *ResourceRequest) map[string]i
 //// Nodes represents a collection of Nodes.
 //type Nodes []Node
 //
-

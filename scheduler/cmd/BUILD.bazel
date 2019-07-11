@@ -10,7 +10,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//scheduler/conf:go_default_library",
-        "//scheduler/server:go_default_library",
+        "//scheduler/frontend:go_default_library",
+        "//scheduler/handlers:go_default_library",
         "//shared/auth:go_default_library",
         "//shared/events:go_default_library",
         "//shared/utils:go_default_library",

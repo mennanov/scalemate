@@ -36,8 +36,7 @@ type ServerTestSuite struct {
 	client          accounts_proto.AccountsClient
 	db              *sqlx.DB
 	sc              stan.Conn
-	subscription    events.Subscription
-	messagesHandler *testutils.MessagesTestingHandler
+	messagesHandler *testutils.ExpectMessagesHandler
 	ctxCancel       context.CancelFunc
 	logger          *logrus.Logger
 }
@@ -60,9 +59,6 @@ func (s *ServerTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	producer := events.NewNatsProducer(s.sc, events.AccountsSubjectName, 5)
-	consumer := events.NewNatsConsumer(s.sc, events.AccountsSubjectName, producer, s.db, s.logger, 5, 3)
-	s.messagesHandler = testutils.NewMessagesTestingHandler()
-	s.subscription, err = consumer.Consume(s.messagesHandler)
 
 	s.service, err = server.NewAccountsServer(
 		server.WithLogger(logrus.New()),
@@ -108,7 +104,6 @@ func (s *ServerTestSuite) SetupTest() {
 func (s *ServerTestSuite) TearDownSuite() {
 	s.ctxCancel()
 
-	utils.Close(s.subscription, s.logger)
 	utils.Close(s.sc, s.logger)
 	utils.Close(s.db, s.logger)
 }

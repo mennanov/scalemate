@@ -26,7 +26,7 @@ func CommitAndPublish(tx driver.Tx, producer Producer, events ...*events_proto.E
 	}
 	if len(events) > 0 {
 		if err := producer.Send(events...); err != nil {
-			return errors.WithStack(err)
+			return errors.Wrap(err, "failed to publish events")
 		}
 	}
 	return nil

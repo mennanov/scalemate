@@ -20,17 +20,15 @@ import (
 )
 
 const (
-	natsDurableName = "scheduler-handlers-tests"
-	dbName          = "scheduler_handlers_test_suite"
+	dbName = "scheduler_handlers_test_suite"
 )
 
 type HandlersTestSuite struct {
 	suite.Suite
-	db              *sqlx.DB
-	logger          *logrus.Logger
-	conn            stan.Conn
-	subscription    events.Subscription
-	messagesHandler *testutils.MessagesTestingHandler
+	db       *sqlx.DB
+	producer *events.FakeProducer
+	logger   *logrus.Logger
+	conn     stan.Conn
 }
 
 func (s *HandlersTestSuite) SetupSuite() {
@@ -40,18 +38,13 @@ func (s *HandlersTestSuite) SetupSuite() {
 	db, err := testutils.CreateTestingDatabase(conf.SchdulerConf.DBUrl, dbName)
 	s.Require().NoError(err)
 	s.db = db
+	s.producer = events.NewFakeProducer()
 
 	s.conn, err = stan.Connect(
 		conf.SchdulerConf.NatsClusterName,
 		// Unique clientID is used to avoid interference with events from the previous test runs.
 		fmt.Sprintf("scheduler-events-handler-%s", uuid.New().String()),
 		stan.NatsURL(conf.SchdulerConf.NatsAddr))
-
-	producer := events.NewNatsProducer(s.conn, events.SchedulerSubjectName, 5)
-	consumer := events.NewNatsConsumer(s.conn, events.SchedulerSubjectName, producer, s.db, s.logger, 5, 3, stan.DurableName(natsDurableName))
-	s.messagesHandler = testutils.NewMessagesTestingHandler()
-	s.subscription, err = consumer.Consume(s.messagesHandler)
-	s.Require().NoError(err)
 
 	// Run migrations.
 	driver, err := postgres.WithInstance(db.DB, &postgres.Config{
@@ -66,10 +59,10 @@ func (s *HandlersTestSuite) SetupSuite() {
 
 func (s *HandlersTestSuite) SetupTest() {
 	testutils.TruncateTables(s.db)
+	s.producer.SentEvents = nil
 }
 
 func (s *HandlersTestSuite) TearDownSuite() {
-	utils.Close(s.subscription, s.logger)
 	utils.Close(s.conn, s.logger)
 	utils.Close(s.db, s.logger)
 }

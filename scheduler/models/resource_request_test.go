@@ -2,10 +2,8 @@ package models_test
 
 import (
 	"github.com/mennanov/scalemate/scheduler/scheduler_proto"
-	"google.golang.org/grpc/codes"
 
 	"github.com/mennanov/scalemate/scheduler/models"
-	"github.com/mennanov/scalemate/shared/testutils"
 )
 
 func (s *ModelsTestSuite) TestResourceRequest_Create() {
@@ -18,9 +16,7 @@ func (s *ModelsTestSuite) TestResourceRequest_Create() {
 		request := models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
 			ContainerId: container.Id,
 		})
-		event, err := request.Create(s.db)
-		s.Require().NoError(err)
-		s.NotNil(event)
+		s.Require().NoError(request.Create(s.db))
 		s.NotNil(request.Id)
 		s.False(request.CreatedAt.IsZero())
 		s.Nil(request.UpdatedAt)
@@ -41,9 +37,7 @@ func (s *ModelsTestSuite) TestResourceRequest_Create() {
 			Status:        scheduler_proto.ResourceRequest_CONFIRMED,
 			StatusMessage: "confirmed",
 		})
-		event, err := request.Create(s.db)
-		s.Require().NoError(err)
-		s.NotNil(event)
+		s.Require().NoError(request.Create(s.db))
 		s.NotNil(request.Id)
 		s.False(request.CreatedAt.IsZero())
 		s.Nil(request.UpdatedAt)
@@ -51,30 +45,5 @@ func (s *ModelsTestSuite) TestResourceRequest_Create() {
 		resourceFromDB, err := models.NewResourceRequestFromDB(s.db, request.Id)
 		s.Require().NoError(err)
 		s.Equal(request, resourceFromDB)
-	})
-}
-
-func (s *ModelsTestSuite) TestNewResourceRequestFromDBLatest() {
-	container := new(models.Container)
-	err := container.Create(s.db)
-	s.Require().NoError(err)
-
-	s.Run("not found", func() {
-		request, err := models.NewResourceRequestFromDBLatest(s.db, container.Id)
-		testutils.AssertErrorCode(s.T(), err, codes.NotFound)
-		s.Nil(request)
-	})
-
-	s.Run("returns the most recent ResourceRequest", func() {
-		for i := 0; i < 4; i++ {
-			recentRequest := models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
-				ContainerId: container.Id,
-			})
-			_, err := recentRequest.Create(s.db)
-			s.Require().NoError(err)
-			request, err := models.NewResourceRequestFromDBLatest(s.db, container.Id)
-			s.Require().NoError(err)
-			s.Equal(recentRequest, request)
-		}
 	})
 }

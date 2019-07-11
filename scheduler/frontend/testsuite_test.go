@@ -1,9 +1,10 @@
-package server_test
+package frontend_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -17,8 +18,10 @@ import (
 	"github.com/stretchr/testify/suite"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/mennanov/scalemate/scheduler/backend"
 	"github.com/mennanov/scalemate/scheduler/conf"
-	"github.com/mennanov/scalemate/scheduler/server"
+	"github.com/mennanov/scalemate/scheduler/frontend"
+	"github.com/mennanov/scalemate/scheduler/handlers"
 	"github.com/mennanov/scalemate/shared/auth"
 	"github.com/mennanov/scalemate/shared/events"
 	"github.com/mennanov/scalemate/shared/testutils"
@@ -31,15 +34,17 @@ const (
 
 type ServerTestSuite struct {
 	suite.Suite
-	service         *server.SchedulerServer
-	client          scheduler_proto.SchedulerClient
-	db              *sqlx.DB
-	sc              stan.Conn
-	subscription    events.Subscription
-	messagesHandler *testutils.MessagesTestingHandler
-	ctxCancel       context.CancelFunc
-	logger          *logrus.Logger
-	claimsInjector  *auth.FakeClaimsInjector
+	frontEndService                 *frontend.SchedulerFrontend
+	frontEndClient                  scheduler_proto.SchedulerFrontEndClient
+	backEndService                  *backend.SchedulerBackend
+	backEndClient                   scheduler_proto.SchedulerBackEndClient
+	db                              *sqlx.DB
+	sc                              stan.Conn
+	producer                        events.Producer
+	messagesHandler                 *testutils.ExpectMessagesHandler
+	ctxCancel                       context.CancelFunc
+	logger                          *logrus.Logger
+	claimsInjector                  *auth.FakeClaimsInjector
 }
 
 func (s *ServerTestSuite) SetupSuite() {
@@ -47,7 +52,8 @@ func (s *ServerTestSuite) SetupSuite() {
 	utils.SetLogrusLevelFromEnv(logger)
 
 	// Start gRPC server.
-	localAddr := "localhost:50052"
+	frontEndAddr := "localhost:50052"
+	backEndAddr := "localhost:50053"
 
 	s.logger = logrus.StandardLogger()
 	utils.SetLogrusLevelFromEnv(s.logger)
@@ -67,16 +73,19 @@ func (s *ServerTestSuite) SetupSuite() {
 		stan.NatsURL(conf.SchdulerConf.NatsAddr))
 	s.Require().NoError(err)
 
-	producer := events.NewNatsProducer(s.sc, events.SchedulerSubjectName, 5)
-	consumer := events.NewNatsConsumer(s.sc, events.SchedulerSubjectName, producer, s.db, s.logger, 5, 3)
-	s.messagesHandler = testutils.NewMessagesTestingHandler()
-	s.subscription, err = consumer.Consume(s.messagesHandler)
+	s.producer = events.NewNatsProducer(s.sc, events.SchedulerSubjectName, 5)
 
-	s.service = server.NewSchedulerServer(
-		server.WithLogger(logger),
-		server.WithDBConnection(s.db),
-		server.WithProducer(producer),
-		server.WithClaimsInjector(s.claimsInjector),
+	s.frontEndService = frontend.NewSchedulerServer(
+		frontend.WithLogger(logger),
+		frontend.WithDBConnection(s.db),
+		frontend.WithProducer(s.producer),
+		frontend.WithClaimsInjector(s.claimsInjector),
+	)
+	s.backEndService = backend.NewSchedulerBackend(
+		backend.WithLogger(logger),
+		backend.WithDBConnection(s.db),
+		backend.WithProducer(s.producer),
+		backend.WithClaimsInjector(s.claimsInjector),
 	)
 
 	// Run migrations.
@@ -95,23 +104,35 @@ func (s *ServerTestSuite) SetupSuite() {
 	serverCreds, err := credentials.NewServerTLSFromFile(conf.SchdulerConf.TLSCertFile, conf.SchdulerConf.TLSKeyFile)
 	s.Require().NoError(err)
 
-	go func() {
-		s.service.Serve(ctx, localAddr, serverCreds)
-	}()
+	go s.frontEndService.Serve(ctx, frontEndAddr, serverCreds)
+	go s.backEndService.Serve(ctx, backEndAddr, serverCreds)
+	time.Sleep(time.Millisecond * 500)
 
 	clientCreds, err := credentials.NewClientTLSFromFile(conf.SchdulerConf.TLSCertFile, "localhost")
 	s.Require().NoError(err)
-	s.client = scheduler_proto.NewSchedulerClient(testutils.NewClientConn(localAddr, clientCreds))
+	s.frontEndClient = scheduler_proto.NewSchedulerFrontEndClient(testutils.NewClientConn(frontEndAddr, clientCreds))
+	s.backEndClient = scheduler_proto.NewSchedulerBackEndClient(testutils.NewClientConn(backEndAddr, clientCreds))
 }
 
 func (s *ServerTestSuite) SetupTest() {
 	testutils.TruncateTables(s.db)
 }
 
+// runEventHandlers runs event handlers and returns a function that closes the subscription when called.
+func (s *ServerTestSuite) runEventHandlers() func() {
+	sub, err := s.sc.Subscribe(
+		events.SchedulerSubjectName,
+		events.StanMsgHandler(context.Background(), s.logger, 1, handlers.NewIndependentHandlers(s.db, s.producer, s.logger, 5)...),
+		stan.SetManualAckMode())
+	s.Require().NoError(err)
+	return func() {
+		s.Require().NoError(sub.Close())
+	}
+}
+
 func (s *ServerTestSuite) TearDownSuite() {
 	s.ctxCancel()
 
-	utils.Close(s.subscription, s.logger)
 	utils.Close(s.sc, s.logger)
 	utils.Close(s.db, s.logger)
 }

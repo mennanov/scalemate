@@ -18,10 +18,15 @@ message Event {
         accounts.accounts_proto.UserPasswordChangedEvent accounts_user_password_changed = 3;
         scheduler.scheduler_proto.ContainerCreatedEvent scheduler_container_created = 4;
         scheduler.scheduler_proto.ContainerScheduledEvent scheduler_container_scheduled = 5;
-        scheduler.scheduler_proto.ResourceRequestCreated scheduler_resource_request_created = 6;
-        scheduler.scheduler_proto.ResourceRequestStatusChanged scheduler_resource_request_status_changed = 7;
-        scheduler.scheduler_proto.NodePricingCreatedEvent scheduler_node_pricing_created = 8;
-        scheduler.scheduler_proto.NodeCreatedEvent scheduler_node_created = 9;
+        scheduler.scheduler_proto.ContainerStoppedEvent scheduler_container_stopped = 6;
+        scheduler.scheduler_proto.ResourceRequestCreated scheduler_resource_request_created = 7;
+        scheduler.scheduler_proto.ResourceRequestConfirmed scheduler_resource_request_confirmed = 8;
+        scheduler.scheduler_proto.ResourceRequestDeclined scheduler_resource_request_declined = 9;
+        scheduler.scheduler_proto.NodePricingCreatedEvent scheduler_node_pricing_created = 10;
+        scheduler.scheduler_proto.NodeCreatedEvent scheduler_node_created = 11;
+        scheduler.scheduler_proto.NodeConnectedEvent scheduler_node_connected = 12;
+        scheduler.scheduler_proto.NodeDisconnectedEvent scheduler_node_disconnected = 13;
+        scheduler.scheduler_proto.NodeShuttingDownEvent scheduler_node_shutting_down = 14;
     }
     google.protobuf.Timestamp created_at = 1 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
 }

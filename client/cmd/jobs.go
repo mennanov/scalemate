@@ -138,7 +138,7 @@ Once the Job is scheduled a corresponding Task entity is created.`,
 		}
 		job, err := scheduler.CreateJobController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			image,
 			command,
 			&createJobsCmdFlagValues)
@@ -160,7 +160,7 @@ var getJobCmd = &cobra.Command{
 		}
 		job, err := scheduler.GetJobController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			uint64(jobID))
 		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},
@@ -174,7 +174,7 @@ var listJobsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		response, err := scheduler.ListJobsController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			&listJobsCmdFlagValues,
 		)
 		scheduler.JSONPbView(logger, os.Stdout, response, err)
@@ -195,7 +195,7 @@ var cancelJobCmd = &cobra.Command{
 		}
 		job, err := scheduler.CancelJobController(
 			client.NewAccountsClient(accountsServiceAddr),
-			client.NewSchedulerClient(schedulerServiceAddr),
+			client.NewSchedulerFrontEndClient(schedulerServiceAddr),
 			uint64(jobID))
 		scheduler.JSONPbView(logger, os.Stdout, job, err)
 	},

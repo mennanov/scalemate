@@ -124,23 +124,23 @@ func (s *ModelsTestSuite) TestListContainers() {
 	}
 
 	s.Run("containers found", func() {
-		s.T().Parallel()
 		for _, testCase := range []struct {
+			username             string
 			request              *scheduler_proto.ListContainersRequest
 			expectedContainerIds []int64
 			expectedCount        uint32
 		}{
 			{
+				username: "user1",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user1",
-					Limit:    10,
+					Limit: 10,
 				},
 				expectedContainerIds: []int64{2, 1},
 				expectedCount:        2,
 			},
 			{
+				username: "user1",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user1",
 					Limit:    10,
 					Ordering: scheduler_proto.ListContainersRequest_CREATED_AT_ASC,
 				},
@@ -148,35 +148,35 @@ func (s *ModelsTestSuite) TestListContainers() {
 				expectedCount:        2,
 			},
 			{
+				username: "user2",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user2",
-					Limit:    10,
+					Limit: 10,
 				},
 				expectedContainerIds: []int64{3},
 				expectedCount:        1,
 			},
 			{
+				username: "user1",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user1",
-					Limit:    1,
-					Offset:   1,
+					Limit:  1,
+					Offset: 1,
 				},
 				expectedContainerIds: []int64{1},
 				expectedCount:        2,
 			},
 			{
+				username: "user1",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user1",
-					Limit:    10,
-					Status:   []scheduler_proto.Container_Status{scheduler_proto.Container_RUNNING},
+					Limit:  10,
+					Status: []scheduler_proto.Container_Status{scheduler_proto.Container_RUNNING},
 				},
 				expectedContainerIds: []int64{1},
 				expectedCount:        1,
 			},
 			{
+				username: "user1",
 				request: &scheduler_proto.ListContainersRequest{
-					Username: "user1",
-					Limit:    10,
+					Limit: 10,
 					Status: []scheduler_proto.Container_Status{
 						scheduler_proto.Container_RUNNING,
 						scheduler_proto.Container_STOPPED,
@@ -187,7 +187,7 @@ func (s *ModelsTestSuite) TestListContainers() {
 				expectedCount:        2,
 			},
 		} {
-			actualContainers, count, err := models.ListContainers(s.db, testCase.request)
+			actualContainers, count, err := models.ListContainers(s.db, testCase.username, testCase.request)
 			s.Require().NoError(err)
 			s.EqualValues(count, testCase.expectedCount)
 			ids := make([]int64, len(actualContainers))
@@ -213,16 +213,22 @@ func (s *ModelsTestSuite) TestListContainers() {
 				missingStatuses = append(missingStatuses, s)
 			}
 		}
-		for _, request := range []*scheduler_proto.ListContainersRequest{
+		for _, testCase := range []struct {
+			username string
+			request  *scheduler_proto.ListContainersRequest
+		}{
 			{
-				Username: "user0",
+				username: "user0",
+				request:  &scheduler_proto.ListContainersRequest{},
 			},
 			{
-				Username: containers[0].Username,
-				Status:   append(missingStatuses),
+				username: "user1",
+				request: &scheduler_proto.ListContainersRequest{
+					Status: missingStatuses,
+				},
 			},
 		} {
-			containers, count, err := models.ListContainers(s.db, request)
+			containers, count, err := models.ListContainers(s.db, testCase.username, testCase.request)
 			testutils.AssertErrorCode(s.T(), err, codes.NotFound)
 			s.Equal(uint32(0), count)
 			s.Nil(containers)
@@ -232,8 +238,9 @@ func (s *ModelsTestSuite) TestListContainers() {
 
 func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 	for _, testData := range []struct {
-		node     *models.Node
-		pricings []*models.NodePricing
+		node       *models.Node
+		pricings   []*models.NodePricing
+		containers []*models.Container
 	}{
 		{
 			&models.Node{
@@ -275,6 +282,18 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 					},
 				},
 			},
+			[]*models.Container{
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_NODE_FAILED,
+					},
+				},
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_RUNNING,
+					},
+				},
+			},
 		},
 		{
 			&models.Node{
@@ -301,6 +320,23 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 						MemoryPrice: 1,
 						GpuPrice:    1,
 						DiskPrice:   3,
+					},
+				},
+			},
+			[]*models.Container{
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_SCHEDULED,
+					},
+				},
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_RUNNING,
+					},
+				},
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_EVICTED,
 					},
 				},
 			},
@@ -333,6 +369,7 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 					},
 				},
 			},
+			nil,
 		},
 		{
 			// Node with no GPU.
@@ -358,6 +395,18 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 						MemoryPrice: 3,
 						GpuPrice:    3,
 						DiskPrice:   4,
+					},
+				},
+			},
+			[]*models.Container{
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_NEW,
+					},
+				},
+				{
+					Container: scheduler_proto.Container{
+						Status: scheduler_proto.Container_FAILED,
 					},
 				},
 			},
@@ -391,23 +440,25 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 					},
 				},
 			},
+			nil,
 		},
 	} {
 		err := testData.node.Create(s.db)
 		s.Require().NoError(err)
-		var pricing *models.NodePricing
-		for _, pricing = range testData.pricings {
+		for _, pricing := range testData.pricings {
 			pricing.NodeId = testData.node.Id
-			_, err := pricing.Create(s.db)
-			s.Require().NoError(err)
+			s.Require().NoError(pricing.Create(s.db))
+		}
+		for _, container := range testData.containers {
+			container.NodeId = &testData.node.Id
+			s.Require().NoError(container.Create(s.db))
 		}
 	}
 	emptyResourceRequest := new(models.ResourceRequest)
 	for _, testCase := range []struct {
-		container         *models.Container
-		resourceRequest   *models.ResourceRequest
-		expectedNodeIds   map[int64]bool
-		expectedPricingId int64
+		container       *models.Container
+		resourceRequest *models.ResourceRequest
+		expectedNodeIds map[int64]bool
 	}{
 		// Labels focused test cases:
 		{
@@ -600,6 +651,8 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 		if len(testCase.expectedNodeIds) != 0 {
 			actualNodeIds := make(map[int64]bool)
 			for _, n := range nodesFound {
+				// Check there are no duplicates.
+				s.Require().False(actualNodeIds[n.Id])
 				actualNodeIds[n.Id] = true
 			}
 			s.Equal(testCase.expectedNodeIds, actualNodeIds)
@@ -607,4 +660,29 @@ func (s *ModelsTestSuite) TestContainer_NodesForScheduling() {
 			s.Len(nodesFound, 0)
 		}
 	}
+}
+
+func (s *ModelsTestSuite) TestContainer_ResourceRequest() {
+	container := new(models.Container)
+	s.Require().NoError(container.Create(s.db))
+
+	s.Run("not found", func() {
+		request, err := container.CurrentResourceRequest(s.db)
+		testutils.AssertErrorCode(s.T(), err, codes.NotFound)
+		s.Nil(request)
+	})
+
+	s.Run("returns the most recent CurrentResourceRequest", func() {
+		for i := 0; i < 4; i++ {
+			recentRequest := models.NewResourceRequestFromProto(&scheduler_proto.ResourceRequest{
+				ContainerId: container.Id,
+				Status:      scheduler_proto.ResourceRequest_CONFIRMED,
+				CreatedAt:   time.Unix(int64(i), 0),
+			})
+			s.Require().NoError(recentRequest.Create(s.db))
+			request, err := container.CurrentResourceRequest(s.db)
+			s.Require().NoError(err)
+			s.Equal(recentRequest, request)
+		}
+	})
 }

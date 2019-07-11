@@ -75,14 +75,29 @@ func (c *Claims) SignedString(jwtSecretKey []byte) (string, error) {
 
 }
 
-type contextKey string
-
-func (c contextKey) String() string {
-	return "scalemate_" + string(c)
+type contextKey struct {
+	value string
 }
 
-// ContextKeyClaims is a string key to be used to store and retrieve Claims from the context.
-var ContextKeyClaims = contextKey("Claims")
+func (c *contextKey) String() string {
+	return "scalemate_" + c.value
+}
+
+// contextKeyClaims is a string key to be used to store and retrieve Claims from the context.
+var contextKeyClaims = &contextKey{"Claims"}
+
+// GetClaimsFromContext retrieves Claims from the given context.
+func GetClaimsFromContext(ctx context.Context) (*Claims, error) {
+	ctxClaims := ctx.Value(contextKeyClaims)
+	if ctxClaims == nil {
+		return nil, status.Error(codes.Unauthenticated, "no JWT claims found")
+	}
+	claims, ok := ctxClaims.(*Claims)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "unknown JWT claims type")
+	}
+	return claims, nil
+}
 
 // ClaimsInjector is an interface that is used to inject parsed and verified Claims to the context.
 type ClaimsInjector interface {
@@ -112,7 +127,7 @@ func (i *JWTClaimsInjector) InjectClaims(ctx context.Context) (context.Context, 
 		return nil, status.Errorf(codes.Unauthenticated, "invalid auth token: %v", err)
 	}
 
-	return context.WithValue(ctx, ContextKeyClaims, claims), nil
+	return context.WithValue(ctx, contextKeyClaims, claims), nil
 }
 
 // Compile time interface check.
@@ -120,7 +135,7 @@ var _ ClaimsInjector = new(JWTClaimsInjector)
 
 // FakeClaimsInjector injects already provided Claims.
 type FakeClaimsInjector struct {
-	Claims   *Claims
+	Claims *Claims
 }
 
 // NewFakeClaimsContextInjector creates a new instance of NewFakeClaimsContextInjector.
@@ -139,7 +154,7 @@ func (f *FakeClaimsInjector) SetClaims(claims *Claims) func() {
 
 // InjectClaims injects the provided Claims to the given context.
 func (f *FakeClaimsInjector) InjectClaims(ctx context.Context) (context.Context, error) {
-	return context.WithValue(ctx, ContextKeyClaims, f.Claims), nil
+	return context.WithValue(ctx, contextKeyClaims, f.Claims), nil
 }
 
 // Compile time interface check.

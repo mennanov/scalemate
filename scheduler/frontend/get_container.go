@@ -1,4 +1,4 @@
-package server
+package frontend
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 )
 
 // GetContainer gets the Container by its ID. Container can be accessed by its owner only.
-func (s SchedulerServer) GetContainer(
+func (s SchedulerFrontend) GetContainer(
 	ctx context.Context,
 	r *scheduler_proto.ContainerLookupRequest,
 ) (*scheduler_proto.Container, error) {
